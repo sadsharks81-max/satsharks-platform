@@ -56,7 +56,7 @@ function Editor({ id, canWrite }: { id: string; canWrite: boolean }) {
 
   const isMcq = question.questionType === "mcq";
   const topics = facets.data?.topics[question.section] ?? [];
-  const skills = topics.find((entry) => entry.topic === draft.topic)?.skills ?? topics.flatMap((entry) => entry.skills);
+  const skills = topics.find((entry) => entry.topic === draft.topic)?.skills ?? [...new Set(topics.flatMap((entry) => entry.skills))];
   // The preview shows the text as it is being edited.
   const preview = { ...question, prompt: draft.prompt, passage: draft.passage || null };
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });

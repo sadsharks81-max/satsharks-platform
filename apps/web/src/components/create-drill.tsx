@@ -47,7 +47,8 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
   const sectionTopics = catalog.topics[section];
   // Skills offered are those of the selected domains, or all of them when none is selected.
   const availableSkills = useMemo(
-    () => sectionTopics.filter((entry) => topics.length === 0 || topics.includes(entry.topic)).flatMap((entry) => entry.skills),
+    // A few source questions file a skill under a second domain, so the same skill can appear twice.
+    () => [...new Set(sectionTopics.filter((entry) => topics.length === 0 || topics.includes(entry.topic)).flatMap((entry) => entry.skills))],
     [sectionTopics, topics],
   );
   const pageCount = Math.max(1, Math.ceil(availableSkills.length / SKILLS_PER_PAGE));

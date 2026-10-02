@@ -48,7 +48,8 @@ function QuestionBank() {
     setPage(1);
   };
   const topics = filters.section ? (facets.data?.topics[filters.section] ?? []) : [];
-  const skills = topics.filter((entry) => !filters.topic || entry.topic === filters.topic).flatMap((entry) => entry.skills);
+  // A skill can be listed under two topics (mis-tagged source questions), so remove repeats.
+  const skills = [...new Set(topics.filter((entry) => !filters.topic || entry.topic === filters.topic).flatMap((entry) => entry.skills))];
   const total = list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / 25));
 
