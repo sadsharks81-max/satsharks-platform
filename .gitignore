@@ -1,0 +1,26 @@
+node_modules/
+.next/
+dist/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# imported source content (raw + normalized proof-of-concept data)
+data/
+
+# logs / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# HAR recordings can contain session tokens in response bodies, even when exported "sanitized"
+*.har
+!docs/references/network/bluecorn.org.har
+
+# Client proposal is confidential; keep it out of the repository
+docs/purposal/

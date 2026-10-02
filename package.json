@@ -1,0 +1,32 @@
+{
+  "name": "sat-sharks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:web": "npm run dev -w @satsharks/web",
+    "dev:api": "npm run dev -w @satsharks/api",
+    "dev:worker": "npm run dev -w @satsharks/worker",
+    "build:web": "npm run build -w @satsharks/web",
+    "start:api": "npm run start -w @satsharks/api",
+    "start:worker": "npm run start -w @satsharks/worker",
+    "scrape:paper": "tsx apps/worker/src/cli/import-paper.ts",
+    "collect:bank": "tsx apps/worker/src/cli/collect-bank.ts",
+    "assets:copy": "tsx apps/worker/src/cli/copy-assets.ts",
+    "create:admin": "tsx apps/api/src/cli/create-admin.ts",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

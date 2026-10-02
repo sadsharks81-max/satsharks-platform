@@ -1,0 +1,25 @@
+{
+  "name": "@satsharks/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "start": "tsx src/worker.ts",
+    "import:paper": "tsx src/cli/import-paper.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@satsharks/config": "*",
+    "@satsharks/db": "*",
+    "@satsharks/types": "*",
+    "@satsharks/utils": "*",
+    "@satsharks/validation": "*",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.0",
+    "mongoose": "^8.9.0",
+    "tsx": "^4.19.0",
+    "zod": "^3.24.0"
+  }
+}

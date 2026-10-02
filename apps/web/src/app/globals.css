@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #eef1fb;
+  --color-brand-100: #dfe4f7;
+  --color-brand-500: #324dc7;
+  --color-brand-600: #2a40a8;
+  --color-brand-700: #223489;
+  --font-sans: "Inter", "Roboto", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Noto Serif", Georgia, "Times New Roman", serif;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* The dashed multi-colour rule that frames the test screen. */
+.test-rule {
+  height: 3px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    #e11d48 0 28px,
+    transparent 28px 34px,
+    #f59e0b 34px 62px,
+    transparent 62px 68px,
+    #16a34a 68px 96px,
+    transparent 96px 102px,
+    #0891b2 102px 130px,
+    transparent 130px 136px,
+    #324dc7 136px 164px,
+    transparent 164px 170px,
+    #9333ea 170px 198px,
+    transparent 198px 204px
+  );
+}
+
+/* Question text follows the test's serif typography. */
+.question-text {
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+.question-text p + p,
+.question-text p + ul,
+.question-text ul + p {
+  margin-top: 0.85rem;
+}
+.question-text ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+}
+.question-text .katex-display {
+  margin: 0.75rem 0;
+}
