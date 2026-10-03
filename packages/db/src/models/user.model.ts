@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { USER_REGIONS, USER_ROLES, USER_STATUSES, type UserRegion, type UserRole, type UserStatus } from "@satsharks/types";
+import { PAID_PLANS, USER_PLANS, USER_REGIONS, USER_ROLES, USER_STATUSES, type PaidPlan, type UserPlan, type UserRegion, type UserRole, type UserStatus } from "@satsharks/types";
 
 const { Schema } = mongoose;
 
@@ -14,6 +14,11 @@ export interface UserDoc {
   country: string | null;
   // Follows from country: PK = local, anything else = international.
   region: UserRegion | null;
+  // Free or paid, set by an admin (payments will set it later). A paid plan ends at planExpiresAt
+  // (null = no end date); after that the account counts as free (see effectivePlan).
+  plan: UserPlan;
+  paidPlan: PaidPlan | null;
+  planExpiresAt: Date | null;
   // Sessions signed before this moment are rejected (set when the password is reset).
   passwordChangedAt: Date | null;
   // Password reset: SHA-256 of the emailed token (the token itself is never stored) and its expiry.
@@ -34,6 +39,9 @@ const userSchema = new Schema<UserDoc>(
     status: { type: String, enum: USER_STATUSES, default: "active", index: true },
     country: { type: String, uppercase: true, minlength: 2, maxlength: 2, default: null },
     region: { type: String, enum: [...USER_REGIONS, null], default: null, index: true },
+    plan: { type: String, enum: USER_PLANS, default: "free", index: true },
+    paidPlan: { type: String, enum: [...PAID_PLANS, null], default: null },
+    planExpiresAt: { type: Date, default: null },
     passwordChangedAt: { type: Date, default: null },
     resetTokenHash: { type: String, default: null, select: false },
     resetTokenExpiresAt: { type: Date, default: null, select: false },
@@ -43,6 +51,12 @@ const userSchema = new Schema<UserDoc>(
 
 // Reset links look the user up by token hash. Sparse: most users have none.
 userSchema.index({ resetTokenHash: 1 }, { sparse: true });
+
+// The plan that applies right now. The only place this rule lives.
+export function effectivePlan(user: Pick<UserDoc, "plan" | "planExpiresAt">, now = new Date()): UserPlan {
+  if (user.plan !== "paid") return "free";
+  return user.planExpiresAt && user.planExpiresAt.getTime() <= now.getTime() ? "free" : "paid";
+}
 
 export const UserModel =
   (mongoose.models.User as mongoose.Model<UserDoc> | undefined) ?? mongoose.model<UserDoc>("User", userSchema);

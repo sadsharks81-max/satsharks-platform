@@ -9,10 +9,13 @@ import {
   reopenReportSchema,
   reportListQuerySchema,
   resolveReportSchema,
+  updateUserSchema,
+  userListQuerySchema,
   type UpdateQuestionInput,
 } from "@satsharks/validation";
 import { adminService } from "../services/admin.service";
 import { reportService } from "../services/report.service";
+import { userAdminService } from "../services/user-admin.service";
 import { settingsService } from "../services/settings.service";
 import { sendOk } from "../utils/respond";
 
@@ -88,4 +91,17 @@ export async function reopenReport(req: Request, res: Response): Promise<void> {
   const { note } = reopenReportSchema.parse(req.body);
   await reportService.reopen(objectIdSchema.parse(req.params.id), String(req.user!._id), note);
   sendOk(res, { reopened: true });
+}
+
+export async function listUsers(req: Request, res: Response): Promise<void> {
+  sendOk(res, await userAdminService.list(userListQuerySchema.parse(req.query)));
+}
+
+export async function getUser(req: Request, res: Response): Promise<void> {
+  sendOk(res, await userAdminService.get(objectIdSchema.parse(req.params.id)));
+}
+
+export async function updateUser(req: Request, res: Response): Promise<void> {
+  const input = updateUserSchema.parse(req.body);
+  sendOk(res, { user: await userAdminService.update(objectIdSchema.parse(req.params.id), String(req.user!._id), input) });
 }

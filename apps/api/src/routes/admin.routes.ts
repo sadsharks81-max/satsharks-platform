@@ -9,12 +9,15 @@ import {
   getQuestion,
   getReport,
   getStats,
+  getUser,
   listQuestions,
   listReports,
+  listUsers,
   reopenReport,
   resolveReport,
   setAdaptiveSettings,
   setConversionTables,
+  updateUser,
   setPapersStatus,
   setPaperStatus,
   updateQuestion,
@@ -33,6 +36,10 @@ adminRouter.get("/settings/adaptive", getAdaptiveSettings);
 adminRouter.put("/settings/adaptive", requirePermission("papers:write"), setAdaptiveSettings);
 adminRouter.get("/settings/scoring", getConversionTables);
 adminRouter.put("/settings/scoring", requirePermission("papers:write"), setConversionTables);
+
+adminRouter.get("/users", requirePermission("users:read"), listUsers);
+adminRouter.get("/users/:id", requirePermission("users:read"), getUser);
+adminRouter.patch("/users/:id", requirePermission("users:write"), updateUser);
 
 adminRouter.get("/reports", requirePermission("reports:read"), listReports);
 adminRouter.get("/reports/:id", requirePermission("reports:read"), getReport);

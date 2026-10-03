@@ -42,6 +42,26 @@ export const USER_REGION_LABELS: Record<UserRegion, string> = {
 
 export const LOCAL_COUNTRY_CODE = "PK";
 
+// Free or paid access. Set by an admin for now; payments (proposal Checkpoint 4.1) will set it too.
+export const USER_PLANS = ["free", "paid"] as const;
+export type UserPlan = (typeof USER_PLANS)[number];
+
+// The paid plans on the pricing page.
+export const PAID_PLANS = ["monthly", "three_months", "till_test_day"] as const;
+export type PaidPlan = (typeof PAID_PLANS)[number];
+
+export const PAID_PLAN_LABELS: Record<PaidPlan, string> = {
+  monthly: "Monthly",
+  three_months: "3 Months",
+  till_test_day: "Till Test Day",
+};
+
+export const USER_STATUS_LABELS: Record<UserStatus, string> = {
+  active: "Active",
+  blocked: "Disabled",
+  deleted: "Deleted",
+};
+
 // ISO 3166-1 alpha-2 codes. Names are shown with Intl.DisplayNames in the browser.
 export const COUNTRY_CODES = [
   "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW", "AX", "AZ",
@@ -166,7 +186,39 @@ export interface PublicUser {
   // from the command line.
   country: string | null;
   region: UserRegion | null;
+  // Effective plan: a paid plan whose end date has passed counts as free.
+  plan: UserPlan;
 }
+
+// ---------- admin: users ----------
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  country: string | null;
+  region: UserRegion | null;
+  // Effective plan (see PublicUser.plan) and what was set.
+  plan: UserPlan;
+  paidPlan: PaidPlan | null;
+  planExpiresAt: string | null;
+  createdAt: string;
+}
+
+export interface AdminUserActivity {
+  drills: number;
+  mocks: number;
+  fullTests: number;
+  completed: number;
+  bestSectionScore: number | null;
+  bestTotalScore: number | null;
+  reports: number;
+  lastActiveAt: string | null;
+}
+
+export type UserListCounts = { all: number; paid: number; free: number; blocked: number; deleted: number };
 
 export interface PaperModule {
   key: string;
@@ -438,6 +490,7 @@ export interface AdminQuestion {
 export interface AdminStats {
   users: number;
   usersByRegion: Record<UserRegion | "unknown", number>;
+  paidUsers: number;
   reports: Record<ReportStatus, number>;
   papers: Record<PaperStatus, number>;
   questions: Record<PaperStatus, number>;

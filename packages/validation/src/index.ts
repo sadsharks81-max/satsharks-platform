@@ -12,6 +12,11 @@ import {
   SECTIONS,
   sectionQuestionCount,
   TIME_MULTIPLIERS,
+  PAID_PLANS,
+  USER_PLANS,
+  USER_REGIONS,
+  USER_ROLES,
+  USER_STATUSES,
   type Section,
 } from "@satsharks/types";
 
@@ -264,3 +269,35 @@ export const updateQuestionSchema = z
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Nothing to update");
 export type UpdateQuestionInput = z.infer<typeof updateQuestionSchema>;
+
+// ---------- admin: users ----------
+
+const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
+
+export const userListQuerySchema = z.object({
+  search: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional()),
+  // "paid" / "free" use the effective plan (an expired paid plan counts as free).
+  plan: z.preprocess(emptyToUndefined, z.enum(USER_PLANS).optional()),
+  status: z.preprocess(emptyToUndefined, z.enum(USER_STATUSES).optional()),
+  region: z.preprocess(emptyToUndefined, z.enum([...USER_REGIONS, "unknown"]).optional()),
+  role: z.preprocess(emptyToUndefined, z.enum(USER_ROLES).optional()),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+export type UserListQuery = z.infer<typeof userListQuerySchema>;
+
+export const updateUserSchema = z
+  .object({
+    plan: z.enum(USER_PLANS),
+    paidPlan: z.enum(PAID_PLANS).nullable(),
+    // ISO date (YYYY-MM-DD); null = no end date.
+    planExpiresAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-12-31")
+      .nullable(),
+    status: z.enum(USER_STATUSES),
+    role: z.enum(USER_ROLES),
+  })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, "Nothing to update");
+export type UpdateUserInput = z.infer<typeof updateUserSchema>;

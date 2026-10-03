@@ -6,14 +6,18 @@ import type { AdminStats } from "@satsharks/types";
 import { Card, Notice, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 
-function Stat({ label, value, detail }: { label: string; value: string | number | undefined; detail?: string }) {
-  return (
-    <Card>
+function Stat({ label, value, detail, href }: { label: string; value: string | number | undefined; detail?: string; href?: string }) {
+  const body = (
+    <Card className={href ? "h-full transition hover:bg-slate-50" : "h-full"}>
       <div className="text-2xl font-bold">{value ?? "…"}</div>
-      <div className="mt-1 text-sm font-medium text-slate-600">{label}</div>
+      <div className="mt-1 text-sm font-medium text-slate-600">
+        {label}
+        {href && <span className="ml-1 text-brand-500">→</span>}
+      </div>
       {detail && <div className="mt-1 text-xs text-slate-500">{detail}</div>}
     </Card>
   );
+  return href ? <Link href={href}>{body}</Link> : body;
 }
 
 export default function AdminDashboardPage() {
@@ -33,7 +37,12 @@ export default function AdminDashboardPage() {
         <Stat
           label="Users"
           value={s?.users.toLocaleString()}
-          detail={s ? `${s.usersByRegion.local} local · ${s.usersByRegion.international} international${s.usersByRegion.unknown ? ` · ${s.usersByRegion.unknown} no country` : ""}` : undefined}
+          detail={
+            s
+              ? `${s.paidUsers} paid · ${s.usersByRegion.local} local · ${s.usersByRegion.international} international${s.usersByRegion.unknown ? ` · ${s.usersByRegion.unknown} no country` : ""}`
+              : undefined
+          }
+          href="/admin/users"
         />
         <Stat label="Papers published" value={s ? `${s.papers.published} of ${s.papers.draft + s.papers.published + s.papers.hidden}` : undefined} />
         <Stat

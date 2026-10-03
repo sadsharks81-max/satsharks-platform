@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { trusted, UserModel } from "@satsharks/db";
+import { effectivePlan, trusted, UserModel } from "@satsharks/db";
 import { regionForCountry, ROLE_PERMISSIONS, type PublicUser } from "@satsharks/types";
 import type { LoginInput, RegisterInput, ResetPasswordInput } from "@satsharks/validation";
 import { BCRYPT_ROUNDS, env } from "../config/env";
@@ -27,6 +27,7 @@ export function toPublicUser(user: UserDoc): PublicUser {
     permissions: [...ROLE_PERMISSIONS[user.role]],
     country: user.country ?? null,
     region: user.region ?? null,
+    plan: effectivePlan(user),
   };
 }
 

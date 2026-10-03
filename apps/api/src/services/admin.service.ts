@@ -12,6 +12,7 @@ import {
 import type { QuestionListQuery, UpdateQuestionInput } from "@satsharks/validation";
 import { AppError } from "../utils/app-error";
 import { invalidateCatalog } from "./practice.service";
+import { userAdminService } from "./user-admin.service";
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -57,9 +58,10 @@ export const adminService = {
       ProblemReportModel.countDocuments({ status: "pending" }),
       ProblemReportModel.countDocuments({ status: "resolved" }),
     ]);
+    const paidUsers = await userAdminService.paidCount();
     const usersByRegion: AdminStats["usersByRegion"] = { local: 0, international: 0, unknown: 0 };
     for (const row of regions) usersByRegion[row._id ?? "unknown"] += row.n;
-    return { users, usersByRegion, reports: { pending: pendingReports, resolved: resolvedReports }, papers, questions, questionsBySection, attempts };
+    return { users, usersByRegion, paidUsers, reports: { pending: pendingReports, resolved: resolvedReports }, papers, questions, questionsBySection, attempts };
   },
 
   // A paper's questions always share its status: students only ever query published questions.

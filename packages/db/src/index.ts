@@ -1,5 +1,5 @@
 export { connectMongo, disconnectMongo, isMongoConnected } from "./connection";
-export { UserModel, type UserDoc } from "./models/user.model";
+export { effectivePlan, UserModel, type UserDoc } from "./models/user.model";
 export { PaperModel, type PaperDoc } from "./models/paper.model";
 export { QuestionModel, type QuestionDoc } from "./models/question.model";
 export { AssetModel, type AssetDoc } from "./models/asset.model";

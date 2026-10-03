@@ -178,7 +178,7 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-03 | For UI-only changes Umair may say "do not test" — then only typecheck, no login/browser runs |
 | 2026-10-03 | Admin/staff accounts do not practise: they land on `/admin`, the nav shows only "Admin Portal", and student pages redirect them there (UI only; the API does not block them) |
 | 2026-10-03 | Students can delete their own drills, mocks and full tests (a full test is deleted as a whole) |
-| 2026-10-03 | The admin account's login is now `admin2.0@gmail.com` (was `anasirfanch2.0@gmail.com`; same account, role and history). Umair set the password; it is not stored in the repo |
+| 2026-10-03 | The admin account's login is now `admin2.0@gmail.com` (same account, role and history; display name "SAT Sharks Admin"). Umair set the password; it is not stored in the repo |
 | 2026-10-03 | Keep testing light unless asked: typecheck plus a few targeted checks |
 
 ## 7. Facts about the source (verified)
