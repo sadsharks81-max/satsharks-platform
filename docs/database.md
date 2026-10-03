@@ -13,15 +13,20 @@ A field the source did not provide is stored as `null` (or `"unknown"` for modul
 | `passwordHash` | string | bcrypt. Excluded from queries by default (`select: false`) |
 | `role` | `student` \| `staff` \| `admin` | Default `student` |
 | `status` | `active` \| `blocked` \| `deleted` | Default `active` |
+| `country` | ISO 3166-1 alpha-2 \| null | Picked at sign-up (e.g. `PK`). null for older accounts and CLI-made admins |
+| `region` | `local` \| `international` \| null | From `country` only: `PK` = local, any other = international. Never from IP |
+| `passwordChangedAt` | date \| null | Set by a password reset. Session tokens signed before it are rejected |
+| `resetTokenHash` | string \| null | SHA-256 of the emailed reset token (the token is never stored). `select: false` |
+| `resetTokenExpiresAt` | date \| null | 30 minutes after the request. Both reset fields are cleared when the token is used |
 | `createdAt`, `updatedAt` | date | |
 
 Roles are extensible: add the role to `USER_ROLES` and its permissions to `ROLE_PERMISSIONS` in
 `packages/types`. Routes check permissions (`admin:access`, `papers:read`, …), never role names.
 
 The proposal's five user types (local/international × free/paid, plus admin) are a combination of
-role, region and plan. Region and plan are not modelled yet; they arrive with payments.
+role, region and plan. Region is stored (above); plan arrives with payments (Checkpoint 4.1).
 
-Indexes: `email` (unique), `role`, `status`.
+Indexes: `email` (unique), `role`, `status`, `region`, `resetTokenHash` (sparse).
 
 ## Paper (`papers`)
 
@@ -132,22 +137,33 @@ A question's `assets[]` entries now also carry `sourceUrl`, the original locatio
 
 ## Attempt (`attempts`)
 
-One student working through one drill.
+One student working through one drill or one adaptive mock section.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `userId` | ObjectId → User | |
-| `kind` | `drill` | Adaptive tests will add a kind |
-| `name`, `section`, `paperId` | | |
+| `kind` | `drill` \| `mock` | |
+| `name`, `section`, `paperId`, `paperIds` | | |
 | `status` | `active` \| `done` | |
-| `timed`, `timeLimitSeconds` | | |
-| `startedAt` | date | The clock: remaining time is always computed from this on the server |
+| `timed`, `timeLimitSeconds` | | Mock: limit per module, already multiplied by `timeMultiplier` |
+| `timeMultiplier` | 1 \| 1.5 \| 2 | Extended-time accommodation. Default 1 |
+| `fullTestId` | ObjectId → FullTest \| null | Set when the mock is one section of a full test |
+| `startedAt` | date | The clock: remaining time is always computed from this on the server. Mock: start of the current module |
 | `lastPosition` | number | Where to resume |
-| `items[]` | | `questionId`, `answer`, `flagged`, `checked`, `correct` |
+| `viewPosition`, `viewStartedAt` | | The question on screen and since when (per-question timing) |
+| `items[]` | | `questionId`, `module`, `answer`, `flagged`, `checked`, `correct`, `timeSpentSeconds` |
+| `currentModule`, `m2Type`, `m1Correct`, `m2Correct`, `routingThresholdPercent`, `routingRequiredCorrect` | | Mock routing |
+| `m1TimeUsedSeconds`, `m2TimeUsedSeconds` | number \| null | Per module: start to submission, capped at the limit when timed; untimed = sum of question times |
+| `sectionScore` | number \| null | 200–800 from the conversion table for the route taken. null until a table exists |
 | `correct`, `incorrect`, `unanswered` | number | Set when the attempt ends |
+| `timeUsedSeconds` | number \| null | Whole attempt (mock: both modules) |
 | `completedAt` | date \| null | |
 
-Index: `{ userId, status, createdAt }`.
+Indexes: `{ userId, status, createdAt }`; `{ fullTestId, section }` unique, partial (only attempts
+that belong to a full test).
+
+Question time: each time a question is loaded, the time since the previous load is added to the
+previous question (capped by the module deadline; untimed attempts cap one stretch at 10 minutes).
 
 Attempts reference questions by ID. Hiding a paper keeps its attempts; deleting a question
 removes it from the review of attempts that included it.
@@ -156,3 +172,43 @@ removes it from the review of attempts that included it.
 User 1 ──── * Attempt * ──── * Question
 Paper 1 ──── * Question
 ```
+
+## FullTest (`fulltests`)
+
+Both sections in one sitting: a Reading & Writing mock, a 10-minute break, then a Math mock.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `userId` | ObjectId → User | |
+| `name`, `timed`, `timeMultiplier` | | Applied to both sections |
+| `paperIds.reading_writing`, `paperIds.math` | ObjectId[] | Exams each section draws from; empty = all |
+| `readingWritingAttemptId`, `mathAttemptId` | ObjectId → Attempt \| null | Math is created when the break ends |
+| `totalScore` | number \| null | 400–1600: the two section scores added, once both exist |
+| `completedAt` | date \| null | |
+
+Index: `{ userId, createdAt }`.
+
+## ProblemReport (`problemreports`)
+
+A student's "Report a problem" on one question. Never deleted.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `questionId`, `paperId`, `section` | | The question reported |
+| `userId` | ObjectId → User | Reporter |
+| `attemptId`, `attemptKind`, `position` | | Where the student met it |
+| `reason` | `wrong_answer` \| `typo` \| `display` \| `explanation` \| `other` | |
+| `details` | string \| null | Up to 1,000 characters |
+| `status` | `pending` \| `resolved` | |
+| `history[]` | | `{ action: created\|resolved\|reopened, at, by, note, questionEdited }` |
+| `resolvedAt`, `resolvedBy` | | |
+
+Indexes: `{ status, createdAt }`, `{ questionId, status }`, `{ userId, questionId }` unique where
+`status = pending` (one pending report per student per question).
+
+## Setting (`settings`)
+
+| Key | Value |
+| --- | --- |
+| `adaptive` | `{ routingThresholdPercent }` |
+| `scoring.conversionTables` | `{ reading_writing: { m2_easy, m2_hard }, math: { m2_easy, m2_hard } }`: each `null` or (questions + 1) scores, 200–800, steps of 10, never decreasing. Entered by an admin |

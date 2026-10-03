@@ -5,10 +5,12 @@ import { AUTH_TOKEN_TTL_SECONDS, isProduction } from "../config/env";
 
 export interface AuthTokenPayload {
   sub: string;
+  // Seconds since the epoch when the token was signed (set by jsonwebtoken).
+  iat: number;
 }
 
 export function signAuthToken(userId: string): string {
-  return jwt.sign({ sub: userId } satisfies AuthTokenPayload, getJwtSecret(), {
+  return jwt.sign({ sub: userId } satisfies Omit<AuthTokenPayload, "iat">, getJwtSecret(), {
     algorithm: "HS256",
     expiresIn: AUTH_TOKEN_TTL_SECONDS,
   });
@@ -17,8 +19,8 @@ export function signAuthToken(userId: string): string {
 export function verifyAuthToken(token: string): AuthTokenPayload | null {
   try {
     const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ["HS256"] });
-    if (typeof decoded === "string" || typeof decoded.sub !== "string") return null;
-    return { sub: decoded.sub };
+    if (typeof decoded === "string" || typeof decoded.sub !== "string" || typeof decoded.iat !== "number") return null;
+    return { sub: decoded.sub, iat: decoded.iat };
   } catch {
     return null;
   }

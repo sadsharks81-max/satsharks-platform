@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AttemptSummary, CatalogExam, PracticeCatalog } from "@satsharks/types";
-import { AttemptCard } from "@/components/attempt-card";
+import type { AttemptSummary, CatalogExam, FullTestSummary, PracticeCatalog } from "@satsharks/types";
+import { AttemptCard, FullTestCard } from "@/components/attempt-card";
 import { CreateDrill } from "@/components/create-drill";
 import { CreateMock } from "@/components/create-mock";
 import { RequireUser } from "@/components/require-user";
@@ -50,6 +50,7 @@ function FilterGroup<T extends string | number>({ options, value, onChange }: { 
 function Home() {
   const catalog = useQuery({ queryKey: ["practice", "catalog"], queryFn: () => api<PracticeCatalog>("/api/practice/catalog") });
   const attempts = useQuery({ queryKey: ["practice", "attempts"], queryFn: () => api<{ attempts: AttemptSummary[] }>("/api/practice/attempts") });
+  const fullTests = useQuery({ queryKey: ["practice", "full-tests"], queryFn: () => api<{ fullTests: FullTestSummary[] }>("/api/practice/full-tests") });
   const [year, setYear] = useState<number | "all">("all");
   const [season, setSeason] = useState<(typeof SEASONS)[number] | "all">("all");
   // undefined = closed, null = open without a preselected exam.
@@ -59,7 +60,10 @@ function Home() {
   const exams = catalog.data?.exams ?? [];
   const years = useMemo(() => [...new Set(exams.map(yearOf).filter((value): value is number => value !== null))].sort((a, b) => b - a), [exams]);
   const visible = exams.filter((exam) => (year === "all" || yearOf(exam) === year) && (season === "all" || seasonOf(exam) === season));
-  const active = attempts.data?.attempts.filter((attempt) => attempt.status === "active") ?? [];
+  // A full test in progress is shown as one card (its sections are not listed separately).
+  const activeFullTests = fullTests.data?.fullTests.filter((fullTest) => fullTest.stage !== "done") ?? [];
+  const active = attempts.data?.attempts.filter((attempt) => attempt.status === "active" && !attempt.fullTestId) ?? [];
+  const activeCount = active.length + activeFullTests.length;
 
   if (catalog.isLoading) return <Spinner label="Loading exams" />;
   if (catalog.error) return <Notice tone="error">{catalog.error.message}</Notice>;
@@ -70,7 +74,9 @@ function Home() {
         <Card className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0 flex-1">
             <h2 className={heading}>Adaptive Mock Exam</h2>
-            <p className="mt-1 text-sm font-medium text-slate-600">A full timed section in two modules. Do well in Module 1 and Module 2 gets harder, just like the real Digital SAT.</p>
+            <p className="mt-1 text-sm font-medium text-slate-600">
+              A full test (both sections, scored out of 1600) or one section in two modules. Do well in Module 1 and Module 2 gets harder, just like the real Digital SAT.
+            </p>
           </div>
           <Button disabled={exams.length === 0} onClick={() => setMockOpen(true)}>
             Start Adaptive Mock
@@ -87,10 +93,13 @@ function Home() {
         </Card>
       </div>
 
-      {active.length > 0 && (
+      {activeCount > 0 && (
         <section>
-          <h2 className={heading}>Active Drills &amp; Mocks ({active.length})</h2>
+          <h2 className={heading}>Active Drills &amp; Mocks ({activeCount})</h2>
           <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {activeFullTests.map((fullTest) => (
+              <FullTestCard key={fullTest.id} fullTest={fullTest} />
+            ))}
             {active.map((attempt) => (
               <AttemptCard key={attempt.id} attempt={attempt} />
             ))}
@@ -144,5 +153,5 @@ function Home() {
 }
 
 export default function DashboardPage() {
-  return <RequireUser>{() => <Home />}</RequireUser>;
+  return <RequireUser studentOnly>{() => <Home />}</RequireUser>;
 }

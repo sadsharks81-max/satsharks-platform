@@ -1,27 +1,54 @@
 import { z } from "zod";
 import {
   DIFFICULTIES,
+  isCountryCode,
   MODULE_TYPES,
   PAPER_STATUSES,
   QUESTION_TYPES,
+  REPORT_REASONS,
+  REPORT_STATUSES,
+  SECTION_SCORE_MAX,
+  SECTION_SCORE_MIN,
   SECTIONS,
+  sectionQuestionCount,
+  TIME_MULTIPLIERS,
+  type Section,
 } from "@satsharks/types";
 
 // ---------- auth ----------
 
+const emailSchema = z.string().trim().toLowerCase().email().max(254);
+// bcrypt only uses the first 72 bytes, so longer passwords are rejected rather than silently truncated.
+const newPasswordSchema = z.string().min(8, "Use at least 8 characters").max(72, "Use at most 72 characters");
+
 export const registerSchema = z.object({
   name: z.string().trim().min(2).max(80),
-  email: z.string().trim().toLowerCase().email().max(254),
-  // bcrypt only uses the first 72 bytes, so longer passwords are rejected rather than silently truncated.
-  password: z.string().min(8).max(72),
+  email: emailSchema,
+  password: newPasswordSchema,
+  country: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine(isCountryCode, "Choose your country from the list"),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email().max(254),
+  email: emailSchema,
   password: z.string().min(1).max(72),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+export const forgotPasswordSchema = z.object({ email: emailSchema });
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+// The token is 32 random bytes in base64url (43 characters).
+const resetTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/, "This reset link is not valid");
+
+export const resetTokenCheckSchema = z.object({ token: resetTokenSchema });
+
+export const resetPasswordSchema = z.object({ token: resetTokenSchema, password: newPasswordSchema });
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 export const objectIdSchema = z.string().regex(/^[a-f0-9]{24}$/i, "Invalid id");
 
@@ -124,19 +151,79 @@ export type SaveAnswerInput = z.infer<typeof saveAnswerSchema>;
 
 export const positionSchema = z.coerce.number().int().min(1).max(1000);
 
+const timeMultiplierSchema = z
+  .number()
+  .refine((value) => (TIME_MULTIPLIERS as readonly number[]).includes(value), "Extended time must be 1, 1.5 or 2")
+  .default(1);
+
 export const createMockSchema = z.object({
   section: z.enum(SECTIONS),
   // Exams to draw from. Empty = every published exam with that section.
   paperIds: z.array(objectIdSchema).max(100).default([]),
   // The official module countdown. Off = untimed.
   timed: z.boolean().default(true),
+  // Extended-time accommodation (1.5× or 2× every module).
+  timeMultiplier: timeMultiplierSchema,
   name: z.string().trim().max(80).default(""),
 });
 export type CreateMockInput = z.infer<typeof createMockSchema>;
 
+// Both sections in one sitting: Reading & Writing, a break, then Math.
+export const createFullTestSchema = z.object({
+  // Exams to draw from, per section. Empty = every published exam with that section.
+  paperIds: z
+    .object({
+      reading_writing: z.array(objectIdSchema).max(100).default([]),
+      math: z.array(objectIdSchema).max(100).default([]),
+    })
+    .default({}),
+  timed: z.boolean().default(true),
+  timeMultiplier: timeMultiplierSchema,
+  name: z.string().trim().max(80).default(""),
+});
+export type CreateFullTestInput = z.infer<typeof createFullTestSchema>;
+
 export const adaptiveSettingsSchema = z.object({
   routingThresholdPercent: z.number().int().min(1).max(100),
 });
+
+// One raw-to-scaled table: entry n is the score for n correct. Scores only go up (or stay the same)
+// as the raw count rises, and the Digital SAT reports them in steps of 10.
+function conversionTableSchema(section: Section) {
+  const entries = sectionQuestionCount(section) + 1;
+  return z
+    .array(z.number().int().min(SECTION_SCORE_MIN).max(SECTION_SCORE_MAX).multipleOf(10, "Scores go up in steps of 10"))
+    .length(entries, `Enter exactly ${entries} scores (0 to ${entries - 1} correct)`)
+    .refine((scores) => scores.every((score, index) => index === 0 || score >= scores[index - 1]!), "Scores must never go down as more answers are correct")
+    .nullable();
+}
+
+export const conversionTablesSchema = z.object({
+  reading_writing: z.object({ m2_easy: conversionTableSchema("reading_writing"), m2_hard: conversionTableSchema("reading_writing") }),
+  math: z.object({ m2_easy: conversionTableSchema("math"), m2_hard: conversionTableSchema("math") }),
+});
+
+// ---------- problem reports ----------
+
+export const createReportSchema = z.object({
+  reason: z.enum(REPORT_REASONS),
+  details: z.string().trim().max(1000).default(""),
+});
+export type CreateReportInput = z.infer<typeof createReportSchema>;
+
+export const reportListQuerySchema = z.object({
+  status: z.preprocess((value) => (value === "" ? undefined : value), z.enum(REPORT_STATUSES).optional()),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+export const resolveReportSchema = z.object({
+  note: z.string().trim().max(1000).default(""),
+  // Also close every other pending report about the same question.
+  includeSameQuestion: z.boolean().default(false),
+});
+
+export const reopenReportSchema = z.object({ note: z.string().trim().max(1000).default("") });
 
 // ---------- admin ----------
 

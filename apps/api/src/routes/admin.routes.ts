@@ -4,11 +4,17 @@ import { getPaper, listPapers } from "../controllers/admin-paper.controller";
 import {
   deleteQuestion,
   getAdaptiveSettings,
+  getConversionTables,
   getFacets,
   getQuestion,
+  getReport,
   getStats,
   listQuestions,
+  listReports,
+  reopenReport,
+  resolveReport,
   setAdaptiveSettings,
+  setConversionTables,
   setPapersStatus,
   setPaperStatus,
   updateQuestion,
@@ -25,6 +31,13 @@ adminRouter.get("/stats", getStats);
 
 adminRouter.get("/settings/adaptive", getAdaptiveSettings);
 adminRouter.put("/settings/adaptive", requirePermission("papers:write"), setAdaptiveSettings);
+adminRouter.get("/settings/scoring", getConversionTables);
+adminRouter.put("/settings/scoring", requirePermission("papers:write"), setConversionTables);
+
+adminRouter.get("/reports", requirePermission("reports:read"), listReports);
+adminRouter.get("/reports/:id", requirePermission("reports:read"), getReport);
+adminRouter.post("/reports/:id/resolve", requirePermission("reports:write"), resolveReport);
+adminRouter.post("/reports/:id/reopen", requirePermission("reports:write"), reopenReport);
 
 adminRouter.get("/papers", requirePermission("papers:read"), listPapers);
 adminRouter.post("/papers/status", requirePermission("papers:write"), setPapersStatus);

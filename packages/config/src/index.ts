@@ -25,6 +25,11 @@ const envSchema = z.object({
   SOURCE_API_KEY: optionalString,
   SOURCE_ACCESS_TOKEN: optionalString,
   SOURCE_REQUEST_DELAY_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().min(500).default(1500)),
+  // Email (password reset) through Resend. Without the key, development prints the link to the
+  // API console instead of sending it; production logs an error.
+  RESEND_API_KEY: optionalString,
+  // A sender on a domain verified in Resend, e.g. "SAT Sharks <no-reply@satsharks.com>".
+  RESEND_FROM_EMAIL: optionalString,
 });
 
 export type Env = z.infer<typeof envSchema>;

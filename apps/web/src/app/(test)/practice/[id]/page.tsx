@@ -8,20 +8,23 @@ import { Choices, Passage, Prompt, ResponseInput } from "@/components/question";
 import { DraggablePanel } from "@/components/draggable-panel";
 import { ReferenceSheet } from "@/components/reference-sheet";
 import { RequireUser } from "@/components/require-user";
+import { ReportProblemDialog } from "@/components/report-ui";
 import { Button, Modal, Notice, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
+import { formatClock } from "@/lib/format";
 
 // Desmos's own graphing calculator page for the College Board tests, shown inside our window.
 const DESMOS_URL = "https://www.desmos.com/testing/collegeboard/graphing";
 
 type AttemptState = { attempt: AttemptSummary; navigation: AttemptNavItem[] };
 
-function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds % 60)}` : `${pad(minutes)}:${pad(seconds % 60)}`;
-}
+// Where a finished attempt goes: a section of a full test returns to the full test (break or total
+// score); anything else shows its own results.
+const doneUrl = (attempt: Pick<AttemptSummary, "id" | "fullTestId">) => (attempt.fullTestId ? `/full-tests/${attempt.fullTestId}` : `/practice/${attempt.id}/results`);
+
+// Footer buttons: smaller on phones so Back, Next and Check fit beside the question menu.
+const footerButton =
+  "cursor-pointer rounded-full bg-brand-500 px-3.5 py-2 text-sm font-bold text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 sm:py-2.5";
 
 const ICONS = {
   calculator: (
@@ -36,11 +39,17 @@ const ICONS = {
 
 function ToolButton({ label, icon, onClick, active }: { label: string; icon: keyof typeof ICONS; onClick: () => void; active?: boolean }) {
   return (
-    <button type="button" onClick={onClick} className={`flex cursor-pointer flex-col items-center rounded px-2 py-1 text-xs font-medium hover:bg-slate-100 ${active ? "bg-slate-100" : ""}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={`flex min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center rounded px-1.5 py-1 text-xs font-medium hover:bg-slate-100 sm:px-2 ${active ? "bg-slate-100" : ""}`}
+    >
       <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         {ICONS[icon]}
       </svg>
-      <span className={active ? "border-b-2 border-slate-900" : ""}>{label}</span>
+      {/* Icons only on phones, where three labelled tools do not fit beside the title and timer. */}
+      <span className={`sr-only sm:not-sr-only ${active ? "border-b-2 border-slate-900" : ""}`}>{label}</span>
     </button>
   );
 }
@@ -104,6 +113,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [moduleNotice, setModuleNotice] = useState<string | null>(null);
+  const [reporting, setReporting] = useState(false);
   const ending = useRef(false);
   // The typed answer last saved for the current question, to avoid saving unchanged text.
   const savedAnswer = useRef("");
@@ -113,7 +123,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     (state: AttemptState, resumeAt?: number) => {
       const loaded = state.attempt;
       if (loaded.status === "done") {
-        router.replace(`/practice/${attemptId}/results`);
+        router.replace(doneUrl(loaded));
         return;
       }
       const start = loaded.mock?.moduleStart ?? 1;
@@ -159,9 +169,9 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     ending.current = true;
     setBusy(true);
     try {
-      await api(`/api/practice/attempts/${attemptId}/end`, { method: "POST" });
-      await queryClient.invalidateQueries({ queryKey: ["practice", "attempts"] });
-      router.replace(`/practice/${attemptId}/results`);
+      const { attempt: ended } = await api<{ attempt: AttemptSummary }>(`/api/practice/attempts/${attemptId}/end`, { method: "POST" });
+      await queryClient.invalidateQueries({ queryKey: ["practice"] });
+      router.replace(doneUrl(ended));
     } catch (caught) {
       ending.current = false;
       setBusy(false);
@@ -303,6 +313,18 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
           </span>
           <span className={current?.flagged ? "font-bold" : ""}>Mark for Review</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setReporting(true)}
+          title="Report a problem with this question"
+          className={`flex min-h-9 cursor-pointer items-center gap-1 px-1 text-sm font-medium text-slate-700 hover:text-black ${isSpr ? "ml-auto mr-2" : ""}`}
+        >
+          <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+          </svg>
+          <span className="hidden sm:inline">Report</span>
+          <span className="sr-only sm:hidden">Report a problem</span>
+        </button>
         {!isSpr && (
           <button
             type="button"
@@ -354,9 +376,9 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
 
   return (
     <div className="flex h-screen flex-col bg-white">
-      <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-2 sm:px-8">
-        <div>
-          <h1 className="text-lg font-bold leading-tight">{title}</h1>
+      <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-2 sm:px-8">
+        <div className="min-w-0">
+          <h1 className="text-sm font-bold leading-tight sm:text-lg">{title}</h1>
           <button type="button" onClick={() => setPanel(panel === "directions" ? null : "directions")} className="cursor-pointer text-sm font-medium">
             Directions ▾
           </button>
@@ -364,18 +386,19 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
         <div className="text-center">
           {timed ? (
             <>
-              <div className={`text-xl font-bold tabular-nums ${secondsLeft! <= 300 ? "text-red-600" : ""}`} aria-live="off">
-                {timerHidden ? "⏱" : formatTime(secondsLeft!)}
+              <div className={`text-lg font-bold tabular-nums sm:text-xl ${secondsLeft! <= 300 ? "text-red-600" : ""}`} aria-live="off">
+                {timerHidden ? "⏱" : formatClock(secondsLeft!)}
               </div>
               <button type="button" onClick={() => setTimerHidden((value) => !value)} className="cursor-pointer rounded-full border border-slate-900 px-3 text-xs font-bold">
                 {timerHidden ? "Show" : "Hide"}
               </button>
+              {attempt.timeMultiplier !== 1 && <div className="mt-0.5 text-[11px] font-bold text-brand-600">{attempt.timeMultiplier}× time</div>}
             </>
           ) : (
             <span className="text-sm font-medium text-slate-500">Untimed</span>
           )}
         </div>
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-end gap-0.5 sm:gap-1">
           {math && <ToolButton label="Calculator" icon="calculator" onClick={() => setCalculatorOpen((open) => !open)} active={calculatorOpen} />}
           {math && <ToolButton label="Reference" icon="reference" onClick={() => setReferenceOpen((open) => !open)} active={referenceOpen} />}
           <ToolButton
@@ -390,7 +413,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
       </header>
       <div className="test-rule" />
 
-      <main className="min-h-0 flex-1 overflow-hidden">
+      <main className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
         {(error || moduleNotice) && (
           <div className="mx-auto max-w-3xl space-y-2 px-4 pt-3">
             {moduleNotice && <Notice tone="info">{moduleNotice}</Notice>}
@@ -400,45 +423,51 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
         {loadingQuestion || !question ? (
           <div className="mx-auto max-w-3xl px-4">{!error && <Spinner label="Loading question" />}</div>
         ) : split ? (
-          <div className="grid h-full grid-cols-1 lg:grid-cols-2">
-            <div className="overflow-y-auto border-b-4 border-slate-300 px-5 py-6 sm:px-10 lg:border-b-0 lg:border-r-4">{math ? <SprDirections /> : <Passage question={question} />}</div>
-            <div className="overflow-y-auto px-5 py-6 sm:px-10">{questionPane}</div>
+          <div className="grid grid-cols-1 lg:h-full lg:grid-cols-2">
+            <div className="border-b-4 border-slate-300 px-4 py-5 sm:px-10 sm:py-6 lg:overflow-y-auto lg:border-b-0 lg:border-r-4">{math ? <SprDirections /> : <Passage question={question} />}</div>
+            <div className="px-4 py-5 sm:px-10 sm:py-6 lg:overflow-y-auto">{questionPane}</div>
           </div>
         ) : (
-          <div className="h-full overflow-y-auto px-5 py-6">
+          <div className="px-4 py-5 sm:px-5 sm:py-6 lg:h-full lg:overflow-y-auto">
             <div className="mx-auto max-w-3xl">{questionPane}</div>
           </div>
         )}
       </main>
 
       <div className="test-rule" />
-      <footer className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3 sm:px-8">
-        <span className="truncate text-lg font-semibold">{userName}</span>
-        <button type="button" onClick={() => setPanel(panel === "navigator" ? null : "navigator")} aria-expanded={panel === "navigator"} className="cursor-pointer rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">
-          Question {label(position)} of {moduleCount} {panel === "navigator" ? "▾" : "▴"}
+      <footer className="relative flex items-center gap-2 px-3 py-2.5 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:px-8 sm:py-3">
+        <span className="hidden truncate text-lg font-semibold sm:block">{userName}</span>
+        <button
+          type="button"
+          onClick={() => setPanel(panel === "navigator" ? null : "navigator")}
+          aria-expanded={panel === "navigator"}
+          className="min-h-10 flex-none cursor-pointer whitespace-nowrap rounded-md bg-slate-900 px-3 py-2 text-sm font-bold text-white sm:px-4"
+        >
+          <span className="hidden sm:inline">Question </span>
+          {label(position)} of {moduleCount} {panel === "navigator" ? "▾" : "▴"}
         </button>
-        <div className="flex justify-end gap-2">
+        <div className="ml-auto flex justify-end gap-1.5 sm:gap-2">
           {!isMock && (
-            <Button className="rounded-full" disabled={busy || locked || answer === "" || !question} onClick={check}>
+            <button type="button" className={footerButton} disabled={busy || locked || answer === "" || !question} onClick={check}>
               Check
-            </Button>
+            </button>
           )}
-          <Button className="rounded-full" disabled={position <= moduleStart} onClick={() => goTo(position - 1)}>
+          <button type="button" className={footerButton} disabled={position <= moduleStart} onClick={() => goTo(position - 1)}>
             Back
-          </Button>
+          </button>
           {position < moduleEnd ? (
-            <Button className="rounded-full" onClick={() => goTo(position + 1)}>
+            <button type="button" className={footerButton} onClick={() => goTo(position + 1)}>
               Next
-            </Button>
+            </button>
           ) : (
-            <Button className="rounded-full" disabled={busy} onClick={async () => (await commitTyped(), setPanel("finish"))}>
-              {isMock ? (inModuleOne ? "Submit Module" : "Finish") : "Finish"}
-            </Button>
+            <button type="button" className={footerButton} disabled={busy} onClick={async () => (await commitTyped(), setPanel("finish"))}>
+              {isMock ? (inModuleOne ? "Submit" : "Finish") : "Finish"}
+            </button>
           )}
         </div>
 
         {panel === "navigator" && (
-          <div className="absolute bottom-full left-1/2 z-40 mb-3 w-[min(92vw,500px)] -translate-x-1/2 rounded-xl border border-slate-900 bg-white p-5 shadow-xl">
+          <div className="absolute bottom-full left-1/2 z-40 mb-3 w-[min(94vw,500px)] -translate-x-1/2 rounded-xl border border-slate-900 bg-white p-4 shadow-xl sm:p-5">
             <div className="flex items-center justify-between">
               <h2 className="mx-auto text-base font-bold">{title} Questions</h2>
               <button type="button" onClick={() => setPanel(null)} aria-label="Close" className="cursor-pointer text-lg">
@@ -455,14 +484,14 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
                 <span className="text-red-600">⚑</span> For Review
               </span>
             </div>
-            <div className="grid max-h-56 grid-cols-10 gap-2 overflow-y-auto pt-2">
+            <div className="grid max-h-[45vh] grid-cols-6 gap-2 overflow-y-auto pt-2 sm:max-h-56 sm:grid-cols-10">
               {navigation.map((entry) => (
                 <button
                   key={entry.position}
                   type="button"
                   onClick={() => goTo(entry.position)}
                   aria-label={`Question ${label(entry.position)}${entry.answered ? ", answered" : ", unanswered"}${entry.flagged ? ", marked for review" : ""}`}
-                  className={`relative flex h-8 cursor-pointer items-center justify-center text-sm font-bold ${
+                  className={`relative flex h-10 cursor-pointer items-center justify-center text-sm font-bold sm:h-8 ${
                     entry.answered ? "bg-brand-500 text-white" : "border border-dashed border-slate-900 text-brand-500"
                   } ${entry.position === position ? "outline outline-2 outline-offset-2 outline-slate-900" : ""}`}
                 >
@@ -509,6 +538,9 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
         <DraggablePanel title="Reference" onClose={() => setReferenceOpen(false)}>
           <ReferenceSheet />
         </DraggablePanel>
+      )}
+      {reporting && question && (
+        <ReportProblemDialog attemptId={attemptId} position={question.position} questionLabel={`question ${label(question.position)}`} onClose={() => setReporting(false)} />
       )}
       {panel === "directions" && (
         <Modal title="Directions" onClose={() => setPanel(null)}>
@@ -561,5 +593,5 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
 
 export default function TestPage() {
   const { id } = useParams<{ id: string }>();
-  return <RequireUser>{(user) => <TestScreen attemptId={id} userName={user.name} />}</RequireUser>;
+  return <RequireUser studentOnly>{(user) => <TestScreen attemptId={id} userName={user.name} />}</RequireUser>;
 }

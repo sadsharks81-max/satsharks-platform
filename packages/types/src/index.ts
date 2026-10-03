@@ -14,13 +14,15 @@ export const PERMISSIONS = [
   "questions:write",
   "users:read",
   "users:write",
+  "reports:read",
+  "reports:write",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 // Single place where roles map to permissions. Routes check permissions, never role names.
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   student: [],
-  staff: ["admin:access", "papers:read", "questions:read"],
+  staff: ["admin:access", "papers:read", "questions:read", "reports:read"],
   admin: PERMISSIONS,
 };
 
@@ -28,7 +30,48 @@ export function roleHasPermission(role: UserRole, permission: Permission): boole
   return ROLE_PERMISSIONS[role].includes(permission);
 }
 
-export const PAPER_STATUSES = ["draft", "published", "hidden"] as const;
+// Local = Pakistan (PKR plans), International = everywhere else (USD plans). Decided only by the
+// country the student picks at sign-up, never by IP address.
+export const USER_REGIONS = ["local", "international"] as const;
+export type UserRegion = (typeof USER_REGIONS)[number];
+
+export const USER_REGION_LABELS: Record<UserRegion, string> = {
+  local: "Local (Pakistan)",
+  international: "International",
+};
+
+export const LOCAL_COUNTRY_CODE = "PK";
+
+// ISO 3166-1 alpha-2 codes. Names are shown with Intl.DisplayNames in the browser.
+export const COUNTRY_CODES = [
+  "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW", "AX", "AZ",
+  "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ", "BR", "BS",
+  "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN",
+  "CO", "CR", "CU", "CV", "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE",
+  "EG", "EH", "ER", "ES", "ET", "FI", "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE", "GF",
+  "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY", "HK", "HM",
+  "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT", "JE", "JM",
+  "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC",
+  "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME", "MF", "MG", "MH", "MK",
+  "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA",
+  "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE", "PF", "PG",
+  "PH", "PK", "PL", "PM", "PN", "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS", "RU", "RW",
+  "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS",
+  "ST", "SV", "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TL", "TM", "TN", "TO",
+  "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI",
+  "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW",
+] as const;
+export type CountryCode = (typeof COUNTRY_CODES)[number];
+
+export function isCountryCode(value: string): value is CountryCode {
+  return (COUNTRY_CODES as readonly string[]).includes(value);
+}
+
+export function regionForCountry(country: string): UserRegion {
+  return country === LOCAL_COUNTRY_CODE ? "local" : "international";
+}
+
+export const PAPER_STATUSES =["draft", "published", "hidden"] as const;
 export type PaperStatus = (typeof PAPER_STATUSES)[number];
 
 export const SECTIONS = ["reading_writing", "math"] as const;
@@ -86,6 +129,29 @@ export interface AdaptiveSettings {
   routingThresholdPercent: number;
 }
 
+// Extended-time accommodations: every module's time limit is multiplied by this.
+export const TIME_MULTIPLIERS = [1, 1.5, 2] as const;
+export type TimeMultiplier = (typeof TIME_MULTIPLIERS)[number];
+
+// Minutes of break between Reading & Writing and Math in a full test.
+export const FULL_TEST_BREAK_MINUTES = 10;
+
+// ---------- scoring ----------
+
+export const SECTION_SCORE_MIN = 200;
+export const SECTION_SCORE_MAX = 800;
+
+// Raw-to-scaled conversion: scores[n] is the section score for n correct answers over both
+// modules, so each table has (questions in the section + 1) entries. The Digital SAT scores the
+// same raw count differently after the easier and the harder Module 2, hence one table per route.
+export type ScoreRoute = "m2_easy" | "m2_hard";
+export const SCORE_ROUTES: readonly ScoreRoute[] = ["m2_easy", "m2_hard"];
+export type ConversionTables = Record<Section, Record<ScoreRoute, number[] | null>>;
+
+export function sectionQuestionCount(section: Section): number {
+  return MOCK_FORMAT[section].questionsPerModule * 2;
+}
+
 export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
@@ -96,6 +162,10 @@ export interface PublicUser {
   role: UserRole;
   status: UserStatus;
   permissions: Permission[];
+  // ISO country code. null for accounts made before country was asked, and for admins made
+  // from the command line.
+  country: string | null;
+  region: UserRegion | null;
 }
 
 export interface PaperModule {
@@ -169,12 +239,34 @@ export interface PracticeCatalog {
   topics: Record<Section, CatalogTopic[]>;
 }
 
+export interface ModuleResult {
+  module: "m1" | "m2";
+  route: MockModule | null;
+  total: number;
+  correct: number;
+  incorrect: number;
+  skipped: number;
+  // Measured by the server from the module's start to its submission. null for a module that has
+  // not finished, and for attempts made before time was recorded.
+  timeUsedSeconds: number | null;
+  timeLimitSeconds: number | null;
+}
+
 export interface AttemptSummary {
   id: string;
   kind: AttemptKind;
   name: string;
   section: Section;
   paperTitle: string;
+  // Set when this section is part of a full test (both sections in one sitting).
+  fullTestId: string | null;
+  timeMultiplier: TimeMultiplier;
+  // 200–800. Finished adaptive mocks only, and only once the conversion table has been entered.
+  sectionScore: number | null;
+  // Whole attempt, by the server's clock. null while running and for older attempts.
+  timeUsedSeconds: number | null;
+  // Adaptive mocks: one entry per module reached. Drills: empty.
+  modules: ModuleResult[];
   // Adaptive mocks only (null for drills).
   mock: {
     currentModule: "m1" | "m2" | null;
@@ -256,6 +348,68 @@ export interface ReviewQuestion extends AttemptQuestion {
   skill: string | null;
   difficulty: Difficulty | null;
   result: QuestionResult;
+  // Time the question was on screen, measured by the server between question loads.
+  timeSpentSeconds: number;
+}
+
+// ---------- full test (Reading & Writing, break, Math) ----------
+
+export type FullTestStage = "reading_writing" | "break" | "math" | "done";
+
+export interface FullTestSummary {
+  id: string;
+  name: string;
+  stage: FullTestStage;
+  timed: boolean;
+  timeMultiplier: TimeMultiplier;
+  readingWriting: AttemptSummary | null;
+  math: AttemptSummary | null;
+  // When the break ends (stage "break" only).
+  breakEndsAt: string | null;
+  // 400–1600, once both section scores exist.
+  totalScore: number | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+// ---------- problem reports ----------
+
+export const REPORT_REASONS = ["wrong_answer", "typo", "display", "explanation", "other"] as const;
+export type ReportReason = (typeof REPORT_REASONS)[number];
+
+export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
+  wrong_answer: "The marked correct answer is wrong",
+  typo: "Typo or unclear wording",
+  display: "Image, graph, table or formula does not display correctly",
+  explanation: "The explanation is wrong or missing",
+  other: "Something else",
+};
+
+export const REPORT_STATUSES = ["pending", "resolved"] as const;
+export type ReportStatus = (typeof REPORT_STATUSES)[number];
+
+export interface ReportHistoryEntry {
+  action: "created" | "resolved" | "reopened";
+  at: string;
+  byName: string | null;
+  note: string | null;
+  // Resolved only: the question had been edited after the report was made.
+  questionEdited: boolean;
+}
+
+export interface AdminReport {
+  id: string;
+  status: ReportStatus;
+  reason: ReportReason;
+  details: string | null;
+  questionId: string;
+  question: { sourceQuestionId: string; section: Section; prompt: string; paperTitle: string | null } | null;
+  reporter: { id: string; name: string; email: string } | null;
+  // Where the student met the question.
+  context: { attemptId: string | null; attemptName: string | null; kind: AttemptKind | null; position: number | null };
+  history: ReportHistoryEntry[];
+  createdAt: string;
+  resolvedAt: string | null;
 }
 
 // ---------- admin question bank ----------
@@ -283,6 +437,8 @@ export interface AdminQuestion {
 
 export interface AdminStats {
   users: number;
+  usersByRegion: Record<UserRegion | "unknown", number>;
+  reports: Record<ReportStatus, number>;
   papers: Record<PaperStatus, number>;
   questions: Record<PaperStatus, number>;
   questionsBySection: Record<Section, number>;

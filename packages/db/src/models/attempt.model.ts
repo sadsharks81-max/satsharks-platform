@@ -5,8 +5,10 @@ import {
   SECTIONS,
   type AttemptKind,
   type AttemptStatus,
+  TIME_MULTIPLIERS,
   type MockModule,
   type Section,
+  type TimeMultiplier,
 } from "@satsharks/types";
 
 const { Schema } = mongoose;
@@ -22,6 +24,8 @@ export interface AttemptItem {
   checked: boolean;
   // Filled in when the question is checked, when its module is submitted, or when the attempt ends.
   correct: boolean | null;
+  // Seconds the question was on screen, added up by the server each time the student moves on.
+  timeSpentSeconds: number;
 }
 
 export interface AttemptDoc {
@@ -36,8 +40,15 @@ export interface AttemptDoc {
   paperIds: mongoose.Types.ObjectId[];
   status: AttemptStatus;
   timed: boolean;
+  // Extended-time accommodation (1, 1.5 or 2). Already applied to timeLimitSeconds.
+  timeMultiplier: TimeMultiplier;
   // Drill: limit for the whole attempt. Mock: limit for each module.
   timeLimitSeconds: number | null;
+  // Set when this mock is one section of a full test.
+  fullTestId: mongoose.Types.ObjectId | null;
+  // The question on screen and since when, so its time can be added when the student moves on.
+  viewPosition: number | null;
+  viewStartedAt: Date | null;
   // Authoritative clock: remaining = limit - (now - start), computed on the server.
   // Drill: start of the attempt. Mock: start of the current module.
   startedAt: Date;
@@ -52,10 +63,17 @@ export interface AttemptDoc {
   // The rule in force when Module 1 was submitted, kept with the attempt.
   routingThresholdPercent: number | null;
   routingRequiredCorrect: number | null;
+  // Seconds from each module's start to its submission (capped at the limit when timed).
+  m1TimeUsedSeconds: number | null;
+  m2TimeUsedSeconds: number | null;
+  // 200–800 from the conversion table for the route taken. null until the table exists.
+  sectionScore: number | null;
 
   correct: number;
   incorrect: number;
   unanswered: number;
+  // Whole attempt. Timed: wall clock, capped at the limit. Untimed: sum of question time.
+  timeUsedSeconds: number | null;
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -69,6 +87,7 @@ const itemSchema = new Schema<AttemptItem>(
     flagged: { type: Boolean, default: false },
     checked: { type: Boolean, default: false },
     correct: { type: Boolean, default: null },
+    timeSpentSeconds: { type: Number, default: 0 },
   },
   { _id: false },
 );
@@ -83,7 +102,11 @@ const attemptSchema = new Schema<AttemptDoc>(
     paperIds: { type: [Schema.Types.ObjectId], ref: "Paper", default: [] },
     status: { type: String, enum: ATTEMPT_STATUSES, default: "active" },
     timed: { type: Boolean, default: false },
+    timeMultiplier: { type: Number, enum: TIME_MULTIPLIERS, default: 1 },
     timeLimitSeconds: { type: Number, default: null },
+    fullTestId: { type: Schema.Types.ObjectId, ref: "FullTest", default: null },
+    viewPosition: { type: Number, default: null },
+    viewStartedAt: { type: Date, default: null },
     startedAt: { type: Date, default: () => new Date() },
     lastPosition: { type: Number, default: 1 },
     items: { type: [itemSchema], default: [] },
@@ -93,9 +116,13 @@ const attemptSchema = new Schema<AttemptDoc>(
     m2Correct: { type: Number, default: null },
     routingThresholdPercent: { type: Number, default: null },
     routingRequiredCorrect: { type: Number, default: null },
+    m1TimeUsedSeconds: { type: Number, default: null },
+    m2TimeUsedSeconds: { type: Number, default: null },
+    sectionScore: { type: Number, default: null },
     correct: { type: Number, default: 0 },
     incorrect: { type: Number, default: 0 },
     unanswered: { type: Number, default: 0 },
+    timeUsedSeconds: { type: Number, default: null },
     completedAt: { type: Date, default: null },
   },
   { timestamps: true },
@@ -103,6 +130,12 @@ const attemptSchema = new Schema<AttemptDoc>(
 
 // A student's attempts, newest first, optionally by status.
 attemptSchema.index({ userId: 1, status: 1, createdAt: -1 });
+// A full test has at most one attempt per section, even if "continue" is sent twice. Partial (not
+// sparse): every other attempt stores fullTestId: null and must stay out of the unique index.
+attemptSchema.index(
+  { fullTestId: 1, section: 1 },
+  { unique: true, partialFilterExpression: { fullTestId: { $type: "objectId" } } },
+);
 
 export const AttemptModel =
   (mongoose.models.Attempt as mongoose.Model<AttemptDoc> | undefined) ??

@@ -2,12 +2,17 @@ import type { Request, Response } from "express";
 import {
   adaptiveSettingsSchema,
   bulkPaperStatusSchema,
+  conversionTablesSchema,
   objectIdSchema,
   paperStatusSchema,
   questionListQuerySchema,
+  reopenReportSchema,
+  reportListQuerySchema,
+  resolveReportSchema,
   type UpdateQuestionInput,
 } from "@satsharks/validation";
 import { adminService } from "../services/admin.service";
+import { reportService } from "../services/report.service";
 import { settingsService } from "../services/settings.service";
 import { sendOk } from "../utils/respond";
 
@@ -55,4 +60,32 @@ export async function setAdaptiveSettings(req: Request, res: Response): Promise<
 export async function deleteQuestion(req: Request, res: Response): Promise<void> {
   await adminService.deleteQuestion(objectIdSchema.parse(req.params.id));
   sendOk(res, { deleted: true });
+}
+
+export async function getConversionTables(_req: Request, res: Response): Promise<void> {
+  sendOk(res, await settingsService.getConversionTables());
+}
+
+export async function setConversionTables(req: Request, res: Response): Promise<void> {
+  const tables = conversionTablesSchema.parse(req.body);
+  sendOk(res, await settingsService.setConversionTables(tables, String(req.user!._id)));
+}
+
+export async function listReports(req: Request, res: Response): Promise<void> {
+  sendOk(res, await reportService.list(reportListQuerySchema.parse(req.query)));
+}
+
+export async function getReport(req: Request, res: Response): Promise<void> {
+  sendOk(res, await reportService.get(objectIdSchema.parse(req.params.id)));
+}
+
+export async function resolveReport(req: Request, res: Response): Promise<void> {
+  const input = resolveReportSchema.parse(req.body);
+  sendOk(res, await reportService.resolve(objectIdSchema.parse(req.params.id), String(req.user!._id), input));
+}
+
+export async function reopenReport(req: Request, res: Response): Promise<void> {
+  const { note } = reopenReportSchema.parse(req.body);
+  await reportService.reopen(objectIdSchema.parse(req.params.id), String(req.user!._id), note);
+  sendOk(res, { reopened: true });
 }

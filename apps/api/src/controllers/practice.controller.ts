@@ -3,10 +3,13 @@ import {
   objectIdSchema,
   positionSchema,
   type CreateAttemptInput,
+  type CreateFullTestInput,
   type CreateMockInput,
+  type CreateReportInput,
   type SaveAnswerInput,
 } from "@satsharks/validation";
 import { practiceService } from "../services/practice.service";
+import { reportService } from "../services/report.service";
 import { AppError } from "../utils/app-error";
 import { sendOk } from "../utils/respond";
 
@@ -59,4 +62,36 @@ export async function endAttempt(req: Request, res: Response): Promise<void> {
 
 export async function getResult(req: Request, res: Response): Promise<void> {
   sendOk(res, await practiceService.getResult(userId(req), attemptId(req)));
+}
+
+const fullTestId = (req: Request) => objectIdSchema.parse(req.params.id);
+
+export async function createFullTest(req: Request, res: Response): Promise<void> {
+  sendOk(res, { fullTest: await practiceService.createFullTest(userId(req), req.body as CreateFullTestInput) }, 201);
+}
+
+export async function listFullTests(req: Request, res: Response): Promise<void> {
+  sendOk(res, { fullTests: await practiceService.listFullTests(userId(req)) });
+}
+
+export async function getFullTest(req: Request, res: Response): Promise<void> {
+  sendOk(res, { fullTest: await practiceService.getFullTest(userId(req), fullTestId(req)) });
+}
+
+export async function continueFullTest(req: Request, res: Response): Promise<void> {
+  sendOk(res, { fullTest: await practiceService.continueFullTest(userId(req), fullTestId(req)) });
+}
+
+export async function reportQuestion(req: Request, res: Response): Promise<void> {
+  sendOk(res, await reportService.create(userId(req), attemptId(req), position(req), req.body as CreateReportInput), 201);
+}
+
+export async function deleteAttempt(req: Request, res: Response): Promise<void> {
+  await practiceService.deleteAttempt(userId(req), attemptId(req));
+  sendOk(res, { deleted: true });
+}
+
+export async function deleteFullTest(req: Request, res: Response): Promise<void> {
+  await practiceService.deleteFullTest(userId(req), fullTestId(req));
+  sendOk(res, { deleted: true });
 }

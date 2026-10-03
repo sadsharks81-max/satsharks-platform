@@ -5,4 +5,6 @@ export { QuestionModel, type QuestionDoc } from "./models/question.model";
 export { AssetModel, type AssetDoc } from "./models/asset.model";
 export { AttemptModel, type AttemptDoc, type AttemptItem } from "./models/attempt.model";
 export { SettingModel, type SettingDoc } from "./models/setting.model";
+export { FullTestModel, type FullTestDoc } from "./models/full-test.model";
+export { ProblemReportModel, type ProblemReportDoc, type ReportEvent } from "./models/problem-report.model";
 export { trusted } from "./connection";

@@ -29,6 +29,12 @@ export function useMe() {
   });
 }
 
+// Admin and staff accounts run the site; they do not take drills or mocks. Their home is the
+// admin portal, and the student pages send them there.
+export const isStaffUser = (user: PublicUser | null | undefined) => user?.permissions.includes("admin:access") ?? false;
+
+export const homePath = (user: PublicUser | null | undefined) => (isStaffUser(user) ? "/admin" : "/dashboard");
+
 export function isMeQuery(queryKey: readonly unknown[]): boolean {
   return queryKey[0] === ME_QUERY_KEY[0] && queryKey[1] === ME_QUERY_KEY[1];
 }

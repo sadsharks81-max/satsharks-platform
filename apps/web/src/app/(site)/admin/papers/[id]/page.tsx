@@ -100,8 +100,8 @@ export default function AdminPaperPage() {
     <RequireUser permission="papers:read">
       {() => (
         <>
-          <Link href="/admin" className="mb-4 inline-block text-sm font-medium text-brand-500 hover:underline">
-            ← Admin
+          <Link href="/admin/papers" className="mb-4 inline-block text-sm font-bold text-brand-500 hover:underline">
+            ← Papers
           </Link>
           <PaperDetail id={id} />
         </>

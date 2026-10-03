@@ -57,14 +57,14 @@ No authentication. Works without a database.
 
 ## Auth
 
-`PublicUser`: `{ id, name, email, role, status, permissions[] }`.
+`PublicUser`: `{ id, name, email, role, status, permissions[], country, region }`.
 
 ### `POST /api/auth/register`
 
-Body: `{ "name": string (2–80), "email": string, "password": string (8–72) }`
+Body: `{ "name": string (2–80), "email": string, "password": string (8–72), "country": ISO code }`
 
-Creates a `student` account, sets the session cookie, returns `201` with `{ user }`.
-Errors: `400`, `409`.
+Creates a `student` account with `region` = `local` for `PK`, `international` otherwise, sets the
+session cookie, returns `201` with `{ user }`. Errors: `400` (including an unknown country), `409`.
 
 ### `POST /api/auth/login`
 
@@ -79,7 +79,25 @@ Clears the session cookie. Returns `{ "loggedOut": true }`.
 
 ### `GET /api/auth/me`
 
-Requires a session. Returns `{ user }`, or `401`.
+Requires a session. Returns `{ user }`, or `401`. A session signed before the account's last
+password reset is answered with `401`.
+
+### `POST /api/auth/forgot-password`
+
+Body: `{ "email": string }`. Always answers `{ "sent": true }` at once, whether or not the address
+has an account; the lookup and email happen afterwards. An active account gets a single-use link
+to `CLIENT_URL/reset-password?token=…` valid for 30 minutes, sent through Resend. A new request
+replaces the previous link. Rate limit: 5 per 15 minutes per IP.
+
+### `POST /api/auth/reset-password/check`
+
+Body: `{ "token": string }`. Returns `{ "valid": boolean }` (used by the reset page).
+
+### `POST /api/auth/reset-password`
+
+Body: `{ "token": string, "password": string (8–72) }`. Sets the new password, spends the token,
+signs out every existing session and clears this browser's cookie. Returns `{ "reset": true }`.
+Errors: `400` for an invalid, used or expired token.
 
 ## Admin
 
@@ -193,7 +211,13 @@ In addition to the two paper routes above:
 
 | Route | Permission | Purpose |
 | --- | --- | --- |
-| `GET /api/admin/stats` | `admin:access` | Counts of users, papers, questions and attempts |
+| `GET /api/admin/stats` | `admin:access` | Counts of users (and by region), papers, questions, attempts and reports |
+| `GET /api/admin/settings/scoring` | `admin:access` | Conversion tables |
+| `PUT /api/admin/settings/scoring` | `papers:write` | Body: all four tables (see database.md, Setting) |
+| `GET /api/admin/reports` | `reports:read` | `?status=pending\|resolved&page&pageSize`. Returns `{ reports, total, page, pageSize, counts }` |
+| `GET /api/admin/reports/:id` | `reports:read` | `{ report, question (with answer key), related }` |
+| `POST /api/admin/reports/:id/resolve` | `reports:write` | Body `{ note?, includeSameQuestion? }`. `409` if already resolved |
+| `POST /api/admin/reports/:id/reopen` | `reports:write` | Body `{ note? }`. `409` if already pending |
 | `PATCH /api/admin/papers/:id/status` | `papers:write` | Body `{ status }`. Also sets the status of the paper's questions |
 | `POST /api/admin/papers/status` | `papers:write` | Body `{ status, ids? }`. Omit `ids` to apply to every paper |
 | `GET /api/admin/questions` | `questions:read` | Filterable, paginated list (below) |
@@ -215,3 +239,24 @@ Returns `{ questions, total, page, pageSize }`.
 
 Public. Serves a hosted question image. Cached for one year (keys never change), and sent with a
 sandboxing Content-Security-Policy so an SVG opened directly cannot run scripts.
+
+## Practice: Phase 2 additions
+
+- `POST /api/practice/mocks` also takes `timeMultiplier`: `1`, `1.5` or `2` (extended time; every
+  module's limit is multiplied).
+- `AttemptSummary` adds `fullTestId`, `timeMultiplier`, `sectionScore` (200–800, finished mocks
+  once a conversion table exists), `timeUsedSeconds` and `modules[]` (per module: `total`,
+  `correct`, `incorrect`, `skipped`, `timeUsedSeconds`, `timeLimitSeconds`; finished mocks only).
+- `ReviewQuestion` adds `timeSpentSeconds`.
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/practice/full-tests` | Body `{ paperIds?: { reading_writing[], math[] }, timed?, timeMultiplier?, name? }`. Starts Reading & Writing. `201 { fullTest }` |
+| `GET /api/practice/full-tests` | The student's full tests |
+| `GET /api/practice/full-tests/:id` | `{ fullTest }` with `stage` (`reading_writing`, `break`, `math`, `done`), `breakEndsAt`, both sections and `totalScore` (400–1600) |
+| `DELETE /api/practice/attempts/:id` | Deletes the student's own drill or mock (finished or not). `409` for a section of a full test |
+| `DELETE /api/practice/full-tests/:id` | Deletes the student's full test and both its sections |
+| `POST /api/practice/full-tests/:id/continue` | Ends the break and starts Math. Safe to repeat: always the same Math section. `409` before Reading & Writing is finished |
+| `POST /api/practice/attempts/:id/questions/:position/report` | Body `{ reason, details? }`. `201 { id }`. `409` for a second pending report on the same question, or a question in a closed module. Rate limit: 30 per hour |
+
+Staff can read the reports queue (`reports:read`); only admins resolve (`reports:write`).

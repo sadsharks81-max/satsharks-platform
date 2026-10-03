@@ -1,4 +1,4 @@
-import { AttemptModel, PaperModel, QuestionModel, trusted, UserModel, type PaperDoc, type QuestionDoc } from "@satsharks/db";
+import { AttemptModel, PaperModel, ProblemReportModel, QuestionModel, trusted, UserModel, type PaperDoc, type QuestionDoc } from "@satsharks/db";
 import {
   PAPER_STATUSES,
   SECTIONS,
@@ -7,6 +7,7 @@ import {
   type CatalogTopic,
   type PaperStatus,
   type Section,
+  type UserRegion,
 } from "@satsharks/types";
 import type { QuestionListQuery, UpdateQuestionInput } from "@satsharks/validation";
 import { AppError } from "../utils/app-error";
@@ -46,14 +47,19 @@ async function countBy<T extends string>(model: typeof PaperModel | typeof Quest
 
 export const adminService = {
   async stats(): Promise<AdminStats> {
-    const [users, papers, questions, questionsBySection, attempts] = await Promise.all([
+    const [users, regions, papers, questions, questionsBySection, attempts, pendingReports, resolvedReports] = await Promise.all([
       UserModel.estimatedDocumentCount(),
+      UserModel.aggregate<{ _id: UserRegion | null; n: number }>([{ $group: { _id: "$region", n: { $sum: 1 } } }]),
       countBy(PaperModel, "status", PAPER_STATUSES),
       countBy(QuestionModel, "status", PAPER_STATUSES),
       countBy(QuestionModel, "section", SECTIONS),
       AttemptModel.estimatedDocumentCount(),
+      ProblemReportModel.countDocuments({ status: "pending" }),
+      ProblemReportModel.countDocuments({ status: "resolved" }),
     ]);
-    return { users, papers, questions, questionsBySection, attempts };
+    const usersByRegion: AdminStats["usersByRegion"] = { local: 0, international: 0, unknown: 0 };
+    for (const row of regions) usersByRegion[row._id ?? "unknown"] += row.n;
+    return { users, usersByRegion, reports: { pending: pendingReports, resolved: resolvedReports }, papers, questions, questionsBySection, attempts };
   },
 
   // A paper's questions always share its status: students only ever query published questions.

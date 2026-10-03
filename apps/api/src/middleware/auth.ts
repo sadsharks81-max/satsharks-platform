@@ -21,6 +21,10 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 
   const user = await userRepository.findById(payload.sub);
   if (!user || user.status !== "active") throw AppError.unauthorized();
+  // A password reset signs out every session that existed before it (token times are whole seconds).
+  if (user.passwordChangedAt && payload.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
+    throw AppError.unauthorized("Your password was changed. Please log in again.");
+  }
 
   req.user = user;
   next();

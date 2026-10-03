@@ -55,9 +55,6 @@ function QuestionBank() {
 
   return (
     <>
-      <Link href="/admin" className="mb-3 inline-block text-sm font-bold text-brand-500 hover:underline">
-        ← Admin
-      </Link>
       <PageHeader title="Question bank" subtitle={list.data ? `${total.toLocaleString()} question${total === 1 ? "" : "s"} match` : undefined} />
 
       <Card className="flex flex-wrap items-end gap-3">

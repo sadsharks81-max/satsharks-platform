@@ -18,7 +18,8 @@ async function main(): Promise<void> {
   const role = arg("role") ?? "admin";
   if (role !== "admin" && role !== "staff") throw new Error("--role must be admin or staff");
 
-  const input = registerSchema.parse({
+  // Country is asked of students at sign-up; staff accounts made here have none.
+  const input = registerSchema.omit({ country: true }).parse({
     name: arg("name"),
     email: arg("email"),
     password: process.env.ADMIN_PASSWORD,
