@@ -60,6 +60,32 @@ export type QuestionType = (typeof QUESTION_TYPES)[number];
 export const ATTEMPT_STATUSES = ["active", "done"] as const;
 export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
 
+export const ATTEMPT_KINDS = ["drill", "mock"] as const;
+export type AttemptKind = (typeof ATTEMPT_KINDS)[number];
+
+// The modules of an adaptive mock section.
+export type MockModule = "m1" | "m2_easy" | "m2_hard";
+
+export const MOCK_MODULE_LABELS: Record<MockModule, string> = {
+  m1: "Module 1",
+  m2_easy: "Module 2 (easier)",
+  m2_hard: "Module 2 (harder)",
+};
+
+// Size and time of each module of an adaptive mock, per section (the Digital SAT format).
+export const MOCK_FORMAT: Record<"math" | "reading_writing", { questionsPerModule: number; minutesPerModule: number }> = {
+  math: { questionsPerModule: 22, minutesPerModule: 35 },
+  reading_writing: { questionsPerModule: 27, minutesPerModule: 32 },
+};
+
+// Default share of Module 1 a student must get right to be given the harder Module 2.
+// The live value is an admin setting.
+export const DEFAULT_ROUTING_THRESHOLD_PERCENT = 65;
+
+export interface AdaptiveSettings {
+  routingThresholdPercent: number;
+}
+
 export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
@@ -145,9 +171,23 @@ export interface PracticeCatalog {
 
 export interface AttemptSummary {
   id: string;
+  kind: AttemptKind;
   name: string;
   section: Section;
   paperTitle: string;
+  // Adaptive mocks only (null for drills).
+  mock: {
+    currentModule: "m1" | "m2" | null;
+    m2Type: "m2_easy" | "m2_hard" | null;
+    // Positions of the current module run from moduleStart to moduleStart + moduleQuestionCount - 1.
+    moduleStart: number;
+    moduleQuestionCount: number;
+    m1Correct: number | null;
+    m2Correct: number | null;
+    m1Total: number;
+    m2Total: number;
+    routingRequiredCorrect: number | null;
+  } | null;
   status: AttemptStatus;
   timed: boolean;
   timeLimitSeconds: number | null;
@@ -196,6 +236,8 @@ export interface QuestionResult {
 
 export interface AttemptQuestion {
   position: number;
+  // Adaptive mocks only.
+  module: MockModule | null;
   section: Section;
   questionType: QuestionType;
   prompt: string;

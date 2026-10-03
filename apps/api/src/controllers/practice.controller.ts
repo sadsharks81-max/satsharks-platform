@@ -3,6 +3,7 @@ import {
   objectIdSchema,
   positionSchema,
   type CreateAttemptInput,
+  type CreateMockInput,
   type SaveAnswerInput,
 } from "@satsharks/validation";
 import { practiceService } from "../services/practice.service";
@@ -42,6 +43,14 @@ export async function saveAnswer(req: Request, res: Response): Promise<void> {
 
 export async function checkQuestion(req: Request, res: Response): Promise<void> {
   sendOk(res, { question: await practiceService.checkQuestion(userId(req), attemptId(req), position(req)) });
+}
+
+export async function createMock(req: Request, res: Response): Promise<void> {
+  sendOk(res, { attempt: await practiceService.createMock(userId(req), req.body as CreateMockInput) }, 201);
+}
+
+export async function submitModule(req: Request, res: Response): Promise<void> {
+  sendOk(res, await practiceService.submitModule(userId(req), attemptId(req)));
 }
 
 export async function endAttempt(req: Request, res: Response): Promise<void> {

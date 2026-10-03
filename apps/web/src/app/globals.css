@@ -6,8 +6,8 @@
   --color-brand-500: #324dc7;
   --color-brand-600: #2a40a8;
   --color-brand-700: #223489;
-  --font-sans: "Inter", "Roboto", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Noto Serif", Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-roboto), Roboto, ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-noto-serif), "Noto Serif", "Times New Roman", Times, serif;
 }
 
 body {

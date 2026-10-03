@@ -3,12 +3,77 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { SECTION_LABELS, type AdminStats, type PaperStatus, type PaperSummary } from "@satsharks/types";
+import { MOCK_FORMAT, SECTION_LABELS, type AdaptiveSettings, type AdminStats, type PaperStatus, type PaperSummary } from "@satsharks/types";
 import { RequireUser } from "@/components/require-user";
 import { Badge, Button, Card, Notice, PageHeader, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 
 const STATUS_TONE = { draft: "amber", published: "green", hidden: "neutral" } as const;
+
+// The share of Module 1 a student must get right to be given the harder Module 2.
+function AdaptiveSettingsCard({ canWrite }: { canWrite: boolean }) {
+  const queryClient = useQueryClient();
+  const settings = useQuery({ queryKey: ["admin", "settings", "adaptive"], queryFn: () => api<AdaptiveSettings>("/api/admin/settings/adaptive") });
+  const [value, setValue] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const current = settings.data?.routingThresholdPercent;
+  const shown = value ?? (current !== undefined ? String(current) : "");
+  const percent = Number(shown);
+  const valid = Number.isInteger(percent) && percent >= 1 && percent <= 100;
+  const need = (size: number) => Math.ceil((size * percent) / 100);
+
+  async function save() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const saved = await api<AdaptiveSettings>("/api/admin/settings/adaptive", { method: "PUT", body: { routingThresholdPercent: percent } });
+      queryClient.setQueryData(["admin", "settings", "adaptive"], saved);
+      setValue(null);
+      setMessage({ tone: "info", text: "Saved. Applies to mocks whose Module 1 is submitted from now on." });
+    } catch (caught) {
+      setMessage({ tone: "error", text: caught instanceof Error ? caught.message : "Could not save" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <h2 className="font-bold">Adaptive mocks</h2>
+      <p className="mt-1 text-sm text-slate-600">Share of Module 1 a student must get right to be given the harder Module 2.</p>
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          type="number"
+          min={1}
+          max={100}
+          value={shown}
+          disabled={!canWrite || settings.isLoading}
+          onChange={(event) => setValue(event.target.value)}
+          aria-label="Routing threshold in percent"
+          className="h-10 w-24 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-500"
+        />
+        <span className="text-sm font-bold">%</span>
+        {canWrite && (
+          <Button size="sm" disabled={saving || !valid || percent === current} onClick={save}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        )}
+      </div>
+      {valid && (
+        <p className="mt-2 text-xs text-slate-600">
+          Math: {need(MOCK_FORMAT.math.questionsPerModule)} of {MOCK_FORMAT.math.questionsPerModule} · Reading &amp; Writing: {need(MOCK_FORMAT.reading_writing.questionsPerModule)} of {MOCK_FORMAT.reading_writing.questionsPerModule}
+        </p>
+      )}
+      {message && (
+        <div className="mt-2">
+          <Notice tone={message.tone}>{message.text}</Notice>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function Dashboard({ canWrite }: { canWrite: boolean }) {
   const queryClient = useQueryClient();
@@ -46,7 +111,7 @@ function Dashboard({ canWrite }: { canWrite: boolean }) {
           { label: "Users", value: s?.users },
           { label: "Papers published", value: s ? `${s.papers.published} of ${s.papers.draft + s.papers.published + s.papers.hidden}` : undefined },
           { label: "Questions", value: s ? (s.questions.draft + s.questions.published + s.questions.hidden).toLocaleString() : undefined },
-          { label: "Drills started", value: s?.attempts },
+          { label: "Drills and mocks started", value: s?.attempts },
         ].map((stat) => (
           <Card key={stat.label}>
             <div className="text-2xl font-bold">{stat.value ?? "…"}</div>
@@ -60,7 +125,8 @@ function Dashboard({ canWrite }: { canWrite: boolean }) {
         </p>
       )}
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <AdaptiveSettingsCard canWrite={canWrite} />
         <Card>
           <h2 className="font-bold">Questions</h2>
           <p className="mt-1 text-sm text-slate-600">Browse the question bank by section, topic, skill and difficulty. Search, edit and delete.</p>

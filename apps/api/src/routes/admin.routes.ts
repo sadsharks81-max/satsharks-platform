@@ -3,10 +3,12 @@ import { updateQuestionSchema } from "@satsharks/validation";
 import { getPaper, listPapers } from "../controllers/admin-paper.controller";
 import {
   deleteQuestion,
+  getAdaptiveSettings,
   getFacets,
   getQuestion,
   getStats,
   listQuestions,
+  setAdaptiveSettings,
   setPapersStatus,
   setPaperStatus,
   updateQuestion,
@@ -20,6 +22,9 @@ export const adminRouter = Router();
 adminRouter.use(requireDb, requireAuth, requirePermission("admin:access"));
 
 adminRouter.get("/stats", getStats);
+
+adminRouter.get("/settings/adaptive", getAdaptiveSettings);
+adminRouter.put("/settings/adaptive", requirePermission("papers:write"), setAdaptiveSettings);
 
 adminRouter.get("/papers", requirePermission("papers:read"), listPapers);
 adminRouter.post("/papers/status", requirePermission("papers:write"), setPapersStatus);

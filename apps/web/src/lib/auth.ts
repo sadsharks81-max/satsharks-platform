@@ -18,10 +18,23 @@ async function fetchMe(): Promise<PublicUser | null> {
 }
 
 export function useMe() {
-  return useQuery({ queryKey: ME_QUERY_KEY, queryFn: fetchMe, staleTime: 60_000, retry: false });
+  return useQuery({
+    queryKey: ME_QUERY_KEY,
+    queryFn: fetchMe,
+    staleTime: 30_000,
+    retry: false,
+    // The session cookie is shared by every tab. Always re-check on return to a tab, however
+    // recently it was loaded, in case another tab signed out or signed in as someone else.
+    refetchOnWindowFocus: "always",
+  });
 }
 
-export function useSetMe() {
+// Call after signing in or out: drops everything cached for the previous account (its drills,
+// admin data, and who it was), then records the new one.
+export function useSwitchUser() {
   const queryClient = useQueryClient();
-  return (user: PublicUser | null) => queryClient.setQueryData(ME_QUERY_KEY, user);
+  return (user: PublicUser | null) => {
+    queryClient.clear();
+    queryClient.setQueryData(ME_QUERY_KEY, user);
+  };
 }

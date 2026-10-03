@@ -32,6 +32,7 @@ function Results({ attemptId }: { attemptId: string }) {
     retry: false,
   });
   const [filter, setFilter] = useState<Filter>("all");
+  const [moduleFilter, setModuleFilter] = useState<"all" | "m1" | "m2">("all");
   const [openPosition, setOpenPosition] = useState<number | null>(null);
 
   if (isLoading) return <Spinner label="Loading results" />;
@@ -51,7 +52,16 @@ function Results({ attemptId }: { attemptId: string }) {
   if (!data) return null;
 
   const { attempt, questions } = data;
-  const visible = questions.filter((question) => filter === "all" || (filter === "flagged" ? question.flagged : statusOf(question) === filter));
+  const mock = attempt.mock;
+  // In a mock, questions are numbered within their module, as on the test screen.
+  const number = (question: ReviewQuestion) =>
+    mock && question.module && question.module !== "m1" ? question.position - mock.m1Total : question.position;
+  const moduleLabel = (question: ReviewQuestion) => (question.module ? (question.module === "m1" ? "Module 1" : "Module 2") : null);
+  const visible = questions.filter(
+    (question) =>
+      (moduleFilter === "all" || (moduleFilter === "m1" ? question.module === "m1" : question.module !== "m1")) &&
+      (filter === "all" || (filter === "flagged" ? question.flagged : statusOf(question) === filter)),
+  );
   const openIndex = visible.findIndex((question) => question.position === openPosition);
   const open = openIndex >= 0 ? visible[openIndex]! : null;
   const percent = attempt.total > 0 ? Math.round((attempt.correct / attempt.total) * 100) : 0;
@@ -66,8 +76,9 @@ function Results({ attemptId }: { attemptId: string }) {
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Badge tone="brand">{attempt.paperTitle.split(" — ")[0]}</Badge>
+        <Badge tone="brand">{mock ? "Adaptive Mock" : attempt.paperTitle.split(" — ")[0]}</Badge>
         <Badge>{SECTION_LABELS[attempt.section]}</Badge>
+        {mock && <Badge>{attempt.paperTitle}</Badge>}
       </div>
       <PageHeader title={attempt.name} subtitle={attempt.completedAt ? `Completed ${new Date(attempt.completedAt).toLocaleString()}` : undefined} />
 
@@ -85,7 +96,40 @@ function Results({ attemptId }: { attemptId: string }) {
         ))}
       </div>
 
+      {mock && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <Card>
+            <div className="text-sm font-medium text-slate-600">Module 1</div>
+            <div className="mt-1 text-2xl font-bold">
+              {mock.m1Correct ?? 0} / {mock.m1Total}
+            </div>
+          </Card>
+          <Card>
+            <div className="text-sm font-medium text-slate-600">Module 2 given</div>
+            <div className="mt-1 text-2xl font-bold">{mock.m2Type === "m2_hard" ? "Harder" : mock.m2Type === "m2_easy" ? "Easier" : "Not reached"}</div>
+            {mock.routingRequiredCorrect !== null && (
+              <div className="mt-1 text-xs text-slate-600">
+                The harder module needed {mock.routingRequiredCorrect} of {mock.m1Total} correct in Module 1.
+              </div>
+            )}
+          </Card>
+          <Card>
+            <div className="text-sm font-medium text-slate-600">Module 2</div>
+            <div className="mt-1 text-2xl font-bold">
+              {mock.m2Total > 0 ? `${mock.m2Correct ?? 0} / ${mock.m2Total}` : "—"}
+            </div>
+          </Card>
+        </div>
+      )}
+
       <div className="mt-6 flex flex-wrap gap-2">
+        {mock &&
+          (["all", "m1", "m2"] as const).map((entry) => (
+            <Toggle key={entry} active={moduleFilter === entry} onClick={() => setModuleFilter(entry)}>
+              {entry === "all" ? "Both modules" : entry === "m1" ? "Module 1" : "Module 2"}
+            </Toggle>
+          ))}
+        {mock && <span aria-hidden className="mx-1 w-px self-stretch bg-slate-300" />}
         {filters.map((entry) => (
           <Toggle key={entry.id} active={filter === entry.id} onClick={() => setFilter(entry.id)}>
             {entry.label}
@@ -99,6 +143,7 @@ function Results({ attemptId }: { attemptId: string }) {
             <thead className="border-b border-slate-900 text-xs uppercase text-slate-600">
               <tr>
                 <th className="px-4 py-3">Question</th>
+                {mock && <th className="px-4 py-3">Module</th>}
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Topic</th>
                 <th className="px-4 py-3">Skill</th>
@@ -113,9 +158,10 @@ function Results({ attemptId }: { attemptId: string }) {
                 return (
                   <tr key={question.position}>
                     <td className="px-4 py-2.5 font-bold">
-                      {question.position}
+                      {number(question)}
                       {question.flagged && <span className="ml-1 text-red-600">⚑</span>}
                     </td>
+                    {mock && <td className="px-4 py-2.5 whitespace-nowrap">{moduleLabel(question)}</td>}
                     <td className="px-4 py-2.5">
                       <Badge tone={TONE[status]}>{status}</Badge>
                     </td>
@@ -133,7 +179,7 @@ function Results({ attemptId }: { attemptId: string }) {
               })}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={mock ? 8 : 7} className="px-4 py-6 text-center text-slate-500">
                     No questions match this filter.
                   </td>
                 </tr>
@@ -144,7 +190,7 @@ function Results({ attemptId }: { attemptId: string }) {
       </Card>
 
       {open && (
-        <Modal title={`Question ${open.position}`} onClose={() => setOpenPosition(null)} wide>
+        <Modal title={`${moduleLabel(open) ? `${moduleLabel(open)}, question` : "Question"} ${number(open)}`} onClose={() => setOpenPosition(null)} wide>
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <Badge tone={TONE[statusOf(open)]}>{statusOf(open)}</Badge>
             {open.skill && <Badge>{open.skill}</Badge>}

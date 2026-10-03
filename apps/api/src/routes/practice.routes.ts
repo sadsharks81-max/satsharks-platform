@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { createAttemptSchema, saveAnswerSchema } from "@satsharks/validation";
+import { createAttemptSchema, createMockSchema, saveAnswerSchema } from "@satsharks/validation";
 import {
   checkQuestion,
   createAttempt,
+  createMock,
   endAttempt,
   getAttempt,
   getCatalog,
@@ -10,6 +11,7 @@ import {
   getResult,
   listAttempts,
   saveAnswer,
+  submitModule,
 } from "../controllers/practice.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireDb } from "../middleware/require-db";
@@ -22,7 +24,9 @@ practiceRouter.use(requireDb, requireAuth);
 practiceRouter.get("/catalog", getCatalog);
 practiceRouter.get("/attempts", listAttempts);
 practiceRouter.post("/attempts", validateBody(createAttemptSchema), createAttempt);
+practiceRouter.post("/mocks", validateBody(createMockSchema), createMock);
 practiceRouter.get("/attempts/:id", getAttempt);
+practiceRouter.post("/attempts/:id/submit-module", submitModule);
 practiceRouter.post("/attempts/:id/end", endAttempt);
 practiceRouter.get("/attempts/:id/result", getResult);
 practiceRouter.get("/attempts/:id/questions/:position", getQuestion);

@@ -4,12 +4,17 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AttemptNavItem, AttemptQuestion, AttemptSummary } from "@satsharks/types";
-import { Choices, Passage, Prompt, ReferenceSheet, ResponseInput } from "@/components/question";
+import { Choices, Passage, Prompt, ResponseInput } from "@/components/question";
+import { DraggablePanel } from "@/components/draggable-panel";
+import { ReferenceSheet } from "@/components/reference-sheet";
 import { RequireUser } from "@/components/require-user";
 import { Button, Modal, Notice, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 
-const DESMOS_URL = "https://www.desmos.com/testing/cb-digital-sat/graphing";
+// Desmos's own graphing calculator page for the College Board tests, shown inside our window.
+const DESMOS_URL = "https://www.desmos.com/testing/collegeboard/graphing";
+
+type AttemptState = { attempt: AttemptSummary; navigation: AttemptNavItem[] };
 
 function formatTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -40,28 +45,29 @@ function ToolButton({ label, icon, onClick, active }: { label: string; icon: key
   );
 }
 
+// How to type an answer. Written for SAT Sharks; the entry rules follow the Digital SAT.
 function SprDirections() {
   return (
     <div className="question-text text-[0.95rem]">
-      <p className="font-bold">Student-produced response directions</p>
+      <p className="font-bold">How to enter your answer</p>
       <ul>
         <li>
-          If you find <b>more than one correct answer</b>, enter only one answer.
+          Type <b>one</b> answer, even if more than one would be correct.
         </li>
         <li>
-          You can enter up to 5 characters for a <b>positive</b> answer and up to 6 characters (including the negative sign) for a <b>negative</b> answer.
+          The box holds <b>5 characters</b>, or <b>6</b> when the answer is negative (the minus sign counts).
         </li>
         <li>
-          If your answer is a <b>fraction</b> that doesn’t fit in the provided space, enter the decimal equivalent.
+          A <b>fraction</b> too long for the box can be typed as a decimal instead.
         </li>
         <li>
-          If your answer is a <b>decimal</b> that doesn’t fit in the provided space, enter it by truncating or rounding at the fourth digit.
+          A <b>decimal</b> too long for the box can be cut off or rounded so that it fills the box.
         </li>
         <li>
-          If your answer is a <b>mixed number</b> (such as 3½), enter it as an improper fraction (7/2) or its decimal equivalent (3.5).
+          Write a <b>mixed number</b> as an improper fraction or a decimal: one and a half is 3/2 or 1.5.
         </li>
         <li>
-          Don’t enter <b>symbols</b> such as a percent sign, comma, or dollar sign.
+          Leave out <b>symbols</b> such as %, commas and $.
         </li>
       </ul>
     </div>
@@ -74,13 +80,14 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
 
   const attemptQuery = useQuery({
     queryKey: ["practice", "attempt", attemptId],
-    queryFn: () => api<{ attempt: AttemptSummary; navigation: AttemptNavItem[] }>(`/api/practice/attempts/${attemptId}`),
+    queryFn: () => api<AttemptState>(`/api/practice/attempts/${attemptId}`),
     // The server owns the clock and the saved answers: always start from its state.
     staleTime: 0,
     gcTime: 0,
   });
-  const attempt = attemptQuery.data?.attempt;
 
+  // The attempt as last reported by the server (replaced when a mock moves to Module 2).
+  const [attempt, setAttempt] = useState<AttemptSummary | null>(null);
   const [position, setPosition] = useState<number | null>(null);
   const [navigation, setNavigation] = useState<AttemptNavItem[]>([]);
   const [question, setQuestion] = useState<AttemptQuestion | null>(null);
@@ -92,23 +99,37 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
   const [timerHidden, setTimerHidden] = useState(false);
   const [eliminationMode, setEliminationMode] = useState(false);
   const [eliminated, setEliminated] = useState<Record<number, string[]>>({});
-  const [panel, setPanel] = useState<"navigator" | "reference" | "directions" | "finish" | null>(null);
+  const [panel, setPanel] = useState<"navigator" | "directions" | "finish" | null>(null);
+  // The reference sheet is a separate floating window, so it can stay open alongside other panels.
+  const [referenceOpen, setReferenceOpen] = useState(false);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [moduleNotice, setModuleNotice] = useState<string | null>(null);
   const ending = useRef(false);
   // The typed answer last saved for the current question, to avoid saving unchanged text.
   const savedAnswer = useRef("");
 
+  // Applies a server snapshot: navigation, clock, and where to resume inside the current module.
+  const applyState = useCallback(
+    (state: AttemptState, resumeAt?: number) => {
+      const loaded = state.attempt;
+      if (loaded.status === "done") {
+        router.replace(`/practice/${attemptId}/results`);
+        return;
+      }
+      const start = loaded.mock?.moduleStart ?? 1;
+      const count = loaded.mock?.moduleQuestionCount ?? loaded.total;
+      setAttempt(loaded);
+      setNavigation(state.navigation);
+      setSecondsLeft(loaded.timeRemainingSeconds);
+      setPosition(Math.min(Math.max(start, resumeAt ?? loaded.lastPosition), start + count - 1));
+    },
+    [attemptId, router],
+  );
+
   // Initialise from the server once.
   useEffect(() => {
-    if (!attemptQuery.data || position !== null) return;
-    const { attempt: loaded, navigation: items } = attemptQuery.data;
-    if (loaded.status === "done") {
-      router.replace(`/practice/${attemptId}/results`);
-      return;
-    }
-    setNavigation(items);
-    setSecondsLeft(loaded.timeRemainingSeconds);
-    setPosition(Math.min(Math.max(1, loaded.lastPosition), loaded.total));
-  }, [attemptQuery.data, position, attemptId, router]);
+    if (attemptQuery.data && attempt === null) applyState(attemptQuery.data);
+  }, [attemptQuery.data, attempt, applyState]);
 
   // Load the question whenever the position changes.
   useEffect(() => {
@@ -130,6 +151,9 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     };
   }, [attemptId, position]);
 
+  const isMock = attempt?.kind === "mock";
+  const inModuleOne = isMock && attempt?.mock?.currentModule === "m1";
+
   const finish = useCallback(async () => {
     if (ending.current) return;
     ending.current = true;
@@ -141,11 +165,31 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     } catch (caught) {
       ending.current = false;
       setBusy(false);
-      setError(caught instanceof Error ? caught.message : "Could not submit the drill");
+      setError(caught instanceof Error ? caught.message : "Could not submit");
     }
   }, [attemptId, queryClient, router]);
 
-  // Countdown. The server enforces the limit; this only displays it and submits when it runs out.
+  // Mock: closes Module 1. The server grades it and builds Module 2 from the score.
+  const submitModule = useCallback(async () => {
+    if (ending.current) return;
+    ending.current = true;
+    setBusy(true);
+    setPanel(null);
+    setQuestion(null);
+    try {
+      const state = await api<AttemptState>(`/api/practice/attempts/${attemptId}/submit-module`, { method: "POST" });
+      setEliminated({});
+      applyState(state, state.attempt.mock?.moduleStart);
+      setModuleNotice("Module 1 is submitted. Module 2 has started.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not submit Module 1");
+    } finally {
+      ending.current = false;
+      setBusy(false);
+    }
+  }, [attemptId, applyState]);
+
+  // Countdown. The server enforces the limit; this only displays it and moves on when it runs out.
   const timed = secondsLeft !== null;
   useEffect(() => {
     if (!timed) return;
@@ -153,8 +197,15 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     return () => clearInterval(interval);
   }, [timed]);
   useEffect(() => {
-    if (secondsLeft === 0) void finish();
-  }, [secondsLeft, finish]);
+    if (secondsLeft !== 0) return;
+    void (inModuleOne ? submitModule() : finish());
+  }, [secondsLeft, inModuleOne, submitModule, finish]);
+
+  useEffect(() => {
+    if (!moduleNotice) return;
+    const timer = setTimeout(() => setModuleNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [moduleNotice]);
 
   const save = useCallback(
     async (body: { answer?: string | null; flagged?: boolean }, at: number) => {
@@ -179,28 +230,37 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     return ok;
   }, [question, answer, save]);
 
+  const moduleStart = attempt?.mock?.moduleStart ?? 1;
+  const moduleCount = attempt?.mock?.moduleQuestionCount ?? attempt?.total ?? 0;
+  const moduleEnd = moduleStart + moduleCount - 1;
+
   const goTo = useCallback(
     async (next: number) => {
-      if (!attempt || next < 1 || next > attempt.total || next === position) return;
+      if (next < moduleStart || next > moduleEnd || next === position) return;
       await commitTyped();
       setPanel(null);
       setPosition(next);
     },
-    [attempt, position, commitTyped],
+    [moduleStart, moduleEnd, position, commitTyped],
   );
 
-  if (attemptQuery.isLoading || position === null) {
-    return attemptQuery.error ? <div className="p-8"><Notice tone="error">{attemptQuery.error.message}</Notice></div> : <div className="p-8"><Spinner label="Loading your drill" /></div>;
+  if (attemptQuery.error) return <div className="p-8"><Notice tone="error">{attemptQuery.error.message}</Notice></div>;
+  if (!attempt || position === null) {
+    return <div className="p-8"><Spinner label={busy ? "Preparing Module 2" : "Loading"} /></div>;
   }
-  if (!attempt) return null;
 
   const math = attempt.section === "math";
+  const sectionName = math ? "Math" : "Reading and Writing";
+  const moduleNumber = attempt.mock?.currentModule === "m2" ? 2 : 1;
+  const title = isMock ? `${sectionName}: Module ${moduleNumber}` : `Section: ${sectionName}`;
+  const label = (at: number) => at - moduleStart + 1;
   const current = navigation.find((entry) => entry.position === position);
   const locked = question?.checked ?? false;
   const isSpr = question?.questionType === "spr";
   const split = question ? !math || isSpr : false;
   const crossed = new Set(eliminated[position] ?? []);
   const unanswered = navigation.filter((entry) => !entry.answered).length;
+  const endLabel = isMock ? (inModuleOne ? "Submit Module 1" : "Finish Mock") : "Finish Drill";
 
   async function selectChoice(key: string) {
     if (!question || locked) return;
@@ -236,7 +296,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
   const questionPane = question && (
     <div>
       <div className="flex items-center gap-3 bg-slate-100">
-        <span className="flex h-9 w-9 items-center justify-center bg-slate-900 text-base font-bold text-white">{question.position}</span>
+        <span className="flex h-9 min-w-9 items-center justify-center bg-slate-900 px-1 text-base font-bold text-white">{label(question.position)}</span>
         <button type="button" onClick={toggleFlag} aria-pressed={current?.flagged ?? false} className="flex cursor-pointer items-center gap-1.5 text-sm font-medium">
           <span aria-hidden className={current?.flagged ? "text-red-600" : "text-slate-700"}>
             {current?.flagged ? "⚑" : "⚐"}
@@ -296,7 +356,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     <div className="flex h-screen flex-col bg-white">
       <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-2 sm:px-8">
         <div>
-          <h1 className="text-lg font-bold leading-tight">Section: {math ? "Math" : "Reading and Writing"}</h1>
+          <h1 className="text-lg font-bold leading-tight">{title}</h1>
           <button type="button" onClick={() => setPanel(panel === "directions" ? null : "directions")} className="cursor-pointer text-sm font-medium">
             Directions ▾
           </button>
@@ -316,8 +376,8 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
           )}
         </div>
         <div className="flex items-center justify-end gap-1">
-          {math && <ToolButton label="Calculator" icon="calculator" onClick={() => window.open(DESMOS_URL, "sat-calculator", "width=820,height=640")} />}
-          {math && <ToolButton label="Reference" icon="reference" onClick={() => setPanel(panel === "reference" ? null : "reference")} active={panel === "reference"} />}
+          {math && <ToolButton label="Calculator" icon="calculator" onClick={() => setCalculatorOpen((open) => !open)} active={calculatorOpen} />}
+          {math && <ToolButton label="Reference" icon="reference" onClick={() => setReferenceOpen((open) => !open)} active={referenceOpen} />}
           <ToolButton
             label="Exit"
             icon="exit"
@@ -331,9 +391,10 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
       <div className="test-rule" />
 
       <main className="min-h-0 flex-1 overflow-hidden">
-        {error && (
-          <div className="mx-auto max-w-3xl px-4 pt-3">
-            <Notice tone="error">{error}</Notice>
+        {(error || moduleNotice) && (
+          <div className="mx-auto max-w-3xl space-y-2 px-4 pt-3">
+            {moduleNotice && <Notice tone="info">{moduleNotice}</Notice>}
+            {error && <Notice tone="error">{error}</Notice>}
           </div>
         )}
         {loadingQuestion || !question ? (
@@ -354,22 +415,24 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
       <footer className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3 sm:px-8">
         <span className="truncate text-lg font-semibold">{userName}</span>
         <button type="button" onClick={() => setPanel(panel === "navigator" ? null : "navigator")} aria-expanded={panel === "navigator"} className="cursor-pointer rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">
-          Question {position} of {attempt.total} {panel === "navigator" ? "▾" : "▴"}
+          Question {label(position)} of {moduleCount} {panel === "navigator" ? "▾" : "▴"}
         </button>
         <div className="flex justify-end gap-2">
-          <Button className="rounded-full" disabled={busy || locked || answer === "" || !question} onClick={check}>
-            Check
-          </Button>
-          <Button className="rounded-full" disabled={position <= 1} onClick={() => goTo(position - 1)}>
+          {!isMock && (
+            <Button className="rounded-full" disabled={busy || locked || answer === "" || !question} onClick={check}>
+              Check
+            </Button>
+          )}
+          <Button className="rounded-full" disabled={position <= moduleStart} onClick={() => goTo(position - 1)}>
             Back
           </Button>
-          {position < attempt.total ? (
+          {position < moduleEnd ? (
             <Button className="rounded-full" onClick={() => goTo(position + 1)}>
               Next
             </Button>
           ) : (
-            <Button className="rounded-full" onClick={async () => (await commitTyped(), setPanel("finish"))}>
-              Finish
+            <Button className="rounded-full" disabled={busy} onClick={async () => (await commitTyped(), setPanel("finish"))}>
+              {isMock ? (inModuleOne ? "Submit Module" : "Finish") : "Finish"}
             </Button>
           )}
         </div>
@@ -377,9 +440,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
         {panel === "navigator" && (
           <div className="absolute bottom-full left-1/2 z-40 mb-3 w-[min(92vw,500px)] -translate-x-1/2 rounded-xl border border-slate-900 bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
-              <h2 className="mx-auto text-base font-bold">
-                Section: {math ? "Math" : "Reading and Writing"} Questions
-              </h2>
+              <h2 className="mx-auto text-base font-bold">{title} Questions</h2>
               <button type="button" onClick={() => setPanel(null)} aria-label="Close" className="cursor-pointer text-lg">
                 ✕
               </button>
@@ -400,65 +461,96 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
                   key={entry.position}
                   type="button"
                   onClick={() => goTo(entry.position)}
-                  aria-label={`Question ${entry.position}${entry.answered ? ", answered" : ", unanswered"}${entry.flagged ? ", marked for review" : ""}`}
+                  aria-label={`Question ${label(entry.position)}${entry.answered ? ", answered" : ", unanswered"}${entry.flagged ? ", marked for review" : ""}`}
                   className={`relative flex h-8 cursor-pointer items-center justify-center text-sm font-bold ${
                     entry.answered ? "bg-brand-500 text-white" : "border border-dashed border-slate-900 text-brand-500"
                   } ${entry.position === position ? "outline outline-2 outline-offset-2 outline-slate-900" : ""}`}
                 >
-                  {entry.position}
+                  {label(entry.position)}
                   {entry.flagged && <span className="absolute -right-1 -top-2 text-xs text-red-600">⚑</span>}
                 </button>
               ))}
             </div>
             <div className="mt-4 text-center">
               <Button variant="outline" size="sm" className="rounded-full" onClick={() => setPanel("finish")}>
-                Finish Drill
+                {endLabel}
               </Button>
             </div>
           </div>
         )}
       </footer>
 
-      {panel === "reference" && (
-        <Modal title="Reference" onClose={() => setPanel(null)}>
+      {/* Floating and draggable, so the question stays visible and usable while they are open.
+          Closing the calculator clears its work; reopening starts a fresh one. */}
+      {calculatorOpen && (
+        <DraggablePanel
+          title="Calculator"
+          onClose={() => setCalculatorOpen(false)}
+          initialX={50}
+          initialY={100}
+          width={640}
+          height={520}
+          minWidth={400}
+          minHeight={350}
+          resizable
+          flush
+        >
+          <iframe
+            src={DESMOS_URL}
+            title="Desmos graphing calculator"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin allow-forms"
+            className="h-full w-full border-0"
+          />
+        </DraggablePanel>
+      )}
+      {referenceOpen && (
+        <DraggablePanel title="Reference" onClose={() => setReferenceOpen(false)}>
           <ReferenceSheet />
-        </Modal>
+        </DraggablePanel>
       )}
       {panel === "directions" && (
         <Modal title="Directions" onClose={() => setPanel(null)}>
           <div className="question-text text-[0.95rem]">
             {math ? (
               <>
-                <p>The questions in this section address a number of important math skills. Use of a calculator is permitted for all questions.</p>
-                <p>Unless otherwise indicated: all variables and expressions represent real numbers; figures provided are drawn to scale; all figures lie in a plane; the domain of a given function is the set of all real numbers for which the function is defined.</p>
-                <p>For multiple-choice questions, solve each problem and choose the correct answer from the choices provided. Each multiple-choice question has a single correct answer.</p>
+                <p>This section tests a range of math skills. You may use the calculator on every question.</p>
+                <p>Unless a question says otherwise, every variable and expression stands for a real number, figures are drawn to scale and lie in a plane, and a function is defined for every real number it can take.</p>
+                <p>Multiple-choice questions have exactly one correct answer. For the others, type your answer in the box.</p>
               </>
             ) : (
               <>
-                <p>The questions in this section address a number of important reading and writing skills. Each question includes one or more passages, which may include a table or graph. Read each passage and question carefully, and then choose the best answer to the question based on the passage(s).</p>
-                <p>All questions in this section are multiple-choice with four answer choices. Each question has a single best answer.</p>
+                <p>This section tests reading and writing skills. Each question comes with one or two short passages, which may include a table or graph.</p>
+                <p>Read the passage and the question, then pick the best of the four choices. Each question has a single best answer.</p>
               </>
+            )}
+            {isMock && (
+              <p>
+                This is an adaptive mock. Module 2 is harder or easier depending on how you do in Module 1. Once a module is submitted, you cannot go back to it.
+              </p>
             )}
           </div>
         </Modal>
       )}
       {panel === "finish" && (
-        <Modal title="Finish this drill?" onClose={() => !busy && setPanel(null)}>
+        <Modal title={isMock ? (inModuleOne ? "Submit Module 1?" : "Finish this mock?") : "Finish this drill?"} onClose={() => !busy && setPanel(null)}>
           <p className="text-sm">
             {unanswered > 0 ? (
               <>
-                You have <b>{unanswered}</b> unanswered question{unanswered === 1 ? "" : "s"}. After you finish, answers cannot be changed.
+                You have <b>{unanswered}</b> unanswered question{unanswered === 1 ? "" : "s"} in this {isMock ? "module" : "drill"}.{" "}
               </>
             ) : (
-              "You have answered every question. After you finish, answers cannot be changed."
+              <>You have answered every question in this {isMock ? "module" : "drill"}. </>
             )}
+            {inModuleOne ? "Once you submit Module 1 you cannot return to it. Module 2 starts straight away." : "After you finish, answers cannot be changed."}
           </p>
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" disabled={busy} onClick={() => setPanel(null)}>
               Keep working
             </Button>
-            <Button disabled={busy} onClick={finish}>
-              {busy ? "Submitting…" : "Finish and see results"}
+            <Button disabled={busy} onClick={inModuleOne ? submitModule : finish}>
+              {busy ? "Submitting…" : inModuleOne ? "Submit Module 1" : "Finish and see results"}
             </Button>
           </div>
         </Modal>

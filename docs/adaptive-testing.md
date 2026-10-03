@@ -1,89 +1,76 @@
-# Adaptive testing — findings
+# Adaptive testing — findings and the SAT Sharks engine
 
-Source: `bluecorn.org`. Evidence is the site's JavaScript bundle and two **drill** recordings.
-**No adaptive mock has been recorded.** Drills have no modules and no routing, so nothing below
-was seen in a real mock response. Each statement says what it is based on.
+## Evidence
+
+- The source site's JavaScript bundle (from the recordings in `docs/references/network/`).
+- **Two Math adaptive mocks taken on the source on 2026-10-03** with a session token, through
+  the same calls its own app makes (`npm run observe:mock`). Recordings are in
+  `data/mock-observations/` (git-ignored).
+  - Mock A: Module 1 submitted with **no answers**.
+  - Mock B: Module 1 answered with **our answer key** (all 22 graded correct by the source).
+
+Each statement below says whether it was observed, inferred, or is unknown.
 
 ## Observed
 
-Read directly from the site's client code:
-
-- A mock is started with `mStart { p_section, p_exam_ids, p_timer, p_t_time, p_name }`. It covers
-  **one section**. The start dialog describes Math as "44 Questions (2 Modules)", "70 Minutes",
-  and Reading & Writing as "54 Questions (2 Modules)", "64 Minutes".
-- The attempt object has `current_module`, `m2_type`, `m1_correct`, `m2_correct`, `count`,
-  `correct`, `incorrect`, `unanswered`.
-- `m2_type` takes the values `m2_hard` and `m2_easy`. The UI labels them "Hard Module 2" and
-  "Easy Module 2".
-- Submitting Module 1 calls `mEndModule1 { p_attempt_id }`. **The request contains only the
-  attempt ID**: no score, no answers, no route.
-- After `mEndModule1` the app reloads the attempt (`mGetAttempt`) and continues with Module 2.
-- Questions are fetched one at a time: `mGet { p_attempt_id, p_position }`.
-- The result page (`mrGetResult`) groups questions by `module_type`: `m1`, `m2_easy`, `m2_hard`.
-- The site's own description: "Score high in Module 1 to unlock the Hard Module 2".
+- A mock covers **one section**. It is started with
+  `mStart { p_section, p_exam_ids, p_timer, p_t_time, p_name }`; `p_exam_ids: null` draws from
+  every exam source.
+- **Math: 22 questions per module, 35 minutes per module** (`t_time: 2100` seconds), two modules.
+- Questions are fetched one at a time (`mGet { p_attempt_id, p_position }`).
+- Submitting Module 1 sends **only the attempt ID** (`mEndModule1 { p_attempt_id }`). The response
+  is `{ m2_type, m1_correct, m2_start_pos, m2_question_count }`.
+- **Routing:** 0 correct in Module 1 gave `m2_easy`; 22 of 22 correct gave `m2_hard`.
+- **Module 2 numbering restarts at 1** (`m2_start_pos: 1`).
+- The other route's questions never reach the browser.
+- The result call (`mrGetResult`) returns every question with its `module_type`
+  (`m1`, `m2_easy`, `m2_hard`) and answer key.
+- **Module make-up:** each module is spread across the skills. Every observed Math module
+  covered 19 or 18 of the 19 Math skills, with a few skills twice, and drew from 8–10 different
+  exam sources.
+- **The source's own difficulty tag does not separate the routes.** All 88 questions in the four
+  observed modules, including the 22 in the hard Module 2, are tagged `easy` by the source's
+  filter. By topic, skill, type and exam source, the hard and easy Module 2 look alike.
+- The two observed Module 1s shared no questions; the easy and hard Module 2 shared none.
 
 ## Inferred
 
-Likely, but not confirmed by a response:
-
-- **Routing is decided on the server.** The client sends nothing but the attempt ID at the end
-  of Module 1 and has no routing logic in its code.
-- **The decision is based on the Module 1 correct count.** The server stores `m1_correct` next to
-  `m2_type`, and the site's text ties the hard module to a high Module 1 score.
-- **The browser never receives the other route's questions.** Questions are requested by
-  position within the attempt, one at a time.
-- Each Math module has 22 questions and 35 minutes; each Reading & Writing module has 27
-  questions and 32 minutes. The source states only the section totals; the even split is assumed
-  and matches the real Digital SAT and the proposal.
+- Module 1 and Module 2 are drawn at random per attempt, one question per skill in turn.
+- The hard module may use a difficulty the source does not expose, or may not differ in
+  difficulty at all. The observations cannot tell these apart.
 
 ## Unknown
 
-- **Adaptive routing rule: not directly exposed.** No threshold appears in the client code.
-- Whether the rule is a fixed cut-off, differs by section, or weighs questions differently.
-- Whether Module 2 positions restart at 1 or continue from Module 1.
-- The exact shape of the `mGetAttempt`, `mEndModule1`, `mEnd` and `mrGetResult` responses.
-- Whether Module 1 is the same for every attempt from one exam source, or drawn from a pool.
-- Whether the easy and hard Module 2 share any questions.
-- Per-module time limits (only section totals are shown).
-- Whether difficulty is stored per question on the server (it is never sent to the browser).
+- **The routing threshold.** Only the two extremes (0 and 22 of 22) were observed.
+- Reading & Writing module sizes and timing on the source (no Reading & Writing mock was taken;
+  its start dialog states 54 questions, 64 minutes).
+- Whether "hard" questions exist on the source in any form a browser can see.
 
-## Module structure
+## The SAT Sharks engine (built)
 
-| | Module 1 | Module 2 |
-| --- | --- | --- |
-| Identifier | `m1` | `m2_easy` or `m2_hard` |
-| Selected by | Fixed for the attempt | Server, after Module 1 is submitted |
-| Questions (Math) | 22 (inferred) | 22 (inferred) |
-| Obtainable from one attempt | Yes | Only the assigned route |
-
-## Sessions and attempts
-
-- An attempt has a UUID and a status (`active`, `paused`, `done`).
-- Each question in an attempt has its own per-attempt ID (`testId` / `id`) and a stable bank ID
-  (`contentId` / `content_id`).
-- Progress is saved on the server (`mAnswer` with answer, flag and time), and `idx_last` records
-  the last position, so an attempt resumes where it stopped.
-
-## Multiple paths
-
-**Not observed: no path at all has been observed yet.** One mock shows one route. Seeing the other
-route requires a second attempt with a clearly different Module 1 result, through normal use of
-the site. Even then, the threshold between them stays unknown.
-
-## What the importer records
-
-| Field | Value |
+| | |
 | --- | --- |
-| `paper.adaptive.routing` | `server_side` if the Module 1 submission was captured, else `unknown` |
-| `paper.adaptive.observedRoute` | The attempt's `m2_type`, or null |
-| `paper.adaptive.module1Correct` | The attempt's `m1_correct`, or null |
-| `paper.adaptive.routingThreshold` | Always null for this source |
+| Sections | Math: 22 + 22 questions, 35 minutes per module. Reading & Writing: 27 + 27, 32 minutes per module |
+| Question pool | Published questions of the chosen section, from every exam or the exams the student picks |
+| Module 1 | One question per skill in turn until full, random within a skill |
+| Module 2 (harder) | Same spread; within each skill hard first, then medium, unlabelled, easy |
+| Module 2 (easier) | Same spread; within each skill easy first, then medium, unlabelled, hard |
+| Repeats | Module 2 never contains a Module 1 question |
+| Order in a module | Math: easier to harder. Reading & Writing: official domain order (Craft and Structure, Information and Ideas, Standard English Conventions, Expression of Ideas), easier to harder within a domain |
+| Routing | Harder Module 2 when Module 1 correct ≥ ⌈size × threshold⌉. Default **65%**: 15 of 22 (Math), 18 of 27 (Reading & Writing). Admin setting, applied when Module 1 is submitted |
+| Building Module 2 | Only after Module 1 is submitted, on the server. Before that it does not exist |
+| Timing | Each module has its own server-side clock. When Module 1's time runs out it is submitted automatically and Module 2 starts; when Module 2's runs out the mock ends |
+| Locking | A submitted module cannot be opened or changed (the API answers 409) |
+| Answers | No answer check during a mock; keys are shown in the results |
 
-## For the SAT Sharks engine
+What this means in practice:
 
-The source's rule cannot be copied because it is not exposed. The Phase 2 engine needs its own
-rule, defined by SAT Sharks (the proposal says "Module 2 is easier or harder depending on
-Module 1" without giving a threshold). The schema already supports a paper holding `m1`,
-`m2_easy` and `m2_hard` modules.
+- **Reading & Writing adapts for real.** The source's difficulty tags are real for this section
+  (4,739 easy, 2,981 hard), so the harder Module 2 is made of hard-tagged questions.
+- **Math adapts only as far as its labels allow.** Most Math questions are tagged easy by the
+  source. Where hard-tagged questions exist in the pool, the harder module uses them first (in
+  the end-to-end test with all Math exams published, 21 of 22 were hard-tagged); otherwise it is
+  a spread like the source's own. Setting difficulty in the admin question editor improves it.
 
-This document is updated after the first real mock import.
+Not yet built: a 400–1600 scaled score (needs SAT Sharks' conversion tables), a full test of
+both sections in one sitting with the break between them, and extended time.

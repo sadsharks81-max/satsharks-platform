@@ -124,6 +124,20 @@ export type SaveAnswerInput = z.infer<typeof saveAnswerSchema>;
 
 export const positionSchema = z.coerce.number().int().min(1).max(1000);
 
+export const createMockSchema = z.object({
+  section: z.enum(SECTIONS),
+  // Exams to draw from. Empty = every published exam with that section.
+  paperIds: z.array(objectIdSchema).max(100).default([]),
+  // The official module countdown. Off = untimed.
+  timed: z.boolean().default(true),
+  name: z.string().trim().max(80).default(""),
+});
+export type CreateMockInput = z.infer<typeof createMockSchema>;
+
+export const adaptiveSettingsSchema = z.object({
+  routingThresholdPercent: z.number().int().min(1).max(100),
+});
+
 // ---------- admin ----------
 
 export const paperStatusSchema = z.object({ status: z.enum(PAPER_STATUSES) });

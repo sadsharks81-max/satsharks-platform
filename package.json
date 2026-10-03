@@ -20,6 +20,7 @@
     "scrape:paper": "tsx apps/worker/src/cli/import-paper.ts",
     "collect:bank": "tsx apps/worker/src/cli/collect-bank.ts",
     "assets:copy": "tsx apps/worker/src/cli/copy-assets.ts",
+    "observe:mock": "tsx apps/worker/src/cli/observe-mock.ts",
     "create:admin": "tsx apps/api/src/cli/create-admin.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import type { PublicUser } from "@satsharks/types";
 import { api } from "@/lib/api";
-import { useSetMe } from "@/lib/auth";
+import { useSwitchUser } from "@/lib/auth";
 import { Card, Notice } from "./ui";
 
 const inputClass =
@@ -19,7 +19,7 @@ function safeNext(next: string | null): string {
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const setMe = useSetMe();
+  const switchUser = useSwitchUser();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const isRegister = mode === "register";
@@ -38,7 +38,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           password: form.get("password"),
         },
       });
-      setMe(user);
+      switchUser(user);
       router.push(safeNext(searchParams.get("next")));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong");
