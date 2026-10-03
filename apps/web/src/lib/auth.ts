@@ -29,12 +29,19 @@ export function useMe() {
   });
 }
 
+export function isMeQuery(queryKey: readonly unknown[]): boolean {
+  return queryKey[0] === ME_QUERY_KEY[0] && queryKey[1] === ME_QUERY_KEY[1];
+}
+
 // Call after signing in or out: drops everything cached for the previous account (its drills,
-// admin data, and who it was), then records the new one.
+// admin data), then records the new one. The "me" query itself is updated in place, not removed:
+// the nav bar lives in a layout that does not re-render on navigation, and an observer whose
+// query was removed keeps showing the old account.
 export function useSwitchUser() {
   const queryClient = useQueryClient();
   return (user: PublicUser | null) => {
-    queryClient.clear();
+    void queryClient.cancelQueries({ queryKey: ME_QUERY_KEY });
+    queryClient.removeQueries({ predicate: (query) => !isMeQuery(query.queryKey) });
     queryClient.setQueryData(ME_QUERY_KEY, user);
   };
 }

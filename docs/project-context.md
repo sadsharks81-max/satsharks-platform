@@ -73,11 +73,11 @@ Last updated: 2026-10-03.
 
 ## 3. Git state
 
-- `main` on GitHub: `d61bff3` ("file deleted", Umair) on top of `aff4a62` ("error resolved",
-  Umair) and `73b574d` (Phase 1 commit by Claude).
-- **Uncommitted locally:** the login/port fix, Admin-button/session fix, fonts and spacing, adaptive
-  mocks (engine, API, screens, settings), reference sheet, floating calculator, and this file.
-  Umair has not yet said to commit them. Ask before committing or pushing.
+- `main`: `777eba9` ("updated frontend", Umair) holds the login/port fix, Admin-button fix, fonts,
+  adaptive mocks, reference sheet and calculator. Below it: `d61bff3`, `aff4a62` (Umair) and
+  `73b574d` (Phase 1 commit by Claude).
+- **Uncommitted locally:** nav sign-in/out fix, signed-in home page buttons, and this file.
+  Ask before committing or pushing.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
 - Never commit: `.env`, `data/`, `*.har` (except `docs/references/network/bluecorn.org.har`, which
   has no tokens), `docs/purposal/`. All are in `.gitignore`.
@@ -186,6 +186,10 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   `EADDRINUSE`.
 - **Stale session in the menu (fixed):** switching accounts in another tab left the Admin button
   visible. Sign-in clears cached data; the session is re-checked on tab focus; 4xx are not retried.
+- **Never `queryClient.clear()` (or remove the `["auth","me"]` query) on sign-in/out.** The nav sits
+  in the `(site)` layout, which does not re-render on navigation; its observer stays on the removed
+  query and keeps showing the old account (Admin/Sign Out after logout, Log In/Sign Up after login).
+  `useSwitchUser` removes every *other* query and updates "me" in place.
 - **Atlas first connection can exceed 10 s** from this machine; timeout is 30 s.
 - Testing in the app needs an account. Use temporary accounts `phase1-test-*@example.com`
   (create with `create:admin` or `/api/auth/register`) and delete them afterwards. Never use or
@@ -227,3 +231,10 @@ Newest last. One entry per session or major step.
 - **2026-10-03 — Calculator.** Desmos now opens in a floating, draggable, resizable window instead
   of a new tab. Not tested in app.
 - **2026-10-03 — This file** (`docs/project-context.md`) and `CLAUDE.md` created.
+- **2026-10-03 — Nav after sign-in/out.** Nav kept showing the previous account's buttons until a
+  reload: `useSwitchUser` called `queryClient.clear()`, orphaning the nav's "me" observer. Now it
+  removes other queries and updates "me" in place (`isMeQuery` shared with `providers.tsx`). Home
+  page buttons moved to `components/home-actions.tsx`: signed-in visitors see "Go to your
+  dashboard" instead of "Create a free account / Log in". Type check only; not tested in app.
+- **2026-10-03 — Hydration warning on `<body>`** seen on a friend's browser: an extension adds a
+  `__processed_…__` attribute before React loads. Harmless, dev-only; no code change made.

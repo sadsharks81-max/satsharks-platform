@@ -3,7 +3,7 @@
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api";
-import { ME_QUERY_KEY } from "@/lib/auth";
+import { isMeQuery, ME_QUERY_KEY } from "@/lib/auth";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => {
@@ -20,8 +20,7 @@ export function Providers({ children }: { children: ReactNode }) {
         // A 401/403 means the session is not what this page thinks it is (signed out, or another
         // account signed in from a different tab). Re-read who is signed in so the menu follows.
         onError: (error, query) => {
-          const isMeQuery = query.queryKey[0] === ME_QUERY_KEY[0] && query.queryKey[1] === ME_QUERY_KEY[1];
-          if (!isMeQuery && error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          if (!isMeQuery(query.queryKey) && error instanceof ApiError && (error.status === 401 || error.status === 403)) {
             void client.invalidateQueries({ queryKey: ME_QUERY_KEY });
           }
         },
