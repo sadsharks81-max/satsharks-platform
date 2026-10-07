@@ -182,6 +182,8 @@ export const createFullTestSchema = z.object({
       math: z.array(objectIdSchema).max(100).default([]),
     })
     .default({}),
+  // An uploaded practice test to sit instead of questions drawn from the bank (paperIds ignored).
+  testUploadId: objectIdSchema.optional(),
   timed: z.boolean().default(true),
   timeMultiplier: timeMultiplierSchema,
   name: z.string().trim().max(80).default(""),
@@ -265,10 +267,47 @@ export const updateQuestionSchema = z
     passage: z.string().max(20000).nullable(),
     explanation: z.string().max(20000).nullable(),
     correctAnswer: normalizedCorrectAnswerSchema.nullable(),
+    // Multiple choice or student-produced response. Changing it needs matching choices and answer.
+    questionType: z.enum(["mcq", "spr"]),
+    // Choice texts in order. A figure drawn inside a choice is kept by its key.
+    choices: z.array(z.object({ key: z.string().trim().min(1).max(2), text: z.string().max(4000) })).max(6),
+    // Images, by URL: ones the question already has or ones uploaded through /admin/assets.
+    assets: z.array(z.object({ url: z.string().max(300), maxWidth: z.number().int().min(40).max(1200).nullable() })).max(5),
   })
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Nothing to update");
 export type UpdateQuestionInput = z.infer<typeof updateQuestionSchema>;
+
+// ---------- admin: uploaded practice tests ----------
+
+// Multipart form fields arrive as strings.
+export const testUploadMetaSchema = z.object({
+  title: z.string().trim().min(1, "Enter a title").max(120),
+  year: z.coerce.number().int("Year must be a whole number").min(2000, "Year must be 2000–2100").max(2100, "Year must be 2000–2100"),
+  testNumber: z.coerce.number().int("Test number must be a whole number").min(1, "Test number must be 1 or more").max(100000),
+});
+
+export const uploadSectionParamSchema = z.enum(SECTIONS);
+
+const uploadQuestionSchema = z.object({
+  module: z.enum(["m1", "m2_easy", "m2_hard"]),
+  questionType: z.enum(["mcq", "spr"]),
+  difficulty: z.enum(DIFFICULTIES),
+  topic: z.string().trim().max(100),
+  skill: z.string().trim().max(100).nullable(),
+  passage: z.string().max(20000).nullable(),
+  prompt: z.string().max(20000),
+  choices: z.array(z.object({ key: z.string().max(1), text: z.string().max(4000) })).max(4),
+  choiceKey: z.string().max(1).nullable(),
+  acceptedValues: z.array(z.string().trim().max(20)).max(10),
+  explanation: z.string().max(20000),
+});
+
+// The reviewed questions of one section, in order; they are renumbered per module on save.
+export const saveUploadSectionSchema = z.object({ questions: z.array(uploadQuestionSchema).min(1).max(300) });
+export type SaveUploadSectionInput = z.infer<typeof saveUploadSectionSchema>;
+
+export const testUploadActiveSchema = z.object({ active: z.boolean() });
 
 // ---------- admin: users ----------
 

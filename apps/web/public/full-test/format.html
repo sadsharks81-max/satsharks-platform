@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAT Sharks full-test PDF format</title>
+    <style>
+      :root { color: #0f172a; font-family: Arial, Helvetica, sans-serif; }
+      body { margin: 0; background: #f1f5f9; }
+      .toolbar { position: sticky; top: 0; z-index: 2; padding: 16px; background: #fff; border-bottom: 1px solid #0f172a; }
+      .inner { max-width: 960px; margin: auto; }
+      h1 { margin: 0 0 6px; font-size: 22px; }
+      h2 { font-size: 16px; margin: 18px 0 6px; }
+      p, li { font-size: 14px; line-height: 1.55; color: #334155; }
+      code { background: #eef1fb; padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+      .guide { max-width: 960px; margin: 16px auto; background: #fff; border: 1px solid #0f172a; border-radius: 16px; padding: 8px 20px 16px; box-sizing: border-box; }
+      .warning { color: #9a3412; font-weight: 700; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+      .row strong { min-width: 130px; font-size: 13px; }
+      button { border: 0; border-radius: 8px; padding: 8px 12px; background: #324dc7; color: #fff; font-weight: 700; cursor: pointer; font-size: 13px; }
+      button:hover { background: #2a40a8; }
+      button.secondary { background: #eef1fb; color: #223489; }
+      .page { width: 8.5in; max-width: calc(100% - 32px); min-height: 11in; box-sizing: border-box; margin: 16px auto 40px; padding: 0.6in; background: #fff; border: 1px solid #cbd5e1; }
+      .doc { font-family: "Courier New", Courier, monospace; font-size: 11pt; line-height: 1.35; white-space: pre-wrap; }
+      .question { break-inside: avoid; margin: 0 0 16pt; }
+      .marker { font-weight: 700; margin: 0 0 14pt; }
+      .editable { outline: 1px dashed transparent; border-radius: 2px; }
+      .editable:hover, .editable:focus { outline-color: #324dc7; background: #eef1fb; }
+      .label { font-weight: 700; }
+      table { border-collapse: collapse; font-size: 13px; }
+      td, th { border: 1px solid #cbd5e1; padding: 4px 8px; text-align: left; vertical-align: top; }
+      @page { size: Letter; margin: 0.6in; }
+      @media print {
+        body { background: #fff; }
+        .toolbar, .guide { display: none; }
+        .page { width: auto; max-width: none; min-height: auto; margin: 0; padding: 0; border: 0; }
+        .editable:hover, .editable:focus { outline: 0; background: transparent; }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="toolbar">
+      <div class="inner">
+        <h1>Full-test PDF builder</h1>
+        <p>
+          Click any value on the page to edit it, add questions to each module, then <b>Print / Save as PDF</b>.
+          <span class="warning">In the print dialog turn off "Headers and footers". Make one PDF for English and one for Math.</span>
+        </p>
+        <div class="row">
+          <strong>Start from</strong>
+          <button type="button" onclick="load('READING_WRITING')">English sample</button>
+          <button type="button" onclick="load('MATH')">Math sample</button>
+          <button type="button" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+        <div id="module-controls"></div>
+      </div>
+    </section>
+
+    <section class="guide">
+      <h2>The format</h2>
+      <ul>
+        <li><code>SECTION: READING_WRITING</code> (English) or <code>SECTION: MATH</code> once at the top.</li>
+        <li>Three modules, each between its line and <code>END MODULE</code>: <code>MODULE 1</code>, <code>MODULE 2 EASY</code>, <code>MODULE 2 HARD</code> (<code>EASIER</code> / <code>HARDER</code> also work). Students who get at least the routing threshold of Module 1 right (65%) get the hard Module 2.</li>
+        <li>Questions are numbered from <code>QUESTION 1</code> in every module, with no gaps, and end with <code>END QUESTION</code>.</li>
+        <li>Fields in this order: <code>CATEGORY</code>, <code>DIFFICULTY</code>, <code>TYPE</code> (optional), <code>PASSAGE</code> (optional), <code>PROMPT</code>, <code>A</code>–<code>D</code>, <code>ANSWER</code>, <code>EXPLANATION</code>. A value can run over several lines.</li>
+        <li>An official module has 27 English or 22 Math questions. Other sizes are allowed but are flagged, and scaled scores need official sizes.</li>
+      </ul>
+      <table>
+        <tr><th>Field</th><th>What to write</th></tr>
+        <tr><td><code>CATEGORY</code></td><td>A domain or a skill from the question bank, for this section. Math domains: Algebra, Advanced Math, Problem-Solving and Data Analysis, Geometry and Trigonometry. English: Craft and Structure, Information and Ideas, Standard English Conventions, Expression of Ideas. A skill name (e.g. Linear equations in one variable) also works. Unknown names are listed when you upload.</td></tr>
+        <tr><td><code>DIFFICULTY</code></td><td><code>EASY</code>, <code>MEDIUM</code> or <code>HARD</code></td></tr>
+        <tr><td><code>TYPE</code></td><td><code>MULTIPLE_CHOICE</code> (the default) or <code>GRID_IN</code> (Math only: the student types the answer; no A–D)</td></tr>
+        <tr><td><code>ANSWER</code></td><td><code>A</code>–<code>D</code>, or for a grid-in every accepted form separated by <code>or</code>, e.g. <code>0.5 or 1/2</code>. Students can type digits, <code>.</code>, <code>/</code> and <code>-</code> only, 5 characters (6 if negative).</td></tr>
+      </table>
+      <h2>Math formulas</h2>
+      <p>
+        Write every formula in LaTeX between dollar signs, the same way as the rest of the question bank: <code>$3x + 7 = 22$</code>, <code>$x^2$</code>,
+        <code>$\frac{3}{4}$</code>, <code>$\sqrt{2}$</code>, <code>$\pi r^2$</code>, <code>$x \le 5$</code>. A formula on its own line goes between double dollar
+        signs: <code>$$y = 2x + 1$$</code>. A dollar amount is written inside a formula as <code>$\$78$</code>. A lone <code>$</code> is rejected, and so is a
+        formula that cannot be displayed; the upload lists each one. After uploading, every question can be checked in a preview exactly as students see it,
+        and the editor has a visual equation editor.
+      </p>
+      <h2>Paragraphs and text</h2>
+      <p>
+        Lines that wrap are joined back together. To start a new paragraph (for example "Text 1" and "Text 2", or a new line in a Math question), leave a
+        blank line. Start a bullet with <code>•</code> or <code>-</code>. In English, <code>______</code> is a blank, <code>**bold**</code>, <code>*italic*</code> and
+        <code>__underline__</code> work; underlining done with the word processor is lost in a PDF, so use <code>__underline__</code>.
+      </p>
+      <h2>Graphs, tables and images</h2>
+      <p>A PDF cannot carry a figure into a question. After publishing, open the question from the test page and drag the image into the editor.</p>
+      <p class="warning">Scanned PDFs and photos do not work: the text must be selectable.</p>
+    </section>
+
+    <main class="page doc" id="pdf-content"></main>
+
+    <script>
+      const MODULES = [
+        { slot: "1", header: "MODULE 1" },
+        { slot: "2E", header: "MODULE 2 EASY" },
+        { slot: "2H", header: "MODULE 2 HARD" },
+      ];
+
+      const SAMPLES = {
+        READING_WRITING: [
+          {
+            category: "Craft and Structure",
+            difficulty: "MEDIUM",
+            passage:
+              "The following text is adapted from a 1913 novel. The narrator describes a quiet harbor town at dawn, when the fishing boats return and the market slowly comes to life.",
+            prompt: "Which choice best states the main purpose of the text?",
+            options: [
+              "To describe a setting as it changes over a short time",
+              "To argue that harbor towns are disappearing",
+              "To compare two different fishing methods",
+              "To explain why markets open early",
+            ],
+            answer: "A",
+            explanation: "The text describes the town as the morning unfolds, so choice A is correct.",
+          },
+          {
+            category: "Standard English Conventions",
+            difficulty: "EASY",
+            passage: "The committee reviewed every proposal carefully, and its final report ______ three clear recommendations.",
+            prompt: "Which choice completes the text so that it conforms to the conventions of Standard English?",
+            options: ["include", "includes", "including", "to include"],
+            answer: "B",
+            explanation: "The singular subject \"report\" needs the singular verb \"includes.\"",
+          },
+        ],
+        MATH: [
+          {
+            category: "Algebra",
+            difficulty: "MEDIUM",
+            prompt: "A gym charges a one-time fee of $\\$90$ plus $\\$24$ per month. Which expression gives the total cost, in dollars, of a membership for $n$ months?",
+            options: ["$90n + 24$", "$24n + 90$", "$114n$", "$24(n + 90)$"],
+            answer: "B",
+            explanation: "The monthly charge is $24n$ and the one-time fee of $\\$90$ is added once: $24n + 90$.",
+          },
+          {
+            category: "Advanced Math",
+            difficulty: "HARD",
+            type: "GRID_IN",
+            prompt: "What is the value of $\\frac{1}{2} + \\frac{1}{4}$?",
+            answer: "0.75 or 3/4",
+            explanation: "$\\frac{1}{2} + \\frac{1}{4} = \\frac{3}{4}$, which is $0.75$.",
+          },
+        ],
+      };
+
+      let currentSection = "MATH";
+
+      const escapeHtml = (value) => String(value).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+      const field = (label, value) => `<span class="label">${label}:</span> <span class="editable" contenteditable="true">${escapeHtml(value)}</span>`;
+
+      function questionHtml(q) {
+        const lines = [`<span class="label">QUESTION <span class="question-number">1</span></span>`, field("CATEGORY", q.category), field("DIFFICULTY", q.difficulty)];
+        if (q.type === "GRID_IN") lines.push(field("TYPE", "GRID_IN"));
+        if (q.passage) lines.push(field("PASSAGE", q.passage));
+        lines.push(field("PROMPT", q.prompt));
+        if (q.type !== "GRID_IN") ["A", "B", "C", "D"].forEach((label, i) => lines.push(field(label, q.options[i])));
+        lines.push(field("ANSWER", q.answer), field("EXPLANATION", q.explanation));
+        lines.push(`<span class="label">END QUESTION</span>`);
+        return `<div class="question" data-type="${q.type || "MULTIPLE_CHOICE"}">${lines.join("\n")}</div>`;
+      }
+
+      function renumber() {
+        document.querySelectorAll(".module-questions").forEach((module) => {
+          module.querySelectorAll(".question-number").forEach((node, index) => {
+            node.textContent = String(index + 1);
+          });
+        });
+      }
+
+      function load(section) {
+        currentSection = section;
+        const samples = SAMPLES[section];
+        const modules = MODULES.map(
+          (module) =>
+            `<div class="marker">${module.header}</div>` +
+            `<div class="module-questions" data-slot="${module.slot}">${samples.map(questionHtml).join("")}</div>` +
+            `<div class="marker">END MODULE</div>`,
+        ).join("");
+        document.getElementById("pdf-content").innerHTML = `<div class="marker"><span class="label">SECTION:</span> ${section}</div>` + modules;
+        document.getElementById("module-controls").innerHTML = MODULES.map(
+          (module) =>
+            `<div class="row"><strong>${module.header}</strong>` +
+            `<button type="button" onclick="addQuestion('${module.slot}', 'MULTIPLE_CHOICE')">Add question</button>` +
+            (section === "MATH" ? `<button type="button" class="secondary" onclick="addQuestion('${module.slot}', 'GRID_IN')">Add grid-in</button>` : "") +
+            `<button type="button" class="secondary" onclick="removeQuestion('${module.slot}')">Remove last</button></div>`,
+        ).join("");
+        renumber();
+      }
+
+      function addQuestion(slot, type) {
+        const sample = SAMPLES[currentSection].find((q) => (q.type || "MULTIPLE_CHOICE") === type) || SAMPLES[currentSection][0];
+        const container = document.querySelector(`.module-questions[data-slot="${slot}"]`);
+        container.insertAdjacentHTML("beforeend", questionHtml(sample));
+        renumber();
+        container.lastElementChild.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      function removeQuestion(slot) {
+        const blocks = document.querySelectorAll(`.module-questions[data-slot="${slot}"] .question`);
+        if (blocks.length > 1) blocks[blocks.length - 1].remove();
+        renumber();
+      }
+
+      load(new URLSearchParams(location.search).get("section") === "english" ? "READING_WRITING" : "MATH");
+    </script>
+  </body>
+</html>

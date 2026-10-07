@@ -16,6 +16,7 @@ import {
   getResult,
   listAttempts,
   listFullTests,
+  listPracticeTests,
   reportQuestion,
   saveAnswer,
   submitModule,
@@ -33,6 +34,7 @@ practiceRouter.get("/catalog", getCatalog);
 practiceRouter.get("/attempts", listAttempts);
 practiceRouter.post("/attempts", validateBody(createAttemptSchema), createAttempt);
 practiceRouter.post("/mocks", validateBody(createMockSchema), createMock);
+practiceRouter.get("/tests", listPracticeTests);
 practiceRouter.get("/full-tests", listFullTests);
 practiceRouter.post("/full-tests", validateBody(createFullTestSchema), createFullTest);
 practiceRouter.get("/full-tests/:id", getFullTest);

@@ -14,7 +14,8 @@ function renderMath(source: string, display: boolean, key: number): ReactNode {
 }
 
 const MARKUP = /(\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\s][^*\n]*?\*|_{3,})/;
-const MARKUP_WITH_MATH = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\s][^*\n]*?\*|_{3,})/;
+// Inside $…$ an escaped character (e.g. \$ for a dollar sign, as in $\$78$) never ends the formula.
+const MARKUP_WITH_MATH = /(\$\$[\s\S]+?\$\$|\$(?:\\.|[^$\\\n])+?\$|\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\s][^*\n]*?\*|_{3,})/;
 
 function renderInline(text: string, math: boolean): ReactNode[] {
   return text.split(math ? MARKUP_WITH_MATH : MARKUP).map((part, index) => {

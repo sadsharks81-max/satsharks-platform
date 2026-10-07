@@ -135,6 +135,8 @@ export const MOCK_MODULE_LABELS: Record<MockModule, string> = {
   m2_hard: "Module 2 (harder)",
 };
 
+export const MOCK_MODULES: readonly MockModule[] = ["m1", "m2_easy", "m2_hard"];
+
 // Size and time of each module of an adaptive mock, per section (the Digital SAT format).
 export const MOCK_FORMAT: Record<"math" | "reading_writing", { questionsPerModule: number; minutesPerModule: number }> = {
   math: { questionsPerModule: 22, minutesPerModule: 35 },
@@ -424,6 +426,190 @@ export interface FullTestSummary {
   completedAt: string | null;
 }
 
+// ---------- uploaded practice tests (a fixed adaptive test from two PDFs) ----------
+
+// Papers made from an uploaded test, and their questions, carry this source.
+export const TEST_UPLOAD_SOURCE = "pdf-upload";
+
+// Every question of an uploaded test carries this tag and the per-test one. Tagged questions belong
+// to their test only: drills, random mocks and the practice catalog never draw from them.
+export const FULL_TEST_QUESTION_TAG = "full-test";
+export const fullTestQuestionTag = (uploadId: string) => `${FULL_TEST_QUESTION_TAG}:${uploadId}`;
+
+export const UPLOAD_SECTION_STATUSES = ["extracted", "reviewed", "failed"] as const;
+export type UploadSectionStatus = (typeof UPLOAD_SECTION_STATUSES)[number];
+
+// One question as read from the PDF and edited in review, before it is published.
+export interface UploadQuestion {
+  module: MockModule;
+  questionNumber: number;
+  questionType: "mcq" | "spr";
+  difficulty: Difficulty;
+  // Domain, and optionally the skill, from the question bank's own vocabulary.
+  topic: string;
+  skill: string | null;
+  passage: string | null;
+  prompt: string;
+  // A–D for multiple choice; empty for a student-produced response.
+  choices: { key: string; text: string }[];
+  choiceKey: string | null;
+  acceptedValues: string[];
+  explanation: string;
+}
+
+export interface TestUploadSection {
+  fileName: string;
+  fileSize: number;
+  status: UploadSectionStatus;
+  errorMessage: string;
+  warnings: string[];
+  uploadedAt: string;
+  reviewedAt: string | null;
+  moduleCounts: Record<MockModule, number>;
+  questionCount: number;
+  // Only on the single-upload response.
+  questions?: UploadQuestion[];
+}
+
+export interface TestUploadSummary {
+  id: string;
+  title: string;
+  year: number;
+  testNumber: number;
+  status: "draft" | "published";
+  // Published tests only: students can see and start it.
+  active: boolean;
+  readingWriting: TestUploadSection | null;
+  math: TestUploadSection | null;
+  // The two papers created on publish.
+  paperIds: Partial<Record<Section, string>>;
+  publishedAt: string | null;
+  uploadedBy: string | null;
+  createdAt: string;
+}
+
+// What a student sees of an active uploaded test.
+export interface PracticeTestListing {
+  id: string;
+  title: string;
+  year: number;
+  testNumber: number;
+  moduleCounts: Record<Section, Record<MockModule, number>>;
+}
+
+const MAX_SPR_LENGTH = 5;
+const SPR_VALUE = /^-?(\d+\.?\d*|\.\d+)(\/\d+)?$/;
+
+// Splits a written grid-in answer ("0.5 or 1/2", "3.5, 7/2") into its accepted forms.
+export function splitAcceptedValues(answer: string): string[] {
+  return answer
+    .split(/\s+or\s+|\s*;\s*|,\s+/i)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+// A student-produced response must be something the answer box lets a student type: digits, one
+// decimal point or fraction bar, an optional minus, 5 characters (6 when negative).
+export function sprValueProblem(value: string): string | null {
+  if (!SPR_VALUE.test(value)) return `"${value}" cannot be typed in the answer box (digits, ".", "/" and "-" only)`;
+  if (value.length > MAX_SPR_LENGTH + (value.startsWith("-") ? 1 : 0)) return `"${value}" is longer than the answer box allows`;
+  return null;
+}
+
+// The "$…$" pieces of Math text, and whether every "$" is paired. "\$" is a literal dollar sign.
+export function latexSegments(text: string): { segments: string[]; balanced: boolean; outside: string } {
+  const segments: string[] = [];
+  let outside = "";
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index]!;
+    if (char === "\\" && index + 1 < text.length) {
+      outside += text.slice(index, index + 2);
+      index += 2;
+      continue;
+    }
+    if (char !== "$") {
+      outside += char;
+      index += 1;
+      continue;
+    }
+    const display = text[index + 1] === "$";
+    const open = display ? 2 : 1;
+    let end = index + open;
+    while (end < text.length) {
+      if (text[end] === "\\") end += 2;
+      else if (text[end] === "$" && (!display || text[end + 1] === "$")) break;
+      else end += 1;
+    }
+    if (end >= text.length) return { segments, balanced: false, outside };
+    segments.push(text.slice(index + open, end));
+    index = end + open;
+  }
+  return { segments, balanced: true, outside };
+}
+
+// Checks one question against the upload rules. Shared by the PDF import, the review save, the
+// publish step and the review screen, so all four agree. `checkLatex` returns KaTeX's message for
+// a formula it cannot render, or null.
+export function uploadQuestionProblems(
+  question: UploadQuestion,
+  section: Section,
+  topics: CatalogTopic[],
+  checkLatex?: (latex: string) => string | null,
+): string[] {
+  const problems: string[] = [];
+  if (!question.prompt.trim()) problems.push("PROMPT is required");
+  if (!question.explanation.trim()) problems.push("EXPLANATION is required");
+  if (!DIFFICULTIES.includes(question.difficulty)) problems.push("DIFFICULTY must be EASY, MEDIUM or HARD");
+
+  const topic = topics.find((entry) => entry.topic === question.topic);
+  if (!topic) problems.push(`"${question.topic}" is not a ${SECTION_LABELS[section]} domain in the question bank`);
+  else if (question.skill && !topic.skills.includes(question.skill)) problems.push(`"${question.skill}" is not a skill of ${topic.topic}`);
+
+  if (question.questionType === "spr") {
+    if (section !== "math") problems.push("GRID_IN is only allowed in Math");
+    if (question.choices.some((choice) => choice.text.trim())) problems.push("a GRID_IN question has no A–D choices");
+    if (question.acceptedValues.length === 0) problems.push("ANSWER is required");
+    for (const value of question.acceptedValues) {
+      const problem = sprValueProblem(value);
+      if (problem) problems.push(problem);
+    }
+  } else {
+    const keys = question.choices.map((choice) => choice.key).join("");
+    if (keys !== "ABCD" || question.choices.some((choice) => !choice.text.trim())) {
+      problems.push("choices A, B, C and D are all required (use TYPE: GRID_IN for a fill-in question)");
+    }
+    if (!question.choiceKey || !"ABCD".includes(question.choiceKey) || question.choiceKey.length !== 1) problems.push("ANSWER must be A, B, C or D");
+  }
+
+  if (section === "math") {
+    const fields: [string, string | null][] = [
+      ["PROMPT", question.prompt],
+      ["PASSAGE", question.passage],
+      ["EXPLANATION", question.explanation],
+      ...question.choices.map((choice): [string, string] => [`choice ${choice.key}`, choice.text]),
+    ];
+    for (const [name, text] of fields) {
+      if (!text) continue;
+      const { segments, balanced } = latexSegments(text);
+      if (!balanced) {
+        problems.push(`${name} has a "$" with no closing "$" (write a dollar sign as \\$ inside $…$, e.g. $\\$78$)`);
+        continue;
+      }
+      for (const latex of segments) {
+        const error = checkLatex?.(latex);
+        if (error) problems.push(`${name}: the formula $${latex}$ cannot be displayed (${error})`);
+      }
+    }
+  }
+  return problems;
+}
+
+// Math that was probably meant as a formula but is not inside $…$.
+export function looseMathWarning(text: string): boolean {
+  return /\^|\\(frac|sqrt|pi|times|le|ge|neq)\b/.test(latexSegments(text).outside);
+}
+
 // ---------- problem reports ----------
 
 export const REPORT_REASONS = ["wrong_answer", "typo", "display", "explanation", "other"] as const;
@@ -470,8 +656,11 @@ export interface AdminQuestion {
   id: string;
   paperId: string;
   paperTitle: string | null;
+  // Set when the question belongs to an uploaded practice test.
+  testUploadId: string | null;
   sourceQuestionId: string;
   section: Section;
+  moduleType: ModuleType;
   questionNumber: number;
   questionType: QuestionType;
   difficulty: Difficulty | null;

@@ -17,6 +17,7 @@ import { adminService } from "../services/admin.service";
 import { reportService } from "../services/report.service";
 import { userAdminService } from "../services/user-admin.service";
 import { settingsService } from "../services/settings.service";
+import { AppError } from "../utils/app-error";
 import { sendOk } from "../utils/respond";
 
 export async function getStats(_req: Request, res: Response): Promise<void> {
@@ -49,6 +50,11 @@ export async function getQuestion(req: Request, res: Response): Promise<void> {
 export async function updateQuestion(req: Request, res: Response): Promise<void> {
   const id = objectIdSchema.parse(req.params.id);
   sendOk(res, { question: await adminService.updateQuestion(id, req.body as UpdateQuestionInput) });
+}
+
+export async function uploadImage(req: Request, res: Response): Promise<void> {
+  if (!req.file) throw AppError.badRequest("Choose an image");
+  sendOk(res, await adminService.uploadImage(req.file), 201);
 }
 
 export async function getAdaptiveSettings(_req: Request, res: Response): Promise<void> {

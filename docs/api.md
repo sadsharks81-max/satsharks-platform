@@ -223,7 +223,8 @@ In addition to the two paper routes above:
 | `GET /api/admin/questions` | `questions:read` | Filterable, paginated list (below) |
 | `GET /api/admin/questions/facets` | `questions:read` | Topics and skills present, per section |
 | `GET /api/admin/questions/:id` | `questions:read` | One question with its answer key |
-| `PATCH /api/admin/questions/:id` | `questions:write` | Edit difficulty, topic, skill, prompt, passage, explanation, correct answer |
+| `PATCH /api/admin/questions/:id` | `questions:write` | Edit difficulty, topic, skill, prompt, passage, explanation, correct answer, `questionType` (`mcq`/`spr`, needs a matching answer), `choices` (`{ key, text }[]`; a choice figure is kept by key), `assets` (`{ url, maxWidth }[]`: existing images or ones from `POST /api/admin/assets`) |
+| `POST /api/admin/assets` | `questions:write` | Multipart field `image`: PNG, JPEG or WebP (checked from the bytes), up to 2 MB. Returns `{ url }` (`/api/assets/<key>`), attached on the next question save |
 | `DELETE /api/admin/questions/:id` | `questions:write` | Deletes it and corrects the paper's counts |
 
 `GET /api/admin/papers/:id` now returns the first 50 questions as a preview.
@@ -232,6 +233,29 @@ In addition to the two paper routes above:
 `difficulty` (`easy` / `medium` / `hard` / `none`), `status`, `paperId`, `search`
 (text in the question or passage, or an exact source ID), `page`, `pageSize` (max 100).
 Returns `{ questions, total, page, pageSize }`.
+
+Papers of uploaded practice tests (`source: "pdf-upload"`) are not listed by `GET /api/admin/papers`
+and are skipped by the bulk status route; `PATCH /api/admin/papers/:id/status` on one answers 400.
+
+## Admin: uploaded practice tests
+
+Details in `docs/full-test-upload.md`. Read routes need `papers:read`, the rest `papers:write`.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/admin/test-uploads` | `{ uploads }`: summaries with per-module counts (no question bodies) |
+| `POST /api/admin/test-uploads` | Multipart: `title`, `year`, `testNumber`, files `readingWriting` and/or `math` (PDF, ≤ 20 MB). Each PDF is read during the request; a broken one is stored as `failed` with its reasons. `409` for a used year + number. `201 { upload }` |
+| `GET /api/admin/test-uploads/:id` | `{ upload (with questions), topics }`; `topics` = the bank's domains and skills per section |
+| `PATCH /api/admin/test-uploads/:id` | Body `{ title, year, testNumber }` |
+| `POST /api/admin/test-uploads/:id/sections/:section/file` | Multipart `file`: replace one section (`reading_writing` / `math`). `409` once published |
+| `PUT /api/admin/test-uploads/:id/sections/:section` | Body `{ questions: UploadQuestion[] }` in order (renumbered per module). Validated like the PDF; marks the section `reviewed`. Up to 2 MB |
+| `POST /api/admin/test-uploads/:id/publish` | Both sections reviewed; creates two hidden papers and their tagged questions. `409` if already published |
+| `POST /api/admin/test-uploads/:id/active` | Body `{ active }`. Activating needs all six modules non-empty and every question answered |
+| `DELETE /api/admin/test-uploads/:id` | Drafts only (`409` for a published test) |
+
+Students: `GET /api/practice/tests` lists active uploaded tests (`{ tests: PracticeTestListing[] }`);
+`POST /api/practice/full-tests` with `testUploadId` starts a sitting of one (`paperIds` ignored). The
+catalog, drills and random mocks never include their questions (tag `full-test`).
 
 ## Assets
 

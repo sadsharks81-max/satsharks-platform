@@ -1,0 +1,440 @@
+diff --git a/backend/src/controllers/practice.controller.ts b/backend/src/controllers/practice.controller.ts
+index fdb978b..b3fe7c1 100644
+--- a/backend/src/controllers/practice.controller.ts
++++ b/backend/src/controllers/practice.controller.ts
+@@ -9,6 +9,7 @@ import SATTestAttempt from "../models/SATTestAttempt";
+ import QuestionCategory from "../models/QuestionCategory";
+ import { stripEmojis } from "../utils/text";
+ import { sendError } from "../utils/http";
++import { FULL_TEST_QUESTION_TAG } from "../utils/question-tags";
+ 
+ const CUSTOM_TEST_CATEGORY_NAMES = {
+   MATH: ["SAT Advanced Math", "SAT Algebra", "SAT Data & Statistics", "SAT Geometry"],
+@@ -148,7 +149,12 @@ export const createCustomTest = async (req: AuthRequest, res: Response) => {
+       return res.status(400).json({ success: false, error: "Select at least one approved custom-test category." });
+     }
+ 
+-    const matchCriteria: any = { section: subject, category: { $in: selectedCategoryIds } };
++    const matchCriteria: any = {
++      section: subject,
++      category: { $in: selectedCategoryIds },
++      // Questions uploaded as part of a full test belong to that exam only.
++      tags: { $ne: FULL_TEST_QUESTION_TAG },
++    };
+     if (difficulties && difficulties.length > 0) {
+       matchCriteria.difficulty = { $in: difficulties };
+     }
+diff --git a/backend/src/controllers/question.controller.ts b/backend/src/controllers/question.controller.ts
+index fe41a06..2fd4b93 100644
+--- a/backend/src/controllers/question.controller.ts
++++ b/backend/src/controllers/question.controller.ts
+@@ -7,11 +7,16 @@ import { AuthRequest } from "../middleware/auth.middleware";
+ import { stripEmojis } from "../utils/text";
+ import { deleteManagedImage, deleteReplacedManagedImage } from "../utils/managed-image";
+ import { sendError } from "../utils/http";
++import { FULL_TEST_QUESTION_TAG } from "../utils/question-tags";
+ import { asEnumValue, asObjectId, buildSearchFilter, getPagination } from "../utils/query";
+ 
+ const DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
+ const SECTIONS = ["READING_WRITING", "MATH"] as const;
+ const STATUSES = ["UPLOADED", "REVIEW", "PUBLISHED", "UPDATED"] as const;
++// Statuses a student may see. "UPDATED" is not a draft state: it is set on a
++// published question whenever an admin attaches or changes its image (graph),
++// so excluding it hid every graph question from practice.
++const LIVE_STATUSES = ["PUBLISHED", "UPDATED"] as const;
+ 
+ /**
+  * Builds a Question filter from untrusted query params.
+@@ -55,7 +60,9 @@ export const getQuestions = async (req: Request, res: Response) => {
+     // This route is reachable by any authenticated student, so the status filter
+     // is fixed rather than caller-controlled: allowing `?status=` here exposed
+     // draft and under-review questions.
+-    filter.status = "PUBLISHED";
++    filter.status = { $in: LIVE_STATUSES };
++    // Questions uploaded as part of a full test belong to that exam only.
++    filter.tags = { $ne: FULL_TEST_QUESTION_TAG };
+ 
+     // Practice sessions load every question matching the selected filters, so
+     // allow larger pages than the default cap to keep the client's request count
+diff --git a/backend/src/controllers/sat.controller.ts b/backend/src/controllers/sat.controller.ts
+index 4d84f77..b737ef3 100644
+--- a/backend/src/controllers/sat.controller.ts
++++ b/backend/src/controllers/sat.controller.ts
+@@ -7,6 +7,7 @@ import { AuthRequest } from "../middleware/auth.middleware";
+ import { checkAnswerCorrectness } from "../utils/grading";
+ import { sendError } from "../utils/http";
+ import { stripEmojis } from "../utils/text";
++import { FULL_TEST_QUESTION_TAG, fullTestQuestionTag } from "../utils/question-tags";
+ 
+ // --- Student: list available SAT tests ---
+ export const getSATTests = async (req: AuthRequest, res: Response) => {
+@@ -493,13 +494,14 @@ export const getMySATAttempts = async (req: AuthRequest, res: Response) => {
+ // --- Admin: list all SAT tests ---
+ export const getAllSATTestsAdmin = async (req: Request, res: Response) => {
+   try {
++    // The list shows only test details and module counts, so questions stay as
++    // ids here. Populating them shipped every question and inline graph image of
++    // every test (~19 MB, 12-18 s), which could run past the client's 30 s
++    // timeout and leave the page without its tests. The Questions dialog loads a
++    // single test in full from getSATTestAdminById.
+     const tests = await SATTest.find({
+       $or: [{ year: { $ne: 9999 } }, { year: { $exists: false } }],
+     })
+-      .populate({
+-        path: "modules.questions",
+-        select: "text options correctAnswer explanation difficulty category imageUrl",
+-      })
+       .sort({ year: -1, testNumber: 1 })
+       .lean();
+ 
+@@ -541,6 +543,23 @@ export const updateSATTestAdmin = async (req: Request, res: Response) => {
+     if (rwScoreMapping !== undefined) update.rwScoreMapping = rwScoreMapping;
+     if (mathScoreMapping !== undefined) update.mathScoreMapping = mathScoreMapping;
+ 
++    // Students must never be routed into an empty module, so a test can only be
++    // activated once every module (all six for an adaptive test) has questions.
++    if (isActive === true) {
++      const existing = await SATTest.findById(req.params.id).select("isAdaptive modules.name modules.questions").lean();
++      if (!existing) return res.status(404).json({ success: false, error: "Test not found" });
++      const emptyModules = existing.modules.filter((module) => !module.questions?.length).map((module) => module.name);
++      if (existing.isAdaptive && existing.modules.length !== 6) {
++        return res.status(400).json({ success: false, error: "An adaptive test needs exactly six modules before it can be activated." });
++      }
++      if (existing.modules.length === 0 || emptyModules.length > 0) {
++        return res.status(400).json({
++          success: false,
++          error: `Add questions to every module before activating. Empty: ${emptyModules.join(", ") || "all modules"}.`,
++        });
++      }
++    }
++
+     const test = await SATTest.findByIdAndUpdate(req.params.id, update, { new: true });
+     if (!test) return res.status(404).json({ success: false, error: "Test not found" });
+     res.status(200).json({ success: true, test });
+@@ -574,6 +593,12 @@ export const addQuestionToTestModule = async (req: AuthRequest, res: Response) =
+       return res.status(400).json({ success: false, error: "Invalid module index" });
+     }
+ 
++    // A question added to an uploaded full test belongs to that exam like its
++    // siblings, so it inherits their tags and stays out of practice pools.
++    const testTag = fullTestQuestionTag(String(test._id));
++    const isUploadedFullTest = Boolean(await Question.exists({ tags: testTag }));
++    const questionTags: string[] = Array.isArray(tags) ? tags : [];
++
+     const question = await Question.create({
+       text,
+       options,
+@@ -582,7 +607,9 @@ export const addQuestionToTestModule = async (req: AuthRequest, res: Response) =
+       category,
+       difficulty,
+       section,
+-      tags: tags || [],
++      tags: isUploadedFullTest
++        ? [...new Set([...questionTags, FULL_TEST_QUESTION_TAG, testTag])]
++        : questionTags,
+       imageUrl: imageUrl || null,
+       source: "MANUAL",
+       status: imageUrl ? "UPDATED" : "PUBLISHED",
+diff --git a/backend/src/middleware/upload.middleware.ts b/backend/src/middleware/upload.middleware.ts
+index 9cf9c4f..5939d33 100644
+--- a/backend/src/middleware/upload.middleware.ts
++++ b/backend/src/middleware/upload.middleware.ts
+@@ -64,6 +64,17 @@ const pdfUpload = (prefix: string) =>
+   });
+ 
+ export const practiceTestUpload = pdfUpload("");
++
++/**
++ * Full-test section PDFs are parsed inside the upload request and only the
++ * extracted questions are stored, so the file never needs to reach the disk.
++ * Up to two files: the Reading & Writing PDF and the Math PDF.
++ */
++export const fullTestPdfUpload = multer({
++  storage: multer.memoryStorage(),
++  fileFilter: pdfFileFilter,
++  limits: { fileSize: PDF_SIZE_LIMIT, files: 2 },
++});
+ // Study materials are persisted to MongoDB GridFS by the controller. Keeping
+ // the bytes in memory avoids writing a temporary file to Railway's ephemeral
+ // filesystem, where it would disappear on restart or deploy.
+diff --git a/backend/src/routes/upload.routes.ts b/backend/src/routes/upload.routes.ts
+index 8a52508..edf6cb7 100644
+--- a/backend/src/routes/upload.routes.ts
++++ b/backend/src/routes/upload.routes.ts
+@@ -3,12 +3,47 @@ import { uploadPracticeTest, uploadPracticeQuestions, getUploads, getUpload, tri
+ import { authenticate } from "../middleware/auth.middleware";
+ import { requireAdmin } from "../middleware/role.middleware";
+ import {
++  createFullTestUpload,
++  deleteFullTestUpload,
++  getFullTestUpload,
++  listFullTestUploads,
++  publishFullTestUpload,
++  replaceFullTestSection,
++  saveFullTestSectionReview,
++} from "../controllers/full-test-upload.controller";
++import {
++  fullTestPdfUpload,
+   memoryImageUpload as imageUpload,
+   practiceTestUpload as upload,
+ } from "../middleware/upload.middleware";
+ 
+ const router = Router();
+ 
++// Full adaptive tests (English + Math PDFs). Registered before "/:id" so the
++// literal "full-tests" segment is never read as an upload id.
++router.get("/full-tests", authenticate, requireAdmin(), listFullTestUploads);
++router.post(
++  "/full-tests",
++  authenticate,
++  requireAdmin(),
++  fullTestPdfUpload.fields([
++    { name: "readingWriting", maxCount: 1 },
++    { name: "math", maxCount: 1 },
++  ]),
++  createFullTestUpload,
++);
++router.get("/full-tests/:id", authenticate, requireAdmin(), getFullTestUpload);
++router.post(
++  "/full-tests/:id/sections/:section/file",
++  authenticate,
++  requireAdmin(),
++  fullTestPdfUpload.single("file"),
++  replaceFullTestSection,
++);
++router.put("/full-tests/:id/sections/:section", authenticate, requireAdmin(), saveFullTestSectionReview);
++router.post("/full-tests/:id/publish", authenticate, requireAdmin(), publishFullTestUpload);
++router.delete("/full-tests/:id", authenticate, requireAdmin(), deleteFullTestUpload);
++
+ router.get("/", authenticate, requireAdmin(), getUploads);
+ router.get("/:id", authenticate, requireAdmin(), getUpload);
+ router.post("/practice-test", authenticate, requireAdmin(), upload.single("file"), uploadPracticeTest);
+diff --git a/frontend/src/routes/admin/tests.tsx b/frontend/src/routes/admin/tests.tsx
+index 290e99b..6c3753b 100644
+--- a/frontend/src/routes/admin/tests.tsx
++++ b/frontend/src/routes/admin/tests.tsx
+@@ -76,6 +76,9 @@ function AdminTests() {
+   // Questions manager modal
+   const [questionsModalOpen, setQuestionsModalOpen] = useState(false);
+   const [activeTestForQuestions, setActiveTestForQuestions] = useState<any | null>(null);
++  // The test list carries only question ids, so the dialog waits for the full test.
++  const [questionsLoading, setQuestionsLoading] = useState(false);
++  const [questionsLoadError, setQuestionsLoadError] = useState("");
+   const [selectedModuleIndex, setSelectedModuleIndex] = useState(0);
+   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+   const [questionType, setQuestionType] = useState<"MCQ" | "SPR">("MCQ");
+@@ -229,16 +232,17 @@ function AdminTests() {
+     setEditingQuestionId(null);
+     setQuestionError("");
+     setIsAddingQuestion(false);
++    setQuestionsLoadError("");
++    setQuestionsLoading(true);
+     setQuestionsModalOpen(true);
+ 
+-    try {
+-      const res = await api.get(`/api/sat/admin/${test._id}`);
+-      if (res.success && res.test) {
+-        setActiveTestForQuestions(res.test);
+-      }
+-    } catch (e) {
+-      console.error("Failed to fetch fresh test details:", e);
++    const res = await api.get(`/api/sat/admin/${test._id}`);
++    if (res.success && res.test) {
++      setActiveTestForQuestions(res.test);
++    } else {
++      setQuestionsLoadError(res.error || "Could not load this test's questions.");
+     }
++    setQuestionsLoading(false);
+   };
+ 
+   const startAddQuestion = () => {
+@@ -592,7 +596,13 @@ function AdminTests() {
+ 
+       {/* Manage Test Questions Modal */}
+       <Modal open={questionsModalOpen} onClose={() => setQuestionsModalOpen(false)} title={`Manage Test Questions , ${activeTestForQuestions?.title}`} icon="list_alt" maxWidth="max-w-5xl">
+-        {activeTestForQuestions && (
++        {questionsLoading && (
++          <div className="py-12 text-center text-sm text-on-surface-variant">Loading questions...</div>
++        )}
++        {!questionsLoading && questionsLoadError && (
++          <div className="rounded-xl border border-error/25 bg-error/10 p-4 text-sm text-error">{questionsLoadError}</div>
++        )}
++        {!questionsLoading && !questionsLoadError && activeTestForQuestions && (
+           <div className="flex flex-col md:flex-row gap-6 max-h-[70vh]">
+             {/* Left side: Module Selector */}
+             <div className="w-full md:w-1/4 border-r border-outline-variant/30 pr-4 space-y-2 overflow-y-auto">
+diff --git a/frontend/src/routes/admin/uploads.tsx b/frontend/src/routes/admin/uploads.tsx
+index 3f410f1..0603f0f 100644
+--- a/frontend/src/routes/admin/uploads.tsx
++++ b/frontend/src/routes/admin/uploads.tsx
+@@ -8,6 +8,7 @@ import { Input } from "../../components/ui/Input";
+ import { EmptyState } from "../../components/ui/EmptyState";
+ import { api, getBackendUrl } from "../../services/api";
+ import type { PracticeTestUpload } from "../../types";
++import { FullTestUploads } from "../../components/admin/FullTestUploads";
+ 
+ export const Route = createFileRoute("/admin/uploads")({
+   component: AdminUploads,
+@@ -24,6 +25,7 @@ function AdminUploads() {
+   const [pageError, setPageError] = useState("");
+   const [extractingId, setExtractingId] = useState<string | null>(null);
+   const [activeType, setActiveType] = useState<"FULL_TEST" | "PRACTICE_QUESTIONS">("FULL_TEST");
++  const [fullTestModalOpen, setFullTestModalOpen] = useState(false);
+ 
+   const fetchUploads = async () => {
+     const res = await api.get("/api/uploads");
+@@ -50,8 +52,7 @@ function AdminUploads() {
+ 
+     try {
+       const token = localStorage.getItem("accessToken");
+-      const endpoint = activeType === "FULL_TEST" ? "practice-test" : "practice-questions";
+-      const res = await fetch(`${getBackendUrl()}/api/uploads/${endpoint}`, {
++      const res = await fetch(`${getBackendUrl()}/api/uploads/practice-questions`, {
+         method: "POST",
+         headers: token ? { Authorization: `Bearer ${token}` } : {},
+         body: formData,
+@@ -115,6 +116,10 @@ function AdminUploads() {
+         </div>
+         <button
+           onClick={() => {
++            if (activeType === "FULL_TEST") {
++              setFullTestModalOpen(true);
++              return;
++            }
+             setModalOpen(true);
+             setError("");
+           }}
+@@ -193,7 +198,11 @@ END QUESTION`}</pre>
+         </div>
+       )}
+ 
+-      {pageError && (
++      {activeType === "FULL_TEST" && (
++        <FullTestUploads uploadOpen={fullTestModalOpen} onUploadClose={() => setFullTestModalOpen(false)} />
++      )}
++
++      {activeType === "PRACTICE_QUESTIONS" && pageError && (
+         <div className="mb-6 whitespace-pre-line rounded-xl border border-error/25 bg-error/10 p-4 text-sm text-error">
+           <div className="flex items-start gap-2">
+             <Icon name="error" className="mt-0.5 shrink-0" />
+@@ -202,17 +211,13 @@ END QUESTION`}</pre>
+         </div>
+       )}
+ 
+-      {loading ? (
++      {activeType !== "PRACTICE_QUESTIONS" ? null : loading ? (
+         <div className="text-center py-12 text-on-surface-variant">Loading...</div>
+       ) : uploads.filter((item) => (item.uploadType || "FULL_TEST") === activeType).length === 0 ? (
+         <EmptyState
+           icon="upload_file"
+           title="No uploads yet"
+-          description={
+-            activeType === "FULL_TEST"
+-              ? "Upload a full practice-test PDF to get started"
+-              : "Upload a correctly formatted practice-question PDF to get started"
+-          }
++          description="Upload a correctly formatted practice-question PDF to get started"
+         />
+       ) : (
+         <div className="rounded-xl bg-surface-container-lowest border border-outline-variant/40 overflow-hidden shark-shadow">
+@@ -287,9 +292,7 @@ END QUESTION`}</pre>
+       <Modal
+         open={modalOpen}
+         onClose={() => setModalOpen(false)}
+-        title={
+-          activeType === "FULL_TEST" ? "Upload Full Practice Test" : "Import Practice Questions"
+-        }
++        title="Import Practice Questions"
+         icon="upload_file"
+       >
+         {error && (
+@@ -324,21 +327,19 @@ END QUESTION`}</pre>
+               />
+             </div>
+           </div>
+-          {activeType === "PRACTICE_QUESTIONS" && (
+-            <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs leading-5 text-on-surface-variant">
+-              Before uploading, confirm the PDF uses the required field order and selectable text.
+-              Need a clean starting file?{" "}
+-              <a
+-                href="/practice-question-import-template.html"
+-                target="_blank"
+-                rel="noreferrer"
+-                className="font-semibold text-primary underline"
+-              >
+-                Open the printable template
+-              </a>
+-              .
+-            </div>
+-          )}
++          <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs leading-5 text-on-surface-variant">
++            Before uploading, confirm the PDF uses the required field order and selectable text.
++            Need a clean starting file?{" "}
++            <a
++              href="/practice-question-import-template.html"
++              target="_blank"
++              rel="noreferrer"
++              className="font-semibold text-primary underline"
++            >
++              Open the printable template
++            </a>
++            .
++          </div>
+           <div className="flex gap-4 pt-4 border-t border-outline-variant/30">
+             <button
+               type="button"
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 9e44090..f1e240e 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -138,6 +138,50 @@ export interface PracticeTestUpload {
+   createdAt: string;
+ }
+ 
++export type FullTestSection = "READING_WRITING" | "MATH";
++export type FullTestModuleSlot = "MODULE_1" | "MODULE_2_EASY" | "MODULE_2_HARD";
++
++export interface FullTestUploadQuestion {
++  moduleSlot: FullTestModuleSlot;
++  questionNumber: number;
++  questionType: "MULTIPLE_CHOICE" | "GRID_IN";
++  text: string;
++  options: QuestionOption[];
++  correctAnswer: string;
++  explanation: string;
++  category: string;
++  difficulty: string;
++}
++
++export interface FullTestUploadSection {
++  fileName: string;
++  fileSize: number;
++  status: "EXTRACTED" | "REVIEWED" | "FAILED";
++  errorMessage: string;
++  warnings: string[];
++  uploadedAt: string;
++  reviewedAt: string | null;
++  /** Present on the single-upload response. */
++  questions?: FullTestUploadQuestion[];
++  /** Present on the list response, which omits question bodies. */
++  questionCount?: number;
++  moduleCounts?: Record<FullTestModuleSlot, number>;
++}
++
++export interface FullTestUpload {
++  _id: string;
++  title: string;
++  year: number;
++  testNumber: number;
++  status: "DRAFT" | "PUBLISHED";
++  readingWriting: FullTestUploadSection | null;
++  math: FullTestUploadSection | null;
++  publishedTest: string | null;
++  publishedAt: string | null;
++  uploadedBy: { name: string; email: string } | string;
++  createdAt: string;
++}
++
+ export interface Pagination {
+   page: number;
+   limit: number;

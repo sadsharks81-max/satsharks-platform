@@ -23,6 +23,9 @@ function toAppError(error: unknown): AppError {
     if (candidate.type === "entity.parse.failed") return AppError.badRequest("Request body is not valid JSON");
     if (candidate.type === "entity.too.large") return new AppError(413, "payload_too_large", "Request body is too large");
     if (candidate.name === "CastError") return AppError.badRequest("Invalid identifier");
+    if (candidate.name === "MulterError") {
+      return candidate.code === "LIMIT_FILE_SIZE" ? new AppError(413, "payload_too_large", "That file is too large") : AppError.badRequest("Unexpected file in the upload");
+    }
   }
   return new AppError(500, "internal_error", "Something went wrong");
 }

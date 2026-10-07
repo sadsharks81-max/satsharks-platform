@@ -7,4 +7,5 @@ export { AttemptModel, type AttemptDoc, type AttemptItem } from "./models/attemp
 export { SettingModel, type SettingDoc } from "./models/setting.model";
 export { FullTestModel, type FullTestDoc } from "./models/full-test.model";
 export { ProblemReportModel, type ProblemReportDoc, type ReportEvent } from "./models/problem-report.model";
+export { TestUploadModel, type TestUploadDoc, type TestUploadSectionDoc } from "./models/test-upload.model";
 export { trusted } from "./connection";

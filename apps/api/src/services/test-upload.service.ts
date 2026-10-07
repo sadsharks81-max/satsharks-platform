@@ -1,0 +1,517 @@
+// Uploaded practice tests: one fixed adaptive Digital SAT test from two PDFs.
+//
+// Flow: upload (each PDF is read and checked during the request) → review each section → publish
+// (creates one paper per section, hidden) → activate (students can sit it). Students take it
+// through the ordinary full-test flow; practice.service uses the test's fixed modules instead of
+// drawing questions from the bank, and routes Module 2 with the same rule as every other mock.
+//
+// The questions are tagged "full-test" so drills, random mocks and the practice catalog never use
+// them (see the tag filters in practice.service).
+import katex from "katex";
+import mongoose from "mongoose";
+import { PaperModel, QuestionModel, TestUploadModel, trusted, type TestUploadDoc, type TestUploadSectionDoc } from "@satsharks/db";
+import {
+  FULL_TEST_QUESTION_TAG,
+  fullTestQuestionTag,
+  looseMathWarning,
+  MOCK_FORMAT,
+  MOCK_MODULE_LABELS,
+  MOCK_MODULES,
+  SECTION_LABELS,
+  SECTIONS,
+  TEST_UPLOAD_SOURCE,
+  uploadQuestionProblems,
+  type CatalogTopic,
+  type MockModule,
+  type PracticeTestListing,
+  type Section,
+  type TestUploadSection,
+  type TestUploadSummary,
+  type UploadQuestion,
+} from "@satsharks/types";
+import type { SaveUploadSectionInput } from "@satsharks/validation";
+import { AppError } from "../utils/app-error";
+import { readPdfText } from "./pdf-text";
+import { parseSectionText, type ParsedQuestion } from "./test-upload-parser";
+
+const SECTION_FIELD = { reading_writing: "readingWriting", math: "math" } as const;
+const SECTION_FILE_LABEL: Record<Section, string> = { reading_writing: "English (Reading & Writing)", math: "Math" };
+const MAX_LISTED_ERRORS = 20;
+
+export interface UploadedFile {
+  originalname: string;
+  size: number;
+  buffer: Buffer;
+}
+
+// ---------- the bank's vocabulary ----------
+
+interface Vocabulary {
+  topics: CatalogTopic[];
+  // Lower-cased domain or skill name → the domain and (for a skill) the skill.
+  lookup: Map<string, { topic: string; skill: string | null }>;
+}
+
+// Domains and skills of the question bank, so an uploaded test uses the same names and its results
+// break down like every other test. A skill filed under two domains goes to the one with more
+// questions.
+async function vocabulary(section: Section): Promise<Vocabulary> {
+  const rows = await QuestionModel.aggregate<{ _id: { topic: string; skill: string | null }; n: number }>([
+    { $match: { section, topic: { $ne: null }, tags: { $ne: FULL_TEST_QUESTION_TAG } } },
+    { $group: { _id: { topic: "$topic", skill: "$skill" }, n: { $sum: 1 } } },
+    { $sort: { n: -1 } },
+  ]);
+  const topics: CatalogTopic[] = [];
+  const lookup: Vocabulary["lookup"] = new Map();
+  for (const { _id } of rows) {
+    let topic = topics.find((entry) => entry.topic === _id.topic);
+    if (!topic) topics.push((topic = { topic: _id.topic, skills: [] }));
+    lookup.set(_id.topic.toLowerCase(), { topic: _id.topic, skill: null });
+    if (_id.skill && !topic.skills.includes(_id.skill)) {
+      topic.skills.push(_id.skill);
+      if (!lookup.has(_id.skill.toLowerCase())) lookup.set(_id.skill.toLowerCase(), { topic: _id.topic, skill: _id.skill });
+    }
+  }
+  topics.sort((a, b) => a.topic.localeCompare(b.topic));
+  for (const topic of topics) topic.skills.sort((a, b) => a.localeCompare(b));
+  return { topics, lookup };
+}
+
+// KaTeX's complaint about a formula it cannot render, or null.
+function checkLatex(latex: string): string | null {
+  try {
+    katex.renderToString(latex, { throwOnError: true, strict: "ignore" });
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message.replace(/^KaTeX parse error:\s*/, "") : "invalid formula";
+  }
+}
+
+const questionLabel = (question: Pick<UploadQuestion, "module" | "questionNumber">) => `${MOCK_MODULE_LABELS[question.module]} question ${question.questionNumber}`;
+
+function problemsOf(questions: UploadQuestion[], section: Section, vocab: Vocabulary): string[] {
+  const errors: string[] = [];
+  for (const module of MOCK_MODULES) {
+    if (!questions.some((question) => question.module === module)) errors.push(`${MOCK_MODULE_LABELS[module]} has no questions.`);
+  }
+  for (const question of questions) {
+    for (const problem of uploadQuestionProblems(question, section, vocab.topics, checkLatex)) errors.push(`${questionLabel(question)}: ${problem}.`);
+  }
+  return errors;
+}
+
+function warningsOf(questions: UploadQuestion[], section: Section): string[] {
+  const expected = MOCK_FORMAT[section].questionsPerModule;
+  const warnings = MOCK_MODULES.flatMap((module) => {
+    const count = questions.filter((question) => question.module === module).length;
+    return count > 0 && count !== expected
+      ? [`${MOCK_MODULE_LABELS[module]} has ${count} questions; an official module has ${expected}. Scaled scores need official-size modules.`]
+      : [];
+  });
+  if (section === "math") {
+    for (const question of questions) {
+      const texts = [question.prompt, question.explanation, ...question.choices.map((choice) => choice.text)];
+      if (texts.some(looseMathWarning)) warnings.push(`${questionLabel(question)}: some math is outside $…$ and will show as plain text.`);
+    }
+  }
+  return warnings;
+}
+
+function formatErrors(heading: string, errors: string[]): string {
+  const listed = errors.slice(0, MAX_LISTED_ERRORS).map((error) => `• ${error}`);
+  if (errors.length > MAX_LISTED_ERRORS) listed.push(`• …and ${errors.length - MAX_LISTED_ERRORS} more.`);
+  return [heading, ...listed].join("\n");
+}
+
+function toUploadQuestion(parsed: ParsedQuestion, vocab: Vocabulary): UploadQuestion {
+  const match = vocab.lookup.get(parsed.category.trim().toLowerCase());
+  return {
+    module: parsed.module,
+    questionNumber: parsed.questionNumber,
+    questionType: parsed.questionType,
+    difficulty: parsed.difficulty,
+    // An unknown category is kept as written, so the error names it.
+    topic: match?.topic ?? parsed.category,
+    skill: match?.skill ?? null,
+    passage: parsed.passage,
+    prompt: parsed.prompt,
+    choices: parsed.choices,
+    choiceKey: parsed.choiceKey,
+    acceptedValues: parsed.acceptedValues,
+    explanation: parsed.explanation,
+  };
+}
+
+// Reads one section PDF into a stored section. Never throws for a bad PDF: the section is stored
+// as failed, with the reasons, so the admin can see them and re-upload just that file.
+async function extractSection(file: UploadedFile, expected: Section): Promise<TestUploadSectionDoc> {
+  const base = { fileName: file.originalname.slice(0, 200), fileSize: file.size, uploadedAt: new Date(), reviewedAt: null, reviewedBy: null };
+  const failed = (errorMessage: string): TestUploadSectionDoc => ({ ...base, status: "failed", errorMessage, warnings: [], questions: [] });
+
+  let text: string;
+  try {
+    text = await readPdfText(file.buffer);
+  } catch {
+    return failed("This PDF could not be read. Export it again as a text PDF (not a scan or a photo).");
+  }
+  if (!/QUESTION\s+\d/i.test(text)) {
+    return failed("No question text was found in this PDF. It may be a scan or an image; export it from the document as a text PDF.");
+  }
+
+  const parsed = parseSectionText(text);
+  const errors = [...parsed.errors];
+  if (parsed.section && parsed.section !== expected) {
+    errors.unshift(`This file says SECTION: ${parsed.section.toUpperCase()}, but it was uploaded as the ${SECTION_FILE_LABEL[expected]} file.`);
+  }
+  let questions: UploadQuestion[] = [];
+  if (errors.length === 0) {
+    const vocab = await vocabulary(expected);
+    questions = parsed.questions.map((question) => toUploadQuestion(question, vocab));
+    errors.push(...problemsOf(questions, expected, vocab));
+  }
+  if (errors.length > 0) return failed(formatErrors(`The ${SECTION_FILE_LABEL[expected]} PDF does not match the required format:`, errors));
+  return { ...base, status: "extracted", errorMessage: "", warnings: warningsOf(questions, expected), questions };
+}
+
+// ---------- views ----------
+
+function toSection(section: TestUploadSectionDoc | null, withQuestions: boolean): TestUploadSection | null {
+  if (!section) return null;
+  const moduleCounts = Object.fromEntries(MOCK_MODULES.map((module) => [module, section.questions.filter((q) => q.module === module).length])) as Record<MockModule, number>;
+  return {
+    fileName: section.fileName,
+    fileSize: section.fileSize,
+    status: section.status,
+    errorMessage: section.errorMessage,
+    warnings: section.warnings,
+    uploadedAt: section.uploadedAt.toISOString(),
+    reviewedAt: section.reviewedAt ? section.reviewedAt.toISOString() : null,
+    moduleCounts,
+    questionCount: section.questions.length,
+    ...(withQuestions ? { questions: section.questions } : {}),
+  };
+}
+
+function toSummary(upload: TestUploadDoc, withQuestions = false, uploaderName: string | null = null): TestUploadSummary {
+  const paperIds: TestUploadSummary["paperIds"] = {};
+  for (const section of SECTIONS) if (upload.paperIds?.[section]) paperIds[section] = String(upload.paperIds[section]);
+  return {
+    id: String(upload._id),
+    title: upload.title,
+    year: upload.year,
+    testNumber: upload.testNumber,
+    status: upload.status,
+    active: upload.active,
+    readingWriting: toSection(upload.readingWriting, withQuestions),
+    math: toSection(upload.math, withQuestions),
+    paperIds,
+    publishedAt: upload.publishedAt ? upload.publishedAt.toISOString() : null,
+    uploadedBy: uploaderName,
+    createdAt: upload.createdAt.toISOString(),
+  };
+}
+
+async function loadUpload(id: string): Promise<TestUploadDoc> {
+  const upload = await TestUploadModel.findById(id).lean<TestUploadDoc>();
+  if (!upload) throw AppError.notFound("Test not found");
+  return upload;
+}
+
+function assertDraft(upload: TestUploadDoc): void {
+  if (upload.status === "published") throw AppError.conflict("This test is already published. Edit its questions in the question bank.");
+}
+
+async function assertFree(year: number, testNumber: number, exceptId?: mongoose.Types.ObjectId): Promise<void> {
+  const filter: Record<string, unknown> = { year, testNumber };
+  if (exceptId) filter._id = trusted({ $ne: exceptId });
+  if (await TestUploadModel.exists(filter)) throw AppError.conflict(`Test ${testNumber} of ${year} already exists. Choose a different test number.`);
+}
+
+// Numbers questions 1..n inside each module, in the order they were sent, and drops fields that do
+// not belong to the question type.
+function normalizeReviewed(input: SaveUploadSectionInput["questions"]): UploadQuestion[] {
+  const counters = new Map<MockModule, number>();
+  return input.map((question) => {
+    const number = (counters.get(question.module) ?? 0) + 1;
+    counters.set(question.module, number);
+    const mcq = question.questionType === "mcq";
+    return {
+      module: question.module,
+      questionNumber: number,
+      questionType: question.questionType,
+      difficulty: question.difficulty,
+      topic: question.topic,
+      skill: question.skill || null,
+      passage: question.passage?.trim() ? question.passage.trim() : null,
+      prompt: question.prompt.trim(),
+      choices: mcq ? ["A", "B", "C", "D"].map((key, index) => ({ key, text: (question.choices[index]?.text ?? "").trim() })) : [],
+      choiceKey: mcq ? (question.choiceKey ?? "").toUpperCase() || null : null,
+      acceptedValues: mcq ? [] : question.acceptedValues.filter(Boolean),
+      explanation: question.explanation.trim(),
+    };
+  });
+}
+
+// ---------- publishing ----------
+
+const moduleNumberOf = (module: MockModule) => (module === "m1" ? 1 : 2);
+
+async function publish(upload: TestUploadDoc): Promise<TestUploadDoc> {
+  const id = String(upload._id);
+  const tags = [FULL_TEST_QUESTION_TAG, fullTestQuestionTag(id)];
+  const paperIds = { reading_writing: new mongoose.Types.ObjectId(), math: new mongoose.Types.ObjectId() };
+  const papers = SECTIONS.map((section) => {
+    const questions = upload[SECTION_FIELD[section]]!.questions;
+    return {
+      _id: paperIds[section],
+      title: `${upload.title} — ${SECTION_LABELS[section]}`,
+      description: `Uploaded practice test ${upload.testNumber} (${upload.year}).`,
+      source: TEST_UPLOAD_SOURCE,
+      // Unique with the source, so a second publish of the same upload cannot create papers too.
+      sourcePaperId: `${id}:${section}`,
+      // Hidden until the admin activates the test.
+      status: "hidden" as const,
+      sections: [section],
+      modules: MOCK_MODULES.map((module) => ({
+        key: `${section}-${module}`,
+        section,
+        moduleNumber: moduleNumberOf(module),
+        moduleType: module,
+        questionCount: questions.filter((question) => question.module === module).length,
+        timeLimitSeconds: MOCK_FORMAT[section].minutesPerModule * 60,
+      })),
+      adaptive: { isAdaptive: true, routing: "server_side" as const, observedRoute: null, module1Correct: null, routingThreshold: null },
+      questionCount: questions.length,
+      metadata: { testUploadId: id, year: upload.year, testNumber: upload.testNumber },
+      sourceMetadata: {},
+    };
+  });
+  const questionDocs = SECTIONS.flatMap((section) =>
+    upload[SECTION_FIELD[section]]!.questions.map((question) => ({
+      paperId: paperIds[section],
+      source: TEST_UPLOAD_SOURCE,
+      sourceQuestionId: `${question.module}-${question.questionNumber}`,
+      section,
+      moduleNumber: moduleNumberOf(question.module),
+      moduleType: question.module,
+      questionNumber: question.questionNumber,
+      questionType: question.questionType,
+      difficulty: question.difficulty,
+      topic: question.topic,
+      skill: question.skill,
+      prompt: question.prompt,
+      passage: question.passage,
+      choices: question.choices.map((choice) => ({ key: choice.key, text: choice.text, viz: null })),
+      correctAnswer: { choiceKey: question.choiceKey, acceptedValues: question.acceptedValues },
+      explanation: question.explanation,
+      assets: [],
+      viz: null,
+      sourceMetadata: { testUploadId: id },
+      status: "hidden" as const,
+      tags,
+    })),
+  );
+
+  // No transaction (Atlas free tier): papers first, so a concurrent publish fails on their unique
+  // key before inserting anything; on any later failure everything this call created is removed.
+  try {
+    await PaperModel.insertMany(papers);
+  } catch (error) {
+    if ((error as { code?: unknown }).code === 11000) throw AppError.conflict("This test is already being published.");
+    throw error;
+  }
+  try {
+    await QuestionModel.insertMany(questionDocs);
+    const published = await TestUploadModel.findOneAndUpdate(
+      { _id: upload._id, status: "draft" },
+      { $set: { status: "published", active: false, paperIds, publishedAt: new Date() } },
+      { new: true },
+    ).lean<TestUploadDoc>();
+    if (!published) throw AppError.conflict("This test was changed while it was being published. Try again.");
+    return published;
+  } catch (error) {
+    await QuestionModel.deleteMany({ paperId: trusted({ $in: Object.values(paperIds) }) });
+    await PaperModel.deleteMany({ _id: trusted({ $in: Object.values(paperIds) }) });
+    throw error;
+  }
+}
+
+// The six modules as published, read from the questions themselves (an admin may have deleted some
+// in the question bank since).
+async function liveModuleCounts(upload: TestUploadDoc): Promise<Record<Section, Record<MockModule, number>>> {
+  const ids = SECTIONS.map((section) => upload.paperIds[section]).filter((id): id is mongoose.Types.ObjectId => id !== null);
+  const rows = await QuestionModel.aggregate<{ _id: { paperId: mongoose.Types.ObjectId; module: MockModule }; n: number }>([
+    { $match: { paperId: { $in: ids } } },
+    { $group: { _id: { paperId: "$paperId", module: "$moduleType" }, n: { $sum: 1 } } },
+  ]);
+  const counts = Object.fromEntries(SECTIONS.map((section) => [section, { m1: 0, m2_easy: 0, m2_hard: 0 }])) as Record<Section, Record<MockModule, number>>;
+  for (const row of rows) {
+    const section = SECTIONS.find((entry) => String(upload.paperIds[entry]) === String(row._id.paperId));
+    if (section && row._id.module in counts[section]) counts[section][row._id.module] = row.n;
+  }
+  return counts;
+}
+
+// ---------- service ----------
+
+export const testUploadService = {
+  async list(): Promise<TestUploadSummary[]> {
+    // Question bodies are not needed for the list; only the module counts are shown.
+    const uploads = await TestUploadModel.find()
+      .select("-readingWriting.questions.prompt -readingWriting.questions.passage -readingWriting.questions.explanation -readingWriting.questions.choices -math.questions.prompt -math.questions.passage -math.questions.explanation -math.questions.choices")
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean<TestUploadDoc[]>();
+    return uploads.map((upload) => toSummary(upload));
+  },
+
+  async get(id: string): Promise<{ upload: TestUploadSummary; topics: Record<Section, CatalogTopic[]> }> {
+    const upload = await loadUpload(id);
+    const [rw, math] = await Promise.all([vocabulary("reading_writing"), vocabulary("math")]);
+    return { upload: toSummary(upload, true), topics: { reading_writing: rw.topics, math: math.topics } };
+  },
+
+  async create(meta: { title: string; year: number; testNumber: number }, files: Partial<Record<Section, UploadedFile>>, userId: string): Promise<TestUploadSummary> {
+    if (!files.reading_writing && !files.math) throw AppError.badRequest("Choose the English PDF, the Math PDF, or both.");
+    await assertFree(meta.year, meta.testNumber);
+    const [readingWriting, math] = await Promise.all([
+      files.reading_writing ? extractSection(files.reading_writing, "reading_writing") : null,
+      files.math ? extractSection(files.math, "math") : null,
+    ]);
+    try {
+      const upload = await TestUploadModel.create({ ...meta, readingWriting, math, uploadedBy: userId });
+      return toSummary(upload.toObject());
+    } catch (error) {
+      // Two uploads with the same year and number at once: the unique index let one through.
+      if ((error as { code?: unknown }).code === 11000) throw AppError.conflict(`Test ${meta.testNumber} of ${meta.year} already exists. Choose a different test number.`);
+      throw error;
+    }
+  },
+
+  async update(id: string, meta: { title: string; year: number; testNumber: number }): Promise<TestUploadSummary> {
+    const upload = await loadUpload(id);
+    await assertFree(meta.year, meta.testNumber, upload._id);
+    const set: Record<string, unknown> = { ...meta };
+    const saved = await TestUploadModel.findByIdAndUpdate(upload._id, { $set: set }, { new: true }).lean<TestUploadDoc>();
+    // Students see the paper titles, so they follow the test's title.
+    if (saved && saved.status === "published") {
+      for (const section of SECTIONS) {
+        if (saved.paperIds[section]) await PaperModel.updateOne({ _id: saved.paperIds[section] }, { $set: { title: `${saved.title} — ${SECTION_LABELS[section]}` } });
+      }
+    }
+    return toSummary(saved!);
+  },
+
+  async replaceSection(id: string, section: Section, file: UploadedFile): Promise<TestUploadSummary> {
+    const upload = await loadUpload(id);
+    assertDraft(upload);
+    const extracted = await extractSection(file, section);
+    const saved = await TestUploadModel.findOneAndUpdate({ _id: upload._id, status: "draft" }, { $set: { [SECTION_FIELD[section]]: extracted } }, { new: true }).lean<TestUploadDoc>();
+    if (!saved) throw AppError.conflict("This test was published meanwhile.");
+    return toSummary(saved);
+  },
+
+  async saveReview(id: string, section: Section, input: SaveUploadSectionInput, userId: string): Promise<TestUploadSummary> {
+    const upload = await loadUpload(id);
+    assertDraft(upload);
+    const current = upload[SECTION_FIELD[section]];
+    if (!current || current.status === "failed") throw AppError.badRequest(`Upload a valid ${SECTION_FILE_LABEL[section]} PDF first.`);
+
+    const vocab = await vocabulary(section);
+    const questions = normalizeReviewed(input.questions);
+    const errors = problemsOf(questions, section, vocab);
+    if (errors.length > 0) throw AppError.badRequest(formatErrors("Fix these questions before saving:", errors));
+
+    const field = SECTION_FIELD[section];
+    const saved = await TestUploadModel.findOneAndUpdate(
+      { _id: upload._id, status: "draft" },
+      {
+        $set: {
+          [`${field}.status`]: "reviewed",
+          [`${field}.errorMessage`]: "",
+          [`${field}.warnings`]: warningsOf(questions, section),
+          [`${field}.questions`]: questions,
+          [`${field}.reviewedAt`]: new Date(),
+          [`${field}.reviewedBy`]: new mongoose.Types.ObjectId(userId),
+        },
+      },
+      { new: true },
+    ).lean<TestUploadDoc>();
+    if (!saved) throw AppError.conflict("This test was published meanwhile.");
+    return toSummary(saved, true);
+  },
+
+  async publish(id: string): Promise<TestUploadSummary> {
+    const upload = await loadUpload(id);
+    if (upload.status === "published") throw AppError.conflict("This test has already been published.");
+    const notReviewed = SECTIONS.filter((section) => upload[SECTION_FIELD[section]]?.status !== "reviewed");
+    if (notReviewed.length > 0) {
+      throw AppError.badRequest(`Review and save ${notReviewed.map((section) => SECTION_FILE_LABEL[section]).join(" and ")} before publishing.`);
+    }
+    // Checked again: the bank's domains may have changed since the review.
+    const errors: string[] = [];
+    for (const section of SECTIONS) {
+      const vocab = await vocabulary(section);
+      errors.push(...problemsOf(upload[SECTION_FIELD[section]]!.questions, section, vocab).map((error) => `${SECTION_FILE_LABEL[section]}: ${error}`));
+    }
+    if (errors.length > 0) throw AppError.badRequest(formatErrors("Fix these questions before publishing:", errors));
+    return toSummary(await publish(upload));
+  },
+
+  // Students can sit an active test. A test is only activated when all six modules have questions
+  // with answer keys, so nobody is ever routed into an empty module.
+  async setActive(id: string, active: boolean): Promise<TestUploadSummary> {
+    const upload = await loadUpload(id);
+    if (upload.status !== "published") throw AppError.badRequest("Publish the test before activating it.");
+    if (active) {
+      const counts = await liveModuleCounts(upload);
+      const empty = SECTIONS.flatMap((section) => MOCK_MODULES.filter((module) => counts[section][module] === 0).map((module) => `${SECTION_LABELS[section]} ${MOCK_MODULE_LABELS[module]}`));
+      if (empty.length > 0) throw AppError.badRequest(`Every module needs questions before the test can be activated. Empty: ${empty.join(", ")}.`);
+      const paperIds = SECTIONS.map((section) => upload.paperIds[section]);
+      const unanswered = await QuestionModel.countDocuments({ paperId: trusted({ $in: paperIds }), correctAnswer: null });
+      if (unanswered > 0) throw AppError.badRequest(`${unanswered} question(s) have no correct answer. Set them in the question bank first.`);
+    }
+    const status = active ? "published" : "hidden";
+    const paperIds = SECTIONS.map((section) => upload.paperIds[section]);
+    await PaperModel.updateMany({ _id: trusted({ $in: paperIds }) }, { $set: { status } });
+    await QuestionModel.updateMany({ paperId: trusted({ $in: paperIds }) }, { $set: { status } });
+    const saved = await TestUploadModel.findByIdAndUpdate(upload._id, { $set: { active } }, { new: true }).lean<TestUploadDoc>();
+    return toSummary(saved!);
+  },
+
+  // Only a draft can be deleted. A published test may already have student attempts, which keep
+  // pointing at its questions; it is deactivated instead.
+  async remove(id: string): Promise<void> {
+    const upload = await loadUpload(id);
+    if (upload.status === "published") throw AppError.conflict("A published test cannot be deleted because students' results use it. Deactivate it instead.");
+    await TestUploadModel.deleteOne({ _id: upload._id, status: "draft" });
+  },
+
+  // ---------- students ----------
+
+  async listActive(): Promise<PracticeTestListing[]> {
+    const uploads = await TestUploadModel.find({ status: "published", active: true })
+      .select("title year testNumber paperIds status")
+      .sort({ year: -1, testNumber: -1 })
+      .lean<TestUploadDoc[]>();
+    return Promise.all(
+      uploads.map(async (upload) => ({
+        id: String(upload._id),
+        title: upload.title,
+        year: upload.year,
+        testNumber: upload.testNumber,
+        moduleCounts: await liveModuleCounts(upload),
+      })),
+    );
+  },
+
+  // The paper a student's section of this test is built from. Starting needs an active test;
+  // continuing one already begun (after the break) does not, so deactivating never strands anyone.
+  async sectionPaper(id: string, section: Section, requireActive: boolean): Promise<{ upload: TestUploadDoc; paperId: mongoose.Types.ObjectId }> {
+    const upload = await TestUploadModel.findById(id).select("title status active paperIds").lean<TestUploadDoc>();
+    if (!upload || upload.status !== "published" || (requireActive && !upload.active)) throw AppError.notFound("That practice test is not available");
+    const paperId = upload.paperIds[section];
+    if (!paperId) throw AppError.notFound("That practice test is not available");
+    return { upload, paperId };
+  },
+};

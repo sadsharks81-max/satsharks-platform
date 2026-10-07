@@ -14,6 +14,8 @@ export interface FullTestDoc {
   timeMultiplier: TimeMultiplier;
   // Exams each section draws from. Empty = every published exam with that section.
   paperIds: { reading_writing: mongoose.Types.ObjectId[]; math: mongoose.Types.ObjectId[] };
+  // Set when this is a sitting of an uploaded practice test (fixed modules, see TestUploadModel).
+  testUploadId: mongoose.Types.ObjectId | null;
   readingWritingAttemptId: mongoose.Types.ObjectId | null;
   mathAttemptId: mongoose.Types.ObjectId | null;
   // 400–1600: the two section scores added together, once both exist.
@@ -33,6 +35,7 @@ const fullTestSchema = new Schema<FullTestDoc>(
       reading_writing: { type: [Schema.Types.ObjectId], ref: "Paper", default: [] },
       math: { type: [Schema.Types.ObjectId], ref: "Paper", default: [] },
     },
+    testUploadId: { type: Schema.Types.ObjectId, ref: "TestUpload", default: null },
     readingWritingAttemptId: { type: Schema.Types.ObjectId, ref: "Attempt", default: null },
     mathAttemptId: { type: Schema.Types.ObjectId, ref: "Attempt", default: null },
     totalScore: { type: Number, default: null },

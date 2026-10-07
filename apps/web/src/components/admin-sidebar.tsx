@@ -22,6 +22,7 @@ const SECTIONS: Section[] = [
   { href: "/admin", label: "Dashboard", permission: "admin:access", icon: <path d="M4 13h6V4H4v9zm0 7h6v-5H4v5zm10 0h6v-9h-6v9zm0-16v5h6V4h-6z" /> },
   { href: "/admin/users", label: "Users", permission: "users:read", icon: <path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM22 19v-1a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8" /> },
   { href: "/admin/papers", label: "Papers", permission: "papers:read", icon: <path d="M7 3h7l5 5v13H7V3zm7 0v5h5M10 13h6M10 17h6" /> },
+  { href: "/admin/tests", label: "Full tests", permission: "papers:read", icon: <path d="M9 4h6m-6 0a2 2 0 0 0-2 2v0h10v0a2 2 0 0 0-2-2M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1M7 6H5v15h14V6h-2M9 12l2 2 4-4M9 17h6" /> },
   { href: "/admin/questions", label: "Questions", permission: "questions:read", icon: <path d="M9.1 9a3 3 0 1 1 4.2 2.7c-.8.4-1.3 1.1-1.3 2v.3M12 17.5h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /> },
   { href: "/admin/reports", label: "Reports", permission: "reports:read", icon: <path d="M5 21V4m0 0h11l-2 4 2 4H5" />, badge: "pendingReports" },
   { href: "/admin/settings", label: "Settings", permission: "admin:access", icon: <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2-1.2L14.5 3h-4l-.4 2.6a7.5 7.5 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7.5 7.5 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z" /> },

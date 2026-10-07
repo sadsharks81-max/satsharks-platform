@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAT Sharks Full Test PDF Template</title>
+    <style>
+      :root { color: #151a3a; font-family: Arial, Helvetica, sans-serif; }
+      body { margin: 0; background: #f4f6fb; }
+      .toolbar { position: sticky; top: 0; z-index: 2; padding: 18px 24px; background: #fff; border-bottom: 1px solid #dfe3ee; box-shadow: 0 4px 18px #10163312; }
+      .toolbar-inner { max-width: 920px; margin: auto; }
+      h1 { margin: 0 0 8px; font-size: 24px; }
+      .help { margin: 0 0 14px; color: #545a70; font-size: 14px; line-height: 1.55; }
+      .warning { color: #9b3b10; font-weight: 700; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+      .row strong { min-width: 110px; font-size: 13px; }
+      button { border: 0; border-radius: 9px; padding: 8px 12px; background: #22286b; color: white; font-weight: 700; cursor: pointer; font-size: 13px; }
+      button.secondary { background: #e8eaf4; color: #22286b; }
+      .page { width: 8.5in; min-height: 11in; box-sizing: border-box; margin: 24px auto; padding: 0.65in; background: white; box-shadow: 0 10px 35px #17204b20; }
+      .doc { font-family: "Courier New", Courier, monospace; font-size: 11pt; line-height: 1.5; white-space: pre-wrap; }
+      .question { break-inside: avoid; margin: 0 0 22px; }
+      .marker { font-weight: 700; margin: 0 0 18px; }
+      .editable { outline: 1px dashed transparent; border-radius: 2px; }
+      .editable:hover, .editable:focus { outline-color: #7a82bd; background: #f7f8ff; }
+      .label { font-weight: 700; }
+      @page { size: Letter; margin: 0.6in; }
+      @media print {
+        body { background: white; }
+        .toolbar { display: none; }
+        .page { width: auto; min-height: auto; margin: 0; padding: 0; box-shadow: none; }
+        .editable:hover, .editable:focus { outline: 0; background: transparent; }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="toolbar">
+      <div class="toolbar-inner">
+        <h1>SAT Sharks full-test PDF template</h1>
+        <p class="help">
+          Make one PDF for English and one for Math. Click any value in the white page to edit it, add
+          question blocks to each module, then choose <strong>Print / Save as PDF</strong>. Numbering restarts at 1
+          in every module. CATEGORY must exactly match a category in the admin question bank. DIFFICULTY is EASY,
+          MEDIUM, or HARD. English questions may use PASSAGE; the PROMPT is the question shown under it. Use
+          TYPE: GRID_IN (Math only) for typed-answer questions, with no A-D choices.
+          <span class="warning">Use selectable text and disable browser print headers and footers.</span>
+        </p>
+        <div class="row">
+          <strong>Section</strong>
+          <button type="button" onclick="load('READING_WRITING')">English sample</button>
+          <button type="button" onclick="load('MATH')">Math sample</button>
+          <button type="button" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+        <div id="module-controls"></div>
+      </div>
+    </section>
+
+    <main class="page doc" id="pdf-content"></main>
+
+    <script>
+      const MODULES = [
+        { slot: "1", header: "MODULE 1" },
+        { slot: "2E", header: "MODULE 2 EASY" },
+        { slot: "2H", header: "MODULE 2 HARD" },
+      ];
+
+      const SAMPLES = {
+        READING_WRITING: [
+          {
+            category: "SAT Reading Comprehension",
+            difficulty: "MEDIUM",
+            passage:
+              "The following text is adapted from a 1913 novel. The narrator describes a quiet harbor town at dawn, when the fishing boats return and the market slowly comes to life.",
+            prompt: "Which choice best states the main purpose of the text?",
+            options: [
+              "To describe a setting as it changes over a short time",
+              "To argue that harbor towns are disappearing",
+              "To compare two different fishing methods",
+              "To explain why markets open early",
+            ],
+            answer: "A",
+            explanation: "The text describes the town as the morning unfolds, so choice A is correct.",
+          },
+          {
+            category: "SAT Grammar & Writing",
+            difficulty: "EASY",
+            passage: "The committee reviewed every proposal carefully, and its final report ______ three clear recommendations.",
+            prompt: "Which choice completes the text so that it conforms to the conventions of Standard English?",
+            options: ["include", "includes", "including", "to include"],
+            answer: "B",
+            explanation: "The singular subject \"report\" needs the singular verb \"includes.\"",
+          },
+        ],
+        MATH: [
+          {
+            category: "SAT Algebra",
+            difficulty: "MEDIUM",
+            prompt: "If 3x + 7 = 22, what is the value of x?",
+            options: ["3", "5", "7", "15"],
+            answer: "B",
+            explanation: "Subtract 7 from both sides to get 3x = 15, then divide by 3.",
+          },
+          {
+            category: "SAT Advanced Math",
+            difficulty: "HARD",
+            type: "GRID_IN",
+            prompt: "What is the value of 1/2 + 1/4?",
+            answer: "0.75 or 3/4",
+            explanation: "1/2 + 1/4 = 2/4 + 1/4 = 3/4, which is 0.75.",
+          },
+        ],
+      };
+
+      let currentSection = "MATH";
+
+      const escapeHtml = (value) =>
+        String(value).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+      const field = (label, value) =>
+        `<span class="label">${label}:</span> <span class="editable" contenteditable="true">${escapeHtml(value)}</span>`;
+
+      function questionHtml(q) {
+        const lines = [
+          `<span class="label">QUESTION <span class="question-number">1</span></span>`,
+          field("CATEGORY", q.category),
+          field("DIFFICULTY", q.difficulty),
+        ];
+        if (q.type === "GRID_IN") lines.push(field("TYPE", "GRID_IN"));
+        if (q.passage) lines.push(field("PASSAGE", q.passage));
+        lines.push(field("PROMPT", q.prompt));
+        if (q.type !== "GRID_IN") ["A", "B", "C", "D"].forEach((label, i) => lines.push(field(label, q.options[i])));
+        lines.push(field("ANSWER", q.answer), field("EXPLANATION", q.explanation));
+        lines.push(`<span class="label">END QUESTION</span>`);
+        return `<div class="question" data-type="${q.type || "MULTIPLE_CHOICE"}">${lines.join("\n")}</div>`;
+      }
+
+      function renumber() {
+        document.querySelectorAll(".module-questions").forEach((module) => {
+          module.querySelectorAll(".question-number").forEach((node, index) => {
+            node.textContent = String(index + 1);
+          });
+        });
+      }
+
+      function load(section) {
+        currentSection = section;
+        const samples = SAMPLES[section];
+        const modules = MODULES.map(
+          (module) =>
+            `<div class="marker">${module.header}</div>` +
+            `<div class="module-questions" data-slot="${module.slot}">${samples.map(questionHtml).join("")}</div>` +
+            `<div class="marker">END MODULE</div>`,
+        ).join("");
+        document.getElementById("pdf-content").innerHTML =
+          `<div class="marker">${field("SECTION", section)}</div>` + modules;
+
+        document.getElementById("module-controls").innerHTML = MODULES.map(
+          (module) =>
+            `<div class="row"><strong>${module.header}</strong>` +
+            `<button type="button" onclick="addQuestion('${module.slot}', 'MULTIPLE_CHOICE')">Add question</button>` +
+            (section === "MATH"
+              ? `<button type="button" class="secondary" onclick="addQuestion('${module.slot}', 'GRID_IN')">Add grid-in</button>`
+              : "") +
+            `<button type="button" class="secondary" onclick="removeQuestion('${module.slot}')">Remove last</button></div>`,
+        ).join("");
+        renumber();
+      }
+
+      function addQuestion(slot, type) {
+        const sample = SAMPLES[currentSection].find((q) => (q.type || "MULTIPLE_CHOICE") === type) || SAMPLES[currentSection][0];
+        const container = document.querySelector(`.module-questions[data-slot="${slot}"]`);
+        container.insertAdjacentHTML("beforeend", questionHtml(sample));
+        renumber();
+        container.lastElementChild.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      function removeQuestion(slot) {
+        const blocks = document.querySelectorAll(`.module-questions[data-slot="${slot}"] .question`);
+        if (blocks.length > 1) blocks[blocks.length - 1].remove();
+        renumber();
+      }
+
+      load(new URLSearchParams(location.search).get("section") === "english" ? "READING_WRITING" : "MATH");
+    </script>
+  </body>
+</html>

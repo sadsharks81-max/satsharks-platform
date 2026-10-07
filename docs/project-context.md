@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-03 (Phase 2).
+Last updated: 2026-10-07 (uploaded practice tests).
 
 ---
 
@@ -21,7 +21,7 @@ Last updated: 2026-10-03 (Phase 2).
 - **Phase 1 brief:** `docs/prompts/phase1.txt`. Status report: `docs/phase-1-completion.md`
   (accurate up to the adaptive-mock work; see the change log for what came after).
 
-## 2. Current state (2026-10-03)
+## 2. Current state (2026-10-07)
 
 ### Working
 
@@ -72,6 +72,16 @@ Last updated: 2026-10-03 (Phase 2).
   stats incl. users by region and pending reports, publish/hide per paper and in bulk, question
   bank with filters/search/paging, question editor (shared component `question-editor.tsx`) with
   live preview, delete, adaptive threshold, conversion tables, problem-report queue.
+- **Uploaded practice tests (full-test PDF upload)** — see `docs/full-test-upload.md`. Admin → Full
+  tests: upload an English and a Math PDF (Module 1, 2 Easy, 2 Hard each) in a strict text format,
+  checked during the upload; review screen with live preview and the same rules as the server;
+  publish (two hidden papers, questions tagged `full-test`); add images; activate. Students see
+  "Full-Length Practice Tests" on Home and sit them through the normal full-test flow; Module 2
+  follows the same routing rule (65%). The tagged questions never reach drills, random mocks or
+  the catalog. Math uses LaTeX in `$…$` like the bank; CATEGORY is a bank domain or skill.
+- **Question editor** (bank, reports, uploaded tests): image drag-and-drop upload (PNG/JPEG/WebP,
+  stored in `assets`), editable choices with Set/Correct, question-type switch (Math), Math symbol
+  bar and a visual equation editor (MathLive), live preview including the explanation.
 - Rendering: LaTeX (KaTeX, Math only), tables, bar/line charts, right triangles, images,
   `**bold**`, `*italic*`, `__underline__`, bullets, blanks, `{viz}` figure placement.
 - Fonts Roboto (interface) and Noto Serif (question text) via `next/font`. Page container up to
@@ -83,12 +93,27 @@ Last updated: 2026-10-03 (Phase 2).
   wait for "build a paper" (mocks mix exams, so tables are per section and route for now).
 - Google sign-in, the plan half of the user types (free/paid), payments, free-plan limits.
 - Refund page; landing page content; a legal contact address on Terms/Privacy.
-- PDF upload with AI extraction (proposal Checkpoint 1.2), building papers from approved questions.
+- AI extraction from free-form PDFs (proposal Checkpoint 1.2). Only the strict-format test upload
+  exists. Building papers from approved bank questions.
 - Highlighter/notes, line reader (Checkpoint 2.1). Re-grading old attempts after an answer key is fixed.
-- Users menu in admin (Checkpoint 4.2). Favicon.
+- Favicon.
 - Deployment (Vercel + Railway). Nothing is deployed.
 
 ### Last verified
+
+- **Uploaded practice tests (2026-10-07):** typecheck clean; 46 unit tests (32 API incl. 11 new
+  parser/rule tests, 14 worker); **13 end-to-end checks** against a throwaway in-memory MongoDB
+  (`mongodb-memory-server`; Atlas never touched): input validation, both PDFs read with exact
+  counts, formulas/money/paragraphs/grid-ins kept, wrong-section/broken/unknown-category/bad-LaTeX/
+  bare-dollar PDFs rejected with reasons, review validation, publish, exclusion from catalog/drills/
+  random mocks/bulk publish, activation guard, a student routed R&W hard (27/27) and Math easy
+  (11/22 < 15) with grid-ins graded, question edit with image and type change, deactivate/delete.
+  All the port kit's sample and demo PDFs and our own (incl. 1.5 and double spacing) parse with no
+  errors. Browser click-through (Chrome, test API on 4100 + web on 3100 against that database):
+  upload, failed section, re-upload, review with a flagged question, symbol bar, visual editor,
+  publish, activate, image upload, phone layouts (no overflow), a student starting the test. Only
+  console errors: the existing 401 session check and missing favicon on /login.
+  **Not tested:** real client PDFs (none yet), Word/Google Docs exports, `next build`.
 
 - **Phase 2 (2026-10-03):** typecheck clean; 35 unit tests (21 API, 14 worker); **82 end-to-end
   checks** against the real database on a second API instance (port 4100): sign-up/region, the
@@ -108,12 +133,13 @@ Last updated: 2026-10-03 (Phase 2).
 
 ## 3. Git state
 
-- `main`: `777eba9` ("updated frontend", Umair) holds the login/port fix, Admin-button fix, fonts,
-  adaptive mocks, reference sheet and calculator. Below it: `d61bff3`, `aff4a62` (Umair) and
-  `73b574d` (Phase 1 commit by Claude).
-- `40120f4` ("signin error resolved", Umair) holds the nav sign-in/out fix and home page buttons.
-- **Uncommitted locally:** all of Phase 2 (see the change log) and this file. Ask before
-  committing or pushing.
+- `main` (newest first): `41f2bef` user management in admin (Umair), `8354da1` Phase 2 (Umair),
+  `40120f4` nav sign-in/out fix, `777eba9` login/port fix, fonts, adaptive mocks, reference sheet,
+  calculator; below: `d61bff3`, `aff4a62` (Umair) and `73b574d` (Phase 1 commit by Claude).
+- **Uncommitted locally:** the uploaded-practice-test work of 2026-10-07 (see the change log) and
+  this file. Ask before committing or pushing.
+- `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
+  (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
 - Never commit: `.env`, `data/`, `*.har` (except `docs/references/network/bluecorn.org.har`, which
   has no tokens), `docs/purposal/`. All are in `.gitignore`.
@@ -128,6 +154,9 @@ npm run dev:api     # http://localhost:4000/api/health
 npm run dev:web     # http://localhost:3000 (pinned to 3000)
 npm run typecheck
 npm test
+# Uploaded tests end to end (in-memory MongoDB, never Atlas):
+node apps/api/test/e2e/make-test-pdfs.mjs <dir>
+npx tsx apps/api/test/e2e/test-uploads.e2e.ts <dir>          # add --serve 4100 to keep it running
 ```
 
 Other commands:
@@ -157,7 +186,8 @@ npm workspaces monorepo, TypeScript everywhere, run with `tsx` (no build step fo
 | `packages/validation` | Zod schemas |
 | `packages/db` | Mongoose models: User, Paper, Question, Asset, Attempt, Setting; `connectMongo`, `trusted` |
 | `packages/config`, `packages/utils` | Env loading; logger and helpers |
-| `docs/` | `architecture.md`, `database.md`, `api.md`, `scraping.md`, `adaptive-testing.md`, `security.md`, `performance.md`, `phase-1-completion.md`, this file |
+| Uploaded tests | `apps/api/src/services/test-upload.service.ts`, `test-upload-parser.ts`, `pdf-text.ts`; `packages/db/.../test-upload.model.ts`; web `app/(site)/admin/tests/**`, `components/question-form.tsx`, `math-input.tsx`, `practice-tests.tsx`, `test-upload-ui.tsx`; `public/full-test/` (format guide, builder, samples); `public/mathlive/fonts` |
+| `docs/` | `full-test-upload.md`, `architecture.md`, `database.md`, `api.md`, `scraping.md`, `adaptive-testing.md`, `security.md`, `performance.md`, `phase-1-completion.md`, this file |
 
 Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 (`http://localhost:4000`), so the auth cookie is first-party.
@@ -180,6 +210,8 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-03 | Students can delete their own drills, mocks and full tests (a full test is deleted as a whole) |
 | 2026-10-03 | The admin account's login is now `admin2.0@gmail.com` (same account, role and history; display name "SAT Sharks Admin"). Umair set the password; it is not stored in the repo |
 | 2026-10-03 | Keep testing light unless asked: typecheck plus a few targeted checks |
+| 2026-10-07 | Port the other site's full-test PDF upload; Umair left the design to Claude ("do what is best for this web"). Chosen: two papers per test + fixed-module mode in the mock engine; Math in LaTeX `$…$` like the bank; CATEGORY = bank domain or skill; students take uploaded tests as full tests only; test against an in-memory MongoDB, never Atlas |
+| 2026-10-07 | The admin question editor must work like the other site's: image upload, symbol bar, visual equation editor, editable choices with Set/Correct, question type |
 
 ## 7. Facts about the source (verified)
 
@@ -245,11 +277,24 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 - **Next.js page files** may only export the page and its config; shared constants go in components.
 - **Never `networkidle0` as the only wait on a page Next has not compiled yet**: the first dev compile
   can exceed 2 minutes. Use `load` plus a fixed wait.
+- **pdf-parse drops blank lines**, so paragraphs merge; `pdf-text.ts` rebuilds lines from pdf.js
+  positions instead. Keep it if the extractor is ever swapped.
+- **`$\$78$` in Math** was cut wrongly by the old renderer regex (91 bank questions with money
+  showed garbled). Fixed in `rich-text.tsx`; formulas may contain escaped characters.
+- **mongodb-memory-server's first start** on this machine took over 10 s (binary scan): the e2e
+  sets a 120 s launch timeout.
+- **Puppeteer clicks** can land on the review page's floating save bar; scroll the field to the
+  centre first.
+- Auto mode once blocked reading local web files right after a read-only Atlas query, labelling it
+  "production reads". Avoid querying Atlas during a session; use the local cache in `data/`.
 - Testing in the app needs an account. Use temporary accounts `phase1-test-*@example.com`
   (create with `create:admin` or `/api/auth/register`) and delete them afterwards. Never use or
   change Umair's own accounts.
 
 ## 9. Open items and suggestions
+
+0. **Try the upload with the client's real PDFs** (Admin → Full tests). They must follow the format
+   (`/full-test/format.html`); Math formulas in LaTeX. Word/Google Docs exports are untested.
 
 1. Umair to check the reference sheet and the floating calculator in the app (untested).
 2. Commit and push the uncommitted work when Umair says so.
@@ -320,3 +365,16 @@ Newest last. One entry per session or major step.
   screenshot at 390/1440px (no overflow, no errors).
 - **2026-10-03 — Hero alignment.** Landing hero text block lifted ~24px on wide screens (`lg:pb-12` on the
   centred text column) so it lines up with the test-screen picture; spacing inside unchanged.
+- **2026-10-07 — Uploaded practice tests (full-test PDF upload) and question editor.** Ported the
+  other SAT Sharks site's feature from `docs/prompts/full-test-port-kit/`, adapted to this site's
+  generated mocks: `testuploads` collection; upload/review/publish/activate API and admin screens
+  (Full tests in the sidebar); publish creates two hidden papers with `full-test`-tagged questions;
+  fixed-module mode in the mock engine (`fixedModule`, `MockSource`), routing unchanged; student
+  "Full-Length Practice Tests" on Home; exclusions in catalog, drills, mock pool, Papers list and
+  bulk status. PDF text via pdf.js with paragraph-gap detection; parser re-joins wrapped lines in
+  both sections; Math in LaTeX with KaTeX checks; grid-in values must be typeable. Question editor:
+  image upload (`POST /api/admin/assets`), choices, type switch, symbol bar, MathLive visual
+  editor. Fixed the renderer's `$\$…$` bug. Format guide, printable builder and sample PDFs in
+  `apps/web/public/full-test/`. New deps: `pdfjs-dist`, `multer`, `katex` (API), `mathlive` (web),
+  `mongodb-memory-server` (API dev). Tested as in §2 "Last verified". The kit's two §5 fixes did
+  not apply here (no `UPDATED` status; the Papers list never loaded questions).

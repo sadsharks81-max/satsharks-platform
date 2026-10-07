@@ -19,7 +19,16 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
     headers: init?.body === undefined ? undefined : { "Content-Type": "application/json" },
     body: init?.body === undefined ? undefined : JSON.stringify(init.body),
   });
+  return readResponse<T>(response);
+}
 
+// File uploads (multipart form data; the browser sets the content type and boundary).
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const response = await fetch(path, { method: "POST", credentials: "same-origin", body: form });
+  return readResponse<T>(response);
+}
+
+async function readResponse<T>(response: Response): Promise<T> {
   let payload: ApiResponse<T> | null = null;
   try {
     payload = (await response.json()) as ApiResponse<T>;

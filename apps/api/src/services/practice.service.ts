@@ -5,6 +5,11 @@
 // Adaptive mock: one section in two modules. Module 1 is built when the mock starts; Module 2 is
 // built only after Module 1 is submitted, harder or easier depending on the Module 1 score.
 // Full test: a Reading & Writing mock, a break, then a Math mock (see FullTestModel).
+// Uploaded practice test: a full test whose modules are fixed by an admin (see test-upload.service)
+// instead of drawn from the bank; routing between them follows the same rule.
+//
+// Questions of uploaded tests (tagged "full-test") belong to their test only: every bank query
+// below excludes them.
 //
 // Answer keys never leave the server until a drill question is checked or the attempt ends.
 // Module 2's questions do not exist anywhere the student can reach until Module 1 is closed.
@@ -24,7 +29,9 @@ import {
 } from "@satsharks/db";
 import {
   FULL_TEST_BREAK_MINUTES,
+  FULL_TEST_QUESTION_TAG,
   MOCK_FORMAT,
+  MOCK_MODULE_LABELS,
   SECTION_LABELS,
   SECTIONS,
   type AttemptNavItem,
@@ -36,9 +43,11 @@ import {
   type MockModule,
   type ModuleResult,
   type PracticeCatalog,
+  type PracticeTestListing,
   type ReviewQuestion,
   type Section,
   type TimeMultiplier,
+  TEST_UPLOAD_SOURCE,
 } from "@satsharks/types";
 import type { CreateAttemptInput, CreateFullTestInput, CreateMockInput, SaveAnswerInput } from "@satsharks/validation";
 import mongoose from "mongoose";
@@ -47,6 +56,7 @@ import { gradeAnswer } from "../utils/grading";
 import { orderModule, pickModule, requiredForHard, type Candidate } from "./mock-assembly";
 import { sectionScore, totalScore } from "./scoring";
 import { settingsService } from "./settings.service";
+import { testUploadService } from "./test-upload.service";
 
 const MAX_QUESTIONS_PER_ATTEMPT = 200;
 const CATALOG_TTL_MS = 60_000;
@@ -290,7 +300,7 @@ async function finalize(attempt: AttemptDoc): Promise<AttemptDoc> {
 async function mockPool(section: Section, paperIds: mongoose.Types.ObjectId[]): Promise<Candidate[]> {
   // Aggregation pipelines are not passed through the query sanitizer; values here are ObjectIds
   // from validated input and fixed strings.
-  const match: Record<string, unknown> = { status: "published", section };
+  const match: Record<string, unknown> = { status: "published", section, tags: { $ne: FULL_TEST_QUESTION_TAG } };
   if (paperIds.length > 0) match.paperId = { $in: paperIds };
   const rows = await QuestionModel.aggregate<{ _id: mongoose.Types.ObjectId; skill: string | null; topic: string | null; difficulty: Candidate["difficulty"] }>([
     { $match: match },
@@ -303,7 +313,7 @@ async function mockPool(section: Section, paperIds: mongoose.Types.ObjectId[]): 
 async function checkedMockPool(section: Section, ids: string[]): Promise<{ paperIds: mongoose.Types.ObjectId[]; pool: Candidate[] }> {
   const paperIds = [...new Set(ids)].map((id) => new mongoose.Types.ObjectId(id));
   if (paperIds.length > 0) {
-    const usable = await PaperModel.countDocuments({ _id: trusted({ $in: paperIds }), status: "published", sections: section });
+    const usable = await PaperModel.countDocuments({ _id: trusted({ $in: paperIds }), status: "published", sections: section, source: trusted({ $ne: TEST_UPLOAD_SOURCE }) });
     if (usable !== paperIds.length) throw AppError.badRequest(`Some selected exams are not available for ${SECTION_LABELS[section]}`);
   }
   const format = MOCK_FORMAT[section];
@@ -316,27 +326,45 @@ async function checkedMockPool(section: Section, ids: string[]): Promise<{ paper
   return { paperIds, pool };
 }
 
+// One module of an uploaded practice test, in the test's own order.
+async function fixedModule(paperId: mongoose.Types.ObjectId, module: MockModule): Promise<mongoose.Types.ObjectId[]> {
+  const rows = await QuestionModel.find({ paperId, moduleType: module }).select("_id").sort({ questionNumber: 1 }).lean<{ _id: mongoose.Types.ObjectId }[]>();
+  if (rows.length === 0) throw AppError.conflict(`This practice test has no questions in ${MOCK_MODULE_LABELS[module]}. Please tell SAT Sharks.`);
+  return rows.map((row) => row._id);
+}
+
+// Where a mock's questions come from: drawn from a pool of bank questions, or the fixed modules
+// of an uploaded practice test (one section's paper).
+type MockSource =
+  | { pool: Candidate[]; paperIds: mongoose.Types.ObjectId[] }
+  | { fixed: { paperId: mongoose.Types.ObjectId; testUploadId: mongoose.Types.ObjectId } };
+
 // Builds Module 1 and saves a new mock attempt. Its clock starts now.
 async function startMock(
   userId: string,
-  options: { section: Section; paperIds: mongoose.Types.ObjectId[]; pool: Candidate[]; timed: boolean; timeMultiplier: TimeMultiplier; name: string; fullTestId?: mongoose.Types.ObjectId },
+  options: { section: Section; source: MockSource; timed: boolean; timeMultiplier: TimeMultiplier; name: string; fullTestId?: mongoose.Types.ObjectId },
 ): Promise<AttemptDoc> {
   const format = MOCK_FORMAT[options.section];
-  const moduleOne = orderModule(pickModule(options.pool, format.questionsPerModule, "m1", new Set()), options.section);
+  const { source } = options;
+  const moduleOne =
+    "fixed" in source
+      ? await fixedModule(source.fixed.paperId, "m1")
+      : orderModule(pickModule(source.pool, format.questionsPerModule, "m1", new Set()), options.section).map((candidate) => new mongoose.Types.ObjectId(candidate.id));
   const attempt = await AttemptModel.create({
     userId,
     kind: "mock",
     name: options.name,
     section: options.section,
-    paperId: null,
-    paperIds: options.paperIds,
+    paperId: "fixed" in source ? source.fixed.paperId : null,
+    paperIds: "fixed" in source ? [source.fixed.paperId] : source.paperIds,
+    testUploadId: "fixed" in source ? source.fixed.testUploadId : null,
     timed: options.timed,
     timeMultiplier: options.timeMultiplier,
     // Per module; Module 2 gets the same limit.
     timeLimitSeconds: options.timed ? Math.round(format.minutesPerModule * 60 * options.timeMultiplier) : null,
     fullTestId: options.fullTestId ?? null,
     currentModule: "m1",
-    items: moduleOne.map((candidate) => ({ questionId: new mongoose.Types.ObjectId(candidate.id), module: "m1" })),
+    items: moduleOne.map((questionId) => ({ questionId, module: "m1" })),
   });
   return attempt.toObject();
 }
@@ -354,10 +382,15 @@ async function submitModuleOne(attempt: AttemptDoc): Promise<AttemptDoc> {
   const required = requiredForHard(moduleOne.length, routingThresholdPercent);
   const m2Type: MockModule = m1Correct >= required ? "m2_hard" : "m2_easy";
 
-  const pool = await mockPool(attempt.section, attempt.paperIds);
-  const format = MOCK_FORMAT[attempt.section];
-  const used = new Set(moduleOne.map((item) => String(item.questionId)));
-  const moduleTwo = orderModule(pickModule(pool, format.questionsPerModule, m2Type, used), attempt.section);
+  let moduleTwo: mongoose.Types.ObjectId[];
+  if (attempt.testUploadId && attempt.paperId) {
+    moduleTwo = await fixedModule(attempt.paperId, m2Type);
+  } else {
+    const pool = await mockPool(attempt.section, attempt.paperIds);
+    const format = MOCK_FORMAT[attempt.section];
+    const used = new Set(moduleOne.map((item) => String(item.questionId)));
+    moduleTwo = orderModule(pickModule(pool, format.questionsPerModule, m2Type, used), attempt.section).map((candidate) => new mongoose.Types.ObjectId(candidate.id));
+  }
 
   const updated = await AttemptModel.findOneAndUpdate(
     { _id: attempt._id, status: "active", currentModule: "m1" },
@@ -365,7 +398,7 @@ async function submitModuleOne(attempt: AttemptDoc): Promise<AttemptDoc> {
       $set: {
         items: [
           ...graded,
-          ...moduleTwo.map((candidate) => ({ questionId: new mongoose.Types.ObjectId(candidate.id), module: m2Type })),
+          ...moduleTwo.map((questionId) => ({ questionId, module: m2Type })),
         ],
         currentModule: "m2",
         m2Type,
@@ -462,7 +495,7 @@ export const practiceService = {
   async catalog(): Promise<PracticeCatalog> {
     if (catalogCache && catalogCache.expires > Date.now()) return catalogCache.value;
 
-    const papers = await PaperModel.find({ status: "published" }).lean<PaperDoc[]>();
+    const papers = await PaperModel.find({ status: "published", source: trusted({ $ne: TEST_UPLOAD_SOURCE }) }).lean<PaperDoc[]>();
     const exams = new Map<string, CatalogExam>();
     for (const paper of papers) {
       const meta = paper.sourceMetadata ?? {};
@@ -481,7 +514,7 @@ export const practiceService = {
     }
 
     const rows = await QuestionModel.aggregate<{ _id: { section: Section; topic: string | null; skill: string | null } }>([
-      { $match: { status: "published" } },
+      { $match: { status: "published", tags: { $ne: FULL_TEST_QUESTION_TAG } } },
       { $group: { _id: { section: "$section", topic: "$topic", skill: "$skill" } } },
     ]);
     const topics = Object.fromEntries(SECTIONS.map((section) => [section, [] as CatalogTopic[]])) as Record<Section, CatalogTopic[]>;
@@ -505,14 +538,14 @@ export const practiceService = {
   },
 
   async createAttempt(userId: string, input: CreateAttemptInput): Promise<AttemptSummary> {
-    const paper = await PaperModel.findOne({ _id: input.paperId, status: "published" }).lean<PaperDoc>();
+    const paper = await PaperModel.findOne({ _id: input.paperId, status: "published", source: trusted({ $ne: TEST_UPLOAD_SOURCE }) }).lean<PaperDoc>();
     if (!paper) throw AppError.notFound("That exam is not available");
     const section = paper.sections[0];
     if (!section) throw AppError.badRequest("That exam has no questions");
 
     // Aggregation pipelines are not passed through the query sanitizer, so operators are written
     // plainly here. Every value comes from the validated input (strings) or from the database.
-    const match: Record<string, unknown> = { paperId: paper._id, status: "published" };
+    const match: Record<string, unknown> = { paperId: paper._id, status: "published", tags: { $ne: FULL_TEST_QUESTION_TAG } };
     if (input.topics.length > 0) match.topic = { $in: input.topics };
     if (input.skills.length > 0) match.skill = { $in: input.skills };
     if (input.difficulty) match.difficulty = input.difficulty;
@@ -553,8 +586,7 @@ export const practiceService = {
     const { paperIds, pool } = await checkedMockPool(input.section, input.paperIds);
     const attempt = await startMock(userId, {
       section: input.section,
-      paperIds,
-      pool,
+      source: { pool, paperIds },
       timed: input.timed,
       timeMultiplier: input.timeMultiplier as TimeMultiplier,
       name: input.name || `Adaptive ${SECTION_LABELS[input.section]} mock`,
@@ -565,6 +597,7 @@ export const practiceService = {
   // Starts a full test with its Reading & Writing section. Both pools are checked now, so the
   // student does not discover after the break that Math cannot be built.
   async createFullTest(userId: string, input: CreateFullTestInput): Promise<FullTestSummary> {
+    if (input.testUploadId) return this.createPracticeTest(userId, input.testUploadId, input);
     const rw = await checkedMockPool("reading_writing", input.paperIds.reading_writing);
     const math = await checkedMockPool("math", input.paperIds.math);
     const fullTest = await FullTestModel.create({
@@ -576,8 +609,38 @@ export const practiceService = {
     });
     const attempt = await startMock(userId, {
       section: "reading_writing",
-      paperIds: rw.paperIds,
-      pool: rw.pool,
+      source: { pool: rw.pool, paperIds: rw.paperIds },
+      timed: input.timed,
+      timeMultiplier: input.timeMultiplier as TimeMultiplier,
+      name: `${fullTest.name} — Reading and Writing`,
+      fullTestId: fullTest._id,
+    });
+    const saved = await FullTestModel.findByIdAndUpdate(fullTest._id, { $set: { readingWritingAttemptId: attempt._id } }, { new: true }).lean<FullTestDoc>();
+    return fullTestSummary(userId, saved!);
+  },
+
+  // Active uploaded practice tests a student can sit.
+  async practiceTests(): Promise<PracticeTestListing[]> {
+    return testUploadService.listActive();
+  },
+
+  // A sitting of an uploaded practice test: the ordinary full-test flow with the test's fixed modules.
+  async createPracticeTest(userId: string, testUploadId: string, input: CreateFullTestInput): Promise<FullTestSummary> {
+    const rw = await testUploadService.sectionPaper(testUploadId, "reading_writing", true);
+    const math = await testUploadService.sectionPaper(testUploadId, "math", true);
+    // Checked now, so the student does not find out after the break that Math cannot start.
+    await fixedModule(math.paperId, "m1");
+    const fullTest = await FullTestModel.create({
+      userId,
+      name: input.name || rw.upload.title,
+      timed: input.timed,
+      timeMultiplier: input.timeMultiplier,
+      paperIds: { reading_writing: [rw.paperId], math: [math.paperId] },
+      testUploadId: rw.upload._id,
+    });
+    const attempt = await startMock(userId, {
+      section: "reading_writing",
+      source: { fixed: { paperId: rw.paperId, testUploadId: rw.upload._id } },
       timed: input.timed,
       timeMultiplier: input.timeMultiplier as TimeMultiplier,
       name: `${fullTest.name} — Reading and Writing`,
@@ -594,13 +657,19 @@ export const practiceService = {
     const rw = fullTest.readingWritingAttemptId ? await loadAttempt(userId, String(fullTest.readingWritingAttemptId)) : null;
     if (!rw || rw.status !== "done") throw AppError.conflict("Finish Reading and Writing before starting Math");
 
-    const math = await checkedMockPool("math", fullTest.paperIds.math.map(String));
+    let source: MockSource;
+    if (fullTest.testUploadId) {
+      const math = await testUploadService.sectionPaper(String(fullTest.testUploadId), "math", false);
+      source = { fixed: { paperId: math.paperId, testUploadId: fullTest.testUploadId } };
+    } else {
+      const math = await checkedMockPool("math", fullTest.paperIds.math.map(String));
+      source = { pool: math.pool, paperIds: math.paperIds };
+    }
     let attempt: AttemptDoc;
     try {
       attempt = await startMock(userId, {
         section: "math",
-        paperIds: math.paperIds,
-        pool: math.pool,
+        source,
         timed: fullTest.timed,
         timeMultiplier: (fullTest.timeMultiplier ?? 1) as TimeMultiplier,
         name: `${fullTest.name} — Math`,

@@ -1,8 +1,10 @@
-import { PaperModel, QuestionModel, type PaperDoc, type QuestionDoc } from "../models";
+import { TEST_UPLOAD_SOURCE } from "@satsharks/types";
+import { PaperModel, QuestionModel, trusted, type PaperDoc, type QuestionDoc } from "../models";
 
 export const paperRepository = {
+  // Papers of uploaded practice tests are managed on the Full tests page, not here.
   list(): Promise<PaperDoc[]> {
-    return PaperModel.find().sort({ createdAt: -1 }).lean<PaperDoc[]>().exec();
+    return PaperModel.find({ source: trusted({ $ne: TEST_UPLOAD_SOURCE }) }).sort({ createdAt: -1 }).lean<PaperDoc[]>().exec();
   },
 
   findById(id: string): Promise<PaperDoc | null> {

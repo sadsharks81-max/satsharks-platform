@@ -86,6 +86,7 @@ Indexes: `{ source, sourcePaperId }` unique; `status`.
 | `viz` | any \| null | Structured chart/table data from the source |
 | `sourceMetadata` | object | Source IDs, position and type as received |
 | `status` | `draft` \| `published` \| `hidden` | |
+| `tags` | string[] | `full-test` and `full-test:<upload id>` on questions of an uploaded practice test; every student bank query excludes `full-test` |
 
 `correctAnswer` and `explanation` use `select: false`, so a query has to ask for them explicitly.
 This supports the proposal's rule that answers never reach the browser before submission.
@@ -99,6 +100,7 @@ Indexes:
 | `{ status, section, difficulty }` | Question bank filters |
 | `{ status, topic, skill }` | Question bank filters |
 | `{ source, sourceQuestionId }` | Finding the same source question across papers |
+| `{ tags }` | Questions of an uploaded test |
 
 ## Relationships
 
@@ -182,11 +184,26 @@ Both sections in one sitting: a Reading & Writing mock, a 10-minute break, then 
 | `userId` | ObjectId → User | |
 | `name`, `timed`, `timeMultiplier` | | Applied to both sections |
 | `paperIds.reading_writing`, `paperIds.math` | ObjectId[] | Exams each section draws from; empty = all |
+| `testUploadId` | ObjectId → TestUpload \| null | Set for a sitting of an uploaded practice test (fixed modules) |
 | `readingWritingAttemptId`, `mathAttemptId` | ObjectId → Attempt \| null | Math is created when the break ends |
 | `totalScore` | number \| null | 400–1600: the two section scores added, once both exist |
 | `completedAt` | date \| null | |
 
 Index: `{ userId, createdAt }`.
+
+## TestUpload (`testuploads`)
+
+A fixed adaptive test uploaded as two PDFs (see `docs/full-test-upload.md`). Attempts of a sitting
+carry `testUploadId` and `paperId` (the section's paper) and take their modules from that paper.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `title`, `year`, `testNumber` | | `{ year, testNumber }` unique |
+| `status` | `draft` \| `published` | |
+| `active` | boolean | Published tests only: students can start it |
+| `readingWriting`, `math` | section \| null | `{ fileName, fileSize, status: extracted\|reviewed\|failed, errorMessage, warnings[], questions: UploadQuestion[], uploadedAt, reviewedAt, reviewedBy }`. The PDF itself is never stored |
+| `paperIds.reading_writing`, `paperIds.math` | ObjectId → Paper \| null | Created on publish (`source: "pdf-upload"`) |
+| `publishedAt`, `uploadedBy` | | |
 
 ## ProblemReport (`problemreports`)
 

@@ -24,6 +24,10 @@ export async function getCatalog(_req: Request, res: Response): Promise<void> {
   sendOk(res, await practiceService.catalog());
 }
 
+export async function listPracticeTests(_req: Request, res: Response): Promise<void> {
+  sendOk(res, { tests: await practiceService.practiceTests() });
+}
+
 export async function createAttempt(req: Request, res: Response): Promise<void> {
   sendOk(res, { attempt: await practiceService.createAttempt(userId(req), req.body as CreateAttemptInput) }, 201);
 }

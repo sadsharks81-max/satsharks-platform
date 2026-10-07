@@ -56,6 +56,9 @@ export interface QuestionDoc {
   viz?: unknown;
   sourceMetadata: Record<string, unknown>;
   status: PaperStatus;
+  // "full-test" and "full-test:<upload id>" on questions of an uploaded practice test, which only
+  // that test may use.
+  tags: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -111,6 +114,7 @@ const questionSchema = new Schema<QuestionDoc>(
     viz: { type: Schema.Types.Mixed, default: null },
     sourceMetadata: { type: Schema.Types.Mixed, default: {} },
     status: { type: String, enum: PAPER_STATUSES, default: "draft" },
+    tags: { type: [String], default: [] },
   },
   { timestamps: true, minimize: false },
 );
@@ -122,6 +126,7 @@ questionSchema.index({ paperId: 1, section: 1, moduleNumber: 1, questionNumber: 
 // Question bank filters.
 questionSchema.index({ status: 1, section: 1, difficulty: 1 });
 questionSchema.index({ status: 1, topic: 1, skill: 1 });
+questionSchema.index({ tags: 1 });
 // Finding the same source question across papers.
 questionSchema.index({ source: 1, sourceQuestionId: 1 });
 

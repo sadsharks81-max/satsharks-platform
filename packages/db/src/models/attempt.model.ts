@@ -46,6 +46,9 @@ export interface AttemptDoc {
   timeLimitSeconds: number | null;
   // Set when this mock is one section of a full test.
   fullTestId: mongoose.Types.ObjectId | null;
+  // Set when the mock is a section of an uploaded practice test: its modules are that test's fixed
+  // modules instead of questions drawn from the bank. paperId is then the section's paper.
+  testUploadId: mongoose.Types.ObjectId | null;
   // The question on screen and since when, so its time can be added when the student moves on.
   viewPosition: number | null;
   viewStartedAt: Date | null;
@@ -105,6 +108,7 @@ const attemptSchema = new Schema<AttemptDoc>(
     timeMultiplier: { type: Number, enum: TIME_MULTIPLIERS, default: 1 },
     timeLimitSeconds: { type: Number, default: null },
     fullTestId: { type: Schema.Types.ObjectId, ref: "FullTest", default: null },
+    testUploadId: { type: Schema.Types.ObjectId, ref: "TestUpload", default: null },
     viewPosition: { type: Number, default: null },
     viewStartedAt: { type: Date, default: null },
     startedAt: { type: Date, default: () => new Date() },

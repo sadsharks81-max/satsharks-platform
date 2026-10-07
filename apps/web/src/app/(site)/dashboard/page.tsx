@@ -6,6 +6,7 @@ import type { AttemptSummary, CatalogExam, FullTestSummary, PracticeCatalog } fr
 import { AttemptCard, FullTestCard } from "@/components/attempt-card";
 import { CreateDrill } from "@/components/create-drill";
 import { CreateMock } from "@/components/create-mock";
+import { PracticeTests } from "@/components/practice-tests";
 import { RequireUser } from "@/components/require-user";
 import { Button, Card, Notice, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -92,6 +93,8 @@ function Home() {
           </Button>
         </Card>
       </div>
+
+      <PracticeTests />
 
       {activeCount > 0 && (
         <section>
