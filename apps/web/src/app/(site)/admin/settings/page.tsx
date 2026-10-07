@@ -16,6 +16,7 @@ import {
   type Section,
 } from "@satsharks/types";
 import { Button, Card, Notice, PageHeader, Spinner } from "@/components/ui";
+import { PricingSettingsCard } from "@/components/pricing-settings";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 
@@ -208,12 +209,13 @@ export default function AdminSettingsPage() {
   const canWrite = user?.permissions.includes("papers:write") ?? false;
   return (
     <>
-      <PageHeader title="Settings" subtitle="Adaptive routing and scoring for mocks and full tests." />
+      <PageHeader title="Settings" subtitle="Adaptive routing and scoring for mocks and full tests, and the plans on the pricing page." />
       <div className="grid gap-4">
         <div className="max-w-xl">
           <AdaptiveSettingsCard canWrite={canWrite} />
         </div>
         <ConversionTablesCard canWrite={canWrite} />
+        <PricingSettingsCard canWrite={canWrite} />
       </div>
     </>
   );

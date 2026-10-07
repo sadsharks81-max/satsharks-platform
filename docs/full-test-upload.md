@@ -48,11 +48,21 @@ END MODULE
 
 Rules beyond the original spec, because of how this site works:
 
-- **Math formulas are LaTeX between `$…$`**, like the 2,207 bank questions; `$$…$$` for a formula on
-  its own line; a dollar amount is `$\$78$`. An unpaired `$` and any formula KaTeX cannot render
-  reject the file. Math-looking text outside `$…$` (`^`, `\frac`, …) only warns.
-- **CATEGORY** must name a domain (e.g. `Geometry and Trigonometry`) or skill (e.g. `Circles`) that
-  exists in the bank for the section; a skill also sets its domain. There is no category collection.
+- **Math: plain text or LaTeX, per file.** A file with no LaTeX command in which every `$` is a
+  dollar amount (`$` + digit) is plain text, as the other site's PDFs are (`x^2`, `$90`, `3/14`): on
+  upload `$` is stored as `\$` (shown as a plain `$`), simple powers become Unicode superscripts
+  (`x^2` → x², `(x^4)^3` → (x⁴)³, `x^(n+1)` → x⁽ⁿ⁺¹⁾), and ` * ` becomes `·`; a warning says so.
+  Otherwise the file is LaTeX between `$…$`, like the 2,207 bank questions (`$$…$$` on its own line,
+  money `$\$78$`): an unpaired `$` and any formula KaTeX cannot render reject the file, and
+  math-looking text outside `$…$` only warns. The renderer shows `\$` outside a formula as `$`.
+- **CATEGORY** names a domain (e.g. `Geometry and Trigonometry`) or skill (e.g. `Circles`) of the
+  bank for the section, or one of the other site's names (`SAT Algebra`, `SAT Advanced Math`,
+  `SAT Data & Statistics`, `SAT Geometry`, `SAT Reading Comprehension`, `SAT Vocabulary`,
+  `SAT Grammar & Writing`, matched without "SAT " and with "&" = "and"). For those broad English
+  names the skill is taken from the fixed SAT wording of the prompt ("most logical transition" →
+  Transitions, "conventions of Standard English" → Form, Structure, and Sense, or Boundaries when
+  the choices differ only in punctuation, etc.). Unknown names are reported once per name with
+  the accepted list. There is no category collection.
 - **Grid-in answers** must be typeable in the answer box: digits, `.`, `/`, `-`, 5 characters
   (6 if negative). Split on ` or `, `;` and `, ` (so `1,000` is one value, and rejected).
 - R&W passage and prompt are stored separately (this site has both fields).
@@ -94,5 +104,6 @@ single-paper status change on one is refused. They do appear in the admin questi
 - `npm test`: parser and rule tests in `apps/api/test/test-upload-parser.test.ts`.
 - End to end against a throwaway in-memory MongoDB (refuses any non-local URI):
   `node apps/api/test/e2e/make-test-pdfs.mjs <dir>` then `npx tsx apps/api/test/e2e/test-uploads.e2e.ts <dir>`
-  (13 checks). Add `--serve 4100` to keep the seeded API running for a browser session
+  (14 checks; copy the kit's `SAT-Sharks-Demo-Full-Test-*.pdf` into the folder as
+  `other-site-english.pdf` / `other-site-math.pdf` to include the other-site check). Add `--serve 4100` to keep the seeded API running for a browser session
   (web: `API_URL=http://localhost:4100 npx next dev -p 3100` in `apps/web`).

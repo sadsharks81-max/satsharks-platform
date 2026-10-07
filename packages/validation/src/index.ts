@@ -13,6 +13,7 @@ import {
   sectionQuestionCount,
   TIME_MULTIPLIERS,
   PAID_PLANS,
+  PRICING_PLAN_IDS,
   USER_PLANS,
   USER_REGIONS,
   USER_ROLES,
@@ -308,6 +309,34 @@ export const saveUploadSectionSchema = z.object({ questions: z.array(uploadQuest
 export type SaveUploadSectionInput = z.infer<typeof saveUploadSectionSchema>;
 
 export const testUploadActiveSchema = z.object({ active: z.boolean() });
+
+// ---------- admin: pricing ----------
+
+const shortText = (max: number) => z.string().trim().min(1, "Fill in every field").max(max);
+const perCurrency = (max: number) => z.object({ PKR: shortText(max), USD: shortText(max) });
+
+// The four plans, in their fixed order; only their wording and prices change.
+export const pricingContentSchema = z.object({
+  plans: z
+    .array(
+      z.object({
+        id: z.enum(PRICING_PLAN_IDS),
+        name: shortText(40),
+        price: perCurrency(30),
+        period: shortText(40),
+        saving: perCurrency(30).nullable(),
+        highlights: z.array(shortText(120)).min(1, "Give every plan at least one point").max(8),
+        popular: z.boolean(),
+      }),
+    )
+    .length(PRICING_PLAN_IDS.length)
+    .refine((plans) => plans.every((plan, index) => plan.id === PRICING_PLAN_IDS[index]), "The plans must stay in their fixed order")
+    .refine((plans) => plans.filter((plan) => plan.popular).length <= 1, "Mark at most one plan as most popular"),
+  comparison: z.array(z.object({ feature: shortText(80), free: shortText(60), paid: shortText(60) })).max(20),
+  tagline: z.string().trim().max(200),
+  schoolsNote: z.string().trim().max(200),
+  refundPolicy: z.string().trim().max(200),
+});
 
 // ---------- admin: users ----------
 

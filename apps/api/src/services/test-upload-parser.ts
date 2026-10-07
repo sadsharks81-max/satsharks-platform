@@ -9,6 +9,12 @@
 // blank line, a list item ("•", "-", "*", "1.") or a "$$…$$" display formula. Math keeps its
 // formulas intact this way: a "$…$" that wrapped onto two lines is joined again, where keeping the
 // raw line breaks would split it and leave it unrenderable.
+//
+// Math may be written two ways. LaTeX between dollar signs, like the question bank ($x^2$, $\$78$);
+// or plain text, as the other SAT Sharks site's PDFs are (x^2, $90, 3/14). A file with no LaTeX
+// commands in which every "$" is a dollar amount ("$" followed by a digit) is read as plain text and
+// converted (see plainMathToSite): dollar signs stay dollar signs and simple powers become
+// superscripts (x^2 → x²).
 import { MOCK_MODULES, MOCK_MODULE_LABELS, splitAcceptedValues, type Difficulty, type MockModule, type Section } from "@satsharks/types";
 
 export interface ParsedQuestion {
@@ -32,6 +38,35 @@ export interface SectionParseResult {
   section: Section | null;
   questions: ParsedQuestion[];
   errors: string[];
+  // Math written as plain text rather than LaTeX (converted on the way in).
+  plainMath: boolean;
+}
+
+// ---------- plain-text Math ----------
+
+// A Math file is plain text when it uses no LaTeX command and every "$" is a dollar amount.
+export function isPlainMath(text: string): boolean {
+  if (/\\[a-zA-Z$%{]/.test(text)) return false;
+  return [...text.matchAll(/\$/g)].every((match) => /\d/.test(text[match.index + 1] ?? ""));
+}
+
+const SUPERSCRIPT: Record<string, string> = {
+  "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+  "+": "⁺", "-": "⁻", "(": "⁽", ")": "⁾", a: "ᵃ", b: "ᵇ", c: "ᶜ", d: "ᵈ", e: "ᵉ", f: "ᶠ", g: "ᵍ", h: "ʰ",
+  i: "ⁱ", j: "ʲ", k: "ᵏ", m: "ᵐ", n: "ⁿ", o: "ᵒ", p: "ᵖ", r: "ʳ", s: "ˢ", t: "ᵗ", u: "ᵘ", v: "ᵛ", w: "ʷ", x: "ˣ", y: "ʸ", z: "ᶻ",
+};
+
+// Plain-text Math in the site's own notation: "$90" is a dollar amount (written \$ so it is not
+// read as a formula), "x^2" / "(2)^t" / "x^(n+1)" become superscripts when every character has
+// one, and a spaced " * " is a multiplication dot.
+export function plainMathToSite(text: string): string {
+  return text
+    .replace(/\$/g, "\\$")
+    .replace(/\^(-?\d+|[a-z]|\([0-9a-z+\-]+\))/g, (match, exponent: string) => {
+      const raised = [...exponent].map((char) => SUPERSCRIPT[char]);
+      return raised.every(Boolean) ? raised.join("") : match;
+    })
+    .replace(/ \* /g, " · ");
 }
 
 const FIELD_ORDER = ["CATEGORY", "DIFFICULTY", "TYPE", "PASSAGE", "PROMPT", "A", "B", "C", "D", "ANSWER", "EXPLANATION"] as const;
@@ -188,6 +223,8 @@ export function parseSectionText(text: string): SectionParseResult {
   }
 
   const isMath = (section ?? "math") === "math";
+  const plainMath = isMath && isPlainMath(text);
+  const math = (value: string) => (plainMath ? plainMathToSite(value) : value);
   const questions: ParsedQuestion[] = [];
 
   for (const module of MOCK_MODULES) {
@@ -253,14 +290,14 @@ export function parseSectionText(text: string): SectionParseResult {
         difficulty: difficulty as Difficulty,
         // Math shows no separate passage, so a Math PASSAGE opens the question text instead.
         passage: isMath ? null : passage || null,
-        prompt: isMath && passage ? `${passage}\n${prompt}` : prompt,
-        choices: resolved === "spr" && !hasChoices ? [] : CHOICE_KEYS.map((key) => ({ key, text: reflow(raw(key)).replace(/\n/g, " ") })),
+        prompt: math(isMath && passage ? `${passage}\n${prompt}` : prompt),
+        choices: resolved === "spr" && !hasChoices ? [] : CHOICE_KEYS.map((key) => ({ key, text: math(reflow(raw(key)).replace(/\n/g, " ")) })),
         choiceKey: resolved === "mcq" ? answer.toUpperCase() : null,
         acceptedValues: resolved === "spr" ? splitAcceptedValues(answer) : [],
-        explanation: stripEmoji(reflow(raw("EXPLANATION"))),
+        explanation: math(stripEmoji(reflow(raw("EXPLANATION")))),
       });
     });
   }
 
-  return { section, questions: errors.length === 0 ? questions : [], errors };
+  return { section, questions: errors.length === 0 ? questions : [], errors, plainMath };
 }

@@ -15,11 +15,12 @@ function renderMath(source: string, display: boolean, key: number): ReactNode {
 
 const MARKUP = /(\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\s][^*\n]*?\*|_{3,})/;
 // Inside $…$ an escaped character (e.g. \$ for a dollar sign, as in $\$78$) never ends the formula.
-const MARKUP_WITH_MATH = /(\$\$[\s\S]+?\$\$|\$(?:\\.|[^$\\\n])+?\$|\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\s][^*\n]*?\*|_{3,})/;
+// Outside a formula, \$ is a plain dollar sign ("costs \$90", from plain-text Math) and never opens one.
+const MARKUP_WITH_MATH = /((?<!\\)\$\$[\s\S]+?\$\$|(?<!\\)\$(?:\\.|[^$\\\n])+?\$|\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\s][^*\n]*?\*|_{3,})/;
 
 function renderInline(text: string, math: boolean): ReactNode[] {
   return text.split(math ? MARKUP_WITH_MATH : MARKUP).map((part, index) => {
-    if (index % 2 === 0) return <Fragment key={index}>{part}</Fragment>;
+    if (index % 2 === 0) return <Fragment key={index}>{math ? part.replace(/\\\$/g, "$") : part}</Fragment>;
     if (math && part.startsWith("$$")) return renderMath(part.slice(2, -2), true, index);
     if (math && part.startsWith("$")) return renderMath(part.slice(1, -1), false, index);
     if (part.startsWith("**")) return <strong key={index}>{renderInline(part.slice(2, -2), math)}</strong>;

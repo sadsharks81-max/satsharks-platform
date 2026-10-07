@@ -140,7 +140,7 @@ toPdf("demo-english-double", english, 2);
 // A module header typed twice (so Module 2 Hard is missing).
 toPdf("bad-math", math.replace("MODULE 2 HARD", "MODULE 2 EASY"));
 // A category that is not in the bank, and a formula KaTeX cannot draw.
-toPdf("bad-category", math.replaceAll("CATEGORY: Circles", "CATEGORY: SAT Geometry").replace("$\\sqrt{", "$\\sqrt{{"));
+toPdf("bad-category", math.replaceAll("CATEGORY: Circles", "CATEGORY: Calculus").replace("$\\sqrt{", "$\\sqrt{{"));
 // A dollar amount written as plain "$70" in Math.
 toPdf("bad-money", math.replace(/\$\\\$(\d+)\$/, (_match, amount) => `$${amount}`));
 console.log("done");

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { homePath, useMe } from "@/lib/auth";
-import { COMPARISON, PLANS, type Currency } from "@/lib/pricing";
+import { Notice, Spinner } from "@/components/ui";
+import { usePricing, type Currency } from "@/lib/pricing";
 
 // Signed-in students see their own region's currency (from the country they chose at sign-up).
 // Visitors get a first guess from their device's time zone. The switch always works either way.
@@ -25,11 +26,16 @@ function Check() {
 
 export function PricingPlans() {
   const { data: user } = useMe();
+  const pricing = usePricing();
   const [chosen, setChosen] = useState<Currency | null>(null);
   const [guess, setGuess] = useState<Currency>("PKR");
   useEffect(() => setGuess(guessCurrency()), []);
   const fromAccount: Currency | null = user?.region ? (user.region === "local" ? "PKR" : "USD") : null;
   const currency = chosen ?? fromAccount ?? guess;
+
+  if (pricing.isLoading) return <Spinner label="Loading plans" />;
+  if (pricing.error || !pricing.data) return <Notice tone="error">The plans could not be loaded. Please try again.</Notice>;
+  const { plans, comparison, tagline, schoolsNote, refundPolicy } = pricing.data;
 
   return (
     <>
@@ -57,7 +63,7 @@ export function PricingPlans() {
       </div>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {PLANS.map((plan) => {
+        {plans.map((plan) => {
           const paid = plan.id !== "free";
           return (
             <div
@@ -107,7 +113,8 @@ export function PricingPlans() {
         })}
       </div>
 
-      <p className="mt-6 text-center text-sm font-medium text-slate-600">One hour with a tutor costs more than three months of SAT Sharks.</p>
+      {tagline && <p className="mt-6 text-center text-sm font-medium text-slate-600">{tagline}</p>}
+      {refundPolicy && <p className="mt-2 text-center text-xs font-bold text-slate-700">{refundPolicy}</p>}
 
       <section className="mt-14">
         <h2 className="text-center text-2xl font-bold tracking-tight">Free vs paid</h2>
@@ -127,7 +134,7 @@ export function PricingPlans() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {COMPARISON.map((row) => (
+              {comparison.map((row) => (
                 <tr key={row.feature}>
                   <th scope="row" className="px-4 py-3 font-medium sm:px-6">
                     {row.feature}
@@ -139,9 +146,7 @@ export function PricingPlans() {
             </tbody>
           </table>
         </div>
-        <p className="mx-auto mt-5 max-w-2xl text-center text-sm text-slate-600">
-          Schools and tutors: 10 seats or more, price on request, with a teacher dashboard.
-        </p>
+        {schoolsNote && <p className="mx-auto mt-5 max-w-2xl text-center text-sm text-slate-600">{schoolsNote}</p>}
       </section>
     </>
   );

@@ -108,7 +108,7 @@ export function PracticeTests() {
   return (
     <section>
       <h2 className={`${heading} mb-1`}>Full-Length Practice Tests</h2>
-      <p className="mb-3.5 text-sm font-medium text-slate-600">Complete adaptive tests written by SAT Sharks. Everyone sitting a test gets the same questions.</p>
+      <p className="mb-3.5 text-sm font-medium text-slate-600">Complete adaptive tests </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         {list.map((test) => (
           <div key={test.id} className="flex flex-col justify-between gap-4 rounded-[14px] border border-black bg-white p-4 text-black sm:p-5">

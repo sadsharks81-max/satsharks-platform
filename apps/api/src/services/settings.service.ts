@@ -1,10 +1,11 @@
 import { SettingModel } from "@satsharks/db";
-import { DEFAULT_ROUTING_THRESHOLD_PERCENT, type AdaptiveSettings, type ConversionTables } from "@satsharks/types";
-import { conversionTablesSchema } from "@satsharks/validation";
+import { DEFAULT_PRICING, DEFAULT_ROUTING_THRESHOLD_PERCENT, type AdaptiveSettings, type ConversionTables, type PricingContent } from "@satsharks/types";
+import { conversionTablesSchema, pricingContentSchema } from "@satsharks/validation";
 import { emptyConversionTables } from "./scoring";
 
 const ADAPTIVE_KEY = "adaptive";
 const SCORING_KEY = "scoring.conversionTables";
+const PRICING_KEY = "pricing";
 
 // Scores are read for every attempt in a list, so the tables are kept in memory briefly. Saving
 // clears the copy at once on this instance.
@@ -43,5 +44,17 @@ export const settingsService = {
     await SettingModel.updateOne({ key: SCORING_KEY }, { $set: { value: tables, updatedBy: userId } }, { upsert: true });
     tablesCache = null;
     return this.getConversionTables();
+  },
+
+  // Shown on the public pricing page. Until an admin saves their own, the proposal's plans.
+  async getPricing(): Promise<PricingContent> {
+    const stored = await SettingModel.findOne({ key: PRICING_KEY }).lean();
+    const parsed = pricingContentSchema.safeParse(stored?.value);
+    return parsed.success ? (parsed.data as PricingContent) : DEFAULT_PRICING;
+  },
+
+  async setPricing(pricing: PricingContent, userId: string): Promise<PricingContent> {
+    await SettingModel.updateOne({ key: PRICING_KEY }, { $set: { value: pricing, updatedBy: userId } }, { upsert: true });
+    return this.getPricing();
   },
 };

@@ -94,8 +94,6 @@ function Home() {
         </Card>
       </div>
 
-      <PracticeTests />
-
       {activeCount > 0 && (
         <section>
           <h2 className={heading}>Active Drills &amp; Mocks ({activeCount})</h2>
@@ -148,6 +146,8 @@ function Home() {
           })}
         </div>
       </section>
+
+      <PracticeTests />
 
       {drillExam !== undefined && catalog.data && <CreateDrill catalog={catalog.data} initialExamId={drillExam ?? undefined} onClose={() => setDrillExam(undefined)} />}
       {mockOpen && catalog.data && <CreateMock catalog={catalog.data} onClose={() => setMockOpen(false)} />}

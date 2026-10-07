@@ -67,17 +67,23 @@
       </ul>
       <table>
         <tr><th>Field</th><th>What to write</th></tr>
-        <tr><td><code>CATEGORY</code></td><td>A domain or a skill from the question bank, for this section. Math domains: Algebra, Advanced Math, Problem-Solving and Data Analysis, Geometry and Trigonometry. English: Craft and Structure, Information and Ideas, Standard English Conventions, Expression of Ideas. A skill name (e.g. Linear equations in one variable) also works. Unknown names are listed when you upload.</td></tr>
+        <tr><td><code>CATEGORY</code></td><td>A domain or a skill from the question bank, for this section. Math domains: Algebra, Advanced Math, Problem-Solving and Data Analysis, Geometry and Trigonometry. English: Craft and Structure, Information and Ideas, Standard English Conventions, Expression of Ideas. A skill name (e.g. Linear equations in one variable) also works, and so do the other SAT Sharks site's names (SAT Algebra, SAT Advanced Math, SAT Data &amp; Statistics, SAT Geometry, SAT Reading Comprehension, SAT Vocabulary, SAT Grammar &amp; Writing); for English the exact skill is then taken from the question's wording. Unknown names are listed when you upload.</td></tr>
         <tr><td><code>DIFFICULTY</code></td><td><code>EASY</code>, <code>MEDIUM</code> or <code>HARD</code></td></tr>
         <tr><td><code>TYPE</code></td><td><code>MULTIPLE_CHOICE</code> (the default) or <code>GRID_IN</code> (Math only: the student types the answer; no A–D)</td></tr>
         <tr><td><code>ANSWER</code></td><td><code>A</code>–<code>D</code>, or for a grid-in every accepted form separated by <code>or</code>, e.g. <code>0.5 or 1/2</code>. Students can type digits, <code>.</code>, <code>/</code> and <code>-</code> only, 5 characters (6 if negative).</td></tr>
       </table>
       <h2>Math formulas</h2>
       <p>
-        Write every formula in LaTeX between dollar signs, the same way as the rest of the question bank: <code>$3x + 7 = 22$</code>, <code>$x^2$</code>,
+        <b>Plain text works</b>, as in the other SAT Sharks site's PDFs: <code>x^2</code>, <code>3/14</code>, <code>25π</code>, <code>$90</code>. On upload a
+        power becomes a superscript (<code>x^2</code> → x², <code>(2)^t</code> → (2)ᵗ) and <code>$</code> stays a dollar sign. For fractions, roots and other
+        formulas that should look like the real test, use LaTeX instead.
+      </p>
+      <p>
+        <b>LaTeX:</b> write every formula in LaTeX between dollar signs, the same way as the rest of the question bank: <code>$3x + 7 = 22$</code>, <code>$x^2$</code>,
         <code>$\frac{3}{4}$</code>, <code>$\sqrt{2}$</code>, <code>$\pi r^2$</code>, <code>$x \le 5$</code>. A formula on its own line goes between double dollar
-        signs: <code>$$y = 2x + 1$$</code>. A dollar amount is written inside a formula as <code>$\$78$</code>. A lone <code>$</code> is rejected, and so is a
-        formula that cannot be displayed; the upload lists each one. After uploading, every question can be checked in a preview exactly as students see it,
+        signs: <code>$$y = 2x + 1$$</code>. A dollar amount is written inside a formula as <code>$\$78$</code>. A file is read as LaTeX as soon as it uses a LaTeX
+        command (<code>\frac</code>, <code>\$</code>, …) or a formula like <code>$x$</code>; then a lone <code>$</code> is rejected, and so is a formula that
+        cannot be displayed; the upload lists each one. Do not mix the two styles in one file. After uploading, every question can be checked in a preview exactly as students see it,
         and the editor has a visual equation editor.
       </p>
       <h2>Paragraphs and text</h2>

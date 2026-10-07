@@ -123,8 +123,63 @@ function formatErrors(heading: string, errors: string[]): string {
   return [heading, ...listed].join("\n");
 }
 
-function toUploadQuestion(parsed: ParsedQuestion, vocab: Vocabulary): UploadQuestion {
-  const match = vocab.lookup.get(parsed.category.trim().toLowerCase());
+// The other SAT Sharks site's category names (and close variants) → this bank's domain, after
+// dropping a leading "SAT " and reading "&" as "and".
+const CATEGORY_ALIASES: Record<string, string> = {
+  algebra: "Algebra",
+  "advanced math": "Advanced Math",
+  "data and statistics": "Problem-Solving and Data Analysis",
+  "data analysis": "Problem-Solving and Data Analysis",
+  statistics: "Problem-Solving and Data Analysis",
+  "problem solving and data analysis": "Problem-Solving and Data Analysis",
+  geometry: "Geometry and Trigonometry",
+  trigonometry: "Geometry and Trigonometry",
+  "reading comprehension": "Information and Ideas",
+  reading: "Information and Ideas",
+  vocabulary: "Craft and Structure",
+  "grammar and writing": "Standard English Conventions",
+  grammar: "Standard English Conventions",
+  writing: "Expression of Ideas",
+};
+
+// Reading & Writing questions use fixed wording, which names the skill. Used when the category is
+// one of the broad names above, so "SAT Grammar & Writing" lands on Transitions, Boundaries, etc.
+const RW_SKILL_BY_WORDING: [RegExp, string, string][] = [
+  [/most logical and precise word or phrase/i, "Craft and Structure", "Words in Context"],
+  [/most logical transition/i, "Expression of Ideas", "Transitions"],
+  [/relevant information from the notes/i, "Expression of Ideas", "Rhetorical Synthesis"],
+  [/conventions of Standard English/i, "Standard English Conventions", "Form, Structure, and Sense"],
+  [/Text 2|both texts/i, "Craft and Structure", "Cross-Text Connections"],
+  [/main purpose|overall structure|function of|how the second sentence|how the (?:first|last) sentence/i, "Craft and Structure", "Text Structure and Purpose"],
+  [/main idea|According to the text|best describes/i, "Information and Ideas", "Central Ideas and Details"],
+  [/support|illustrate|quotation|data/i, "Information and Ideas", "Command of Evidence"],
+  [/conclusion|Based on the text|most logically completes/i, "Information and Ideas", "Inferences"],
+];
+
+// Choices that differ only in punctuation test sentence boundaries, not form.
+const onlyPunctuationDiffers = (choices: { text: string }[]) =>
+  choices.length > 1 && new Set(choices.map((choice) => choice.text.replace(/[\s.,;:—–-]+/g, "").toLowerCase())).size === 1;
+
+// CATEGORY → this bank's domain and skill: an exact domain or skill name, or one of the aliases.
+function resolveCategory(parsed: ParsedQuestion, section: Section, vocab: Vocabulary): { topic: string; skill: string | null } | null {
+  const exact = vocab.lookup.get(parsed.category.trim().toLowerCase());
+  if (exact) return exact;
+  const key = parsed.category.trim().toLowerCase().replace(/^sat\s+/, "").replace(/&/g, "and").replace(/\s+/g, " ");
+  const domain = CATEGORY_ALIASES[key];
+  if (!domain || !vocab.topics.some((entry) => entry.topic === domain)) return null;
+  if (section === "reading_writing") {
+    const rule = RW_SKILL_BY_WORDING.find(([pattern]) => pattern.test(parsed.prompt));
+    if (rule) {
+      const [, topic, found] = rule;
+      const skill = topic === "Standard English Conventions" && onlyPunctuationDiffers(parsed.choices) ? "Boundaries" : found;
+      if (vocab.topics.find((entry) => entry.topic === topic)?.skills.includes(skill)) return { topic, skill };
+    }
+  }
+  return { topic: domain, skill: null };
+}
+
+function toUploadQuestion(parsed: ParsedQuestion, section: Section, vocab: Vocabulary): UploadQuestion {
+  const match = resolveCategory(parsed, section, vocab);
   return {
     module: parsed.module,
     questionNumber: parsed.questionNumber,
@@ -166,11 +221,28 @@ async function extractSection(file: UploadedFile, expected: Section): Promise<Te
   let questions: UploadQuestion[] = [];
   if (errors.length === 0) {
     const vocab = await vocabulary(expected);
-    questions = parsed.questions.map((question) => toUploadQuestion(question, vocab));
-    errors.push(...problemsOf(questions, expected, vocab));
+    questions = parsed.questions.map((question) => toUploadQuestion(question, expected, vocab));
+    errors.push(...groupCategoryErrors(problemsOf(questions, expected, vocab), vocab));
   }
   if (errors.length > 0) return failed(formatErrors(`The ${SECTION_FILE_LABEL[expected]} PDF does not match the required format:`, errors));
-  return { ...base, status: "extracted", errorMessage: "", warnings: warningsOf(questions, expected), questions };
+  const warnings = warningsOf(questions, expected);
+  if (parsed.plainMath) {
+    warnings.unshift("Math was written as plain text (e.g. x^2, $90), not LaTeX. It was converted: powers became superscripts (x²) and $ stays a dollar sign. Check fractions and roots in the review and use the equation editor where needed.");
+  }
+  return { ...base, status: "extracted", errorMessage: "", warnings, questions };
+}
+
+// One line per unknown category instead of one per question, with the names that do work.
+function groupCategoryErrors(errors: string[], vocab: Vocabulary): string[] {
+  const unknown = new Map<string, number>();
+  const rest = errors.filter((error) => {
+    const match = /question \d+: "(.+)" is not a .+ domain in the question bank\.$/.exec(error);
+    if (!match) return true;
+    unknown.set(match[1]!, (unknown.get(match[1]!) ?? 0) + 1);
+    return false;
+  });
+  const names = vocab.topics.map((entry) => entry.topic).join(", ");
+  return [...[...unknown].map(([name, count]) => `CATEGORY "${name}" (${count} question${count === 1 ? "" : "s"}) is not a domain or skill of the question bank. Use one of: ${names}, or a skill name.`), ...rest];
 }
 
 // ---------- views ----------

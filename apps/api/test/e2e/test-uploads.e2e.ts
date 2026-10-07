@@ -7,7 +7,7 @@
 //
 // The PDFs come from make-test-pdfs.mjs in this folder.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -39,9 +39,14 @@ const VOCABULARY: [string, string, string][] = [
   ["math", "Problem-Solving and Data Analysis", "Percentages"],
   ["math", "Geometry and Trigonometry", "Circles"],
   ["math", "Geometry and Trigonometry", "Area and volume"],
+  // Every Reading & Writing skill of the real bank.
   ["reading_writing", "Craft and Structure", "Words in Context"],
   ["reading_writing", "Craft and Structure", "Cross-Text Connections"],
+  ["reading_writing", "Craft and Structure", "Text Structure and Purpose"],
+  ["reading_writing", "Information and Ideas", "Central Ideas and Details"],
+  ["reading_writing", "Information and Ideas", "Command of Evidence"],
   ["reading_writing", "Information and Ideas", "Inferences"],
+  ["reading_writing", "Standard English Conventions", "Boundaries"],
   ["reading_writing", "Standard English Conventions", "Form, Structure, and Sense"],
   ["reading_writing", "Expression of Ideas", "Rhetorical Synthesis"],
   ["reading_writing", "Expression of Ideas", "Transitions"],
@@ -170,7 +175,7 @@ async function run() {
     const broken = await replace(id, "math", "bad-math.pdf");
     assert.match(broken.json.data.upload.math.errorMessage, /Module 2 \(harder\) is missing/);
     const category = await replace(id, "math", "bad-category.pdf");
-    assert.match(category.json.data.upload.math.errorMessage, /"SAT Geometry" is not a Math domain/);
+    assert.match(category.json.data.upload.math.errorMessage, /CATEGORY "Calculus" \(\d+ questions\) is not a domain or skill/);
     assert.match(category.json.data.upload.math.errorMessage, /cannot be displayed/);
     const money = await replace(id, "math", "bad-money.pdf");
     assert.match(money.json.data.upload.math.errorMessage, /no closing "\$"/);
@@ -363,6 +368,42 @@ async function run() {
     const noAnswer = await admin.call("PATCH", `/api/admin/questions/${question!._id}`, { questionType: "mcq" });
     assert.equal(noAnswer.status, 400);
   });
+
+  // The other SAT Sharks site's own demo PDFs (its category names, plain-text Math with $ amounts and
+  // x^2), copied into the folder as other-site-english.pdf / other-site-math.pdf when available.
+  if (existsSync(join(folder!, "other-site-math.pdf"))) {
+    await check("the other site's PDFs upload unchanged: categories mapped, plain-text Math converted", async () => {
+      const created = await upload({ title: "Other site demo", year: "2026", testNumber: "50" }, { readingWriting: "other-site-english.pdf", math: "other-site-math.pdf" });
+      const data = created.json.data.upload;
+      assert.equal(data.readingWriting.status, "extracted", data.readingWriting.errorMessage);
+      assert.equal(data.math.status, "extracted", data.math.errorMessage);
+      assert.deepEqual(data.readingWriting.moduleCounts, { m1: 27, m2_easy: 27, m2_hard: 27 });
+      assert.deepEqual(data.math.moduleCounts, { m1: 22, m2_easy: 22, m2_hard: 22 });
+      assert.match(data.math.warnings[0], /plain text/);
+      const { json } = await admin.call("GET", `/api/admin/test-uploads/${data.id}`);
+      const rw = json.data.upload.readingWriting.questions;
+      const math = json.data.upload.math.questions;
+      const at = (number: number) => rw.find((q: { module: string; questionNumber: number }) => q.module === "m1" && q.questionNumber === number);
+      assert.deepEqual([at(1).topic, at(1).skill], ["Craft and Structure", "Words in Context"]);
+      assert.deepEqual([at(8).topic, at(8).skill], ["Information and Ideas", "Central Ideas and Details"]);
+      assert.equal(at(14).topic, "Standard English Conventions");
+      assert.equal(at(20).skill, "Transitions");
+      assert.equal(at(25).skill, "Rhetorical Synthesis");
+      assert.equal(math[0].topic, "Algebra");
+      assert.equal(math[1].topic, "Problem-Solving and Data Analysis");
+      assert.equal(math[2].topic, "Geometry and Trigonometry");
+      assert.match(math[3].prompt, /one-time fee of \\\$90 plus \\\$24/);
+      assert.match(math[4].prompt, /3x² - 3x \+ 6/);
+      assert.match(math[9].choices[3].text, /25π/);
+      // Every question passes the review rules as extracted, so it can be saved straight away.
+      for (const [section, field] of [["reading_writing", "readingWriting"], ["math", "math"]] as const) {
+        const questions = json.data.upload[field].questions.map(({ questionNumber: _n, ...rest }: Record<string, unknown>) => rest);
+        const saved = await admin.call("PUT", `/api/admin/test-uploads/${data.id}/sections/${section}`, { questions });
+        assert.equal(saved.status, 200, JSON.stringify(saved.json.error));
+      }
+      assert.equal((await admin.call("DELETE", `/api/admin/test-uploads/${data.id}`)).status, 200);
+    });
+  }
 
   await check("deactivating hides the test; a draft can be deleted, a published test cannot", async () => {
     await admin.call("POST", `/api/admin/test-uploads/${id}/active`, { active: false });

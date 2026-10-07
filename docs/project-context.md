@@ -37,6 +37,10 @@ Last updated: 2026-10-07 (uploaded practice tests).
   features, test format, how it works, pricing teaser, closing call to action. Only true, fixed
   figures (98 questions, 2h 14m, 400–1600); no invented student numbers.
 - **Delete** drills, mocks and full tests from their cards (with confirmation).
+- **Pricing is editable** in Admin → Settings (plan names, PKR/USD prices, periods, saving badges,
+  points, most popular, comparison rows, the lines under them and a **refund policy** line, default
+  "All payments are final: SAT Sharks does not offer refunds."). Stored as setting `pricing`;
+  the pricing page reads `GET /api/pricing`. The four plan ids are fixed (accounts store them).
 - **Login / sign-up / forgot / reset pages** redesigned (split brand panel, inline validation,
   password show/hide, loading states). **Pricing** (proposal pp. 9–10, PKR/USD switch),
   **Terms** and **Privacy** pages (factual, not legally reviewed), site footer, phone menu.
@@ -78,7 +82,8 @@ Last updated: 2026-10-07 (uploaded practice tests).
   publish (two hidden papers, questions tagged `full-test`); add images; activate. Students see
   "Full-Length Practice Tests" on Home and sit them through the normal full-test flow; Module 2
   follows the same routing rule (65%). The tagged questions never reach drills, random mocks or
-  the catalog. Math uses LaTeX in `$…$` like the bank; CATEGORY is a bank domain or skill.
+  the catalog. Math may be LaTeX in `$…$` (like the bank) or plain text (the other site's style,
+  converted); CATEGORY is a bank domain or skill, or one of the other site's category names.
 - **Question editor** (bank, reports, uploaded tests): image drag-and-drop upload (PNG/JPEG/WebP,
   stored in `assets`), editable choices with Set/Correct, question-type switch (Math), Math symbol
   bar and a visual equation editor (MathLive), live preview including the explanation.
@@ -294,7 +299,8 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 ## 9. Open items and suggestions
 
 0. **Try the upload with the client's real PDFs** (Admin → Full tests). They must follow the format
-   (`/full-test/format.html`); Math formulas in LaTeX. Word/Google Docs exports are untested.
+   (`/full-test/format.html`). PDFs made for the other SAT Sharks site upload unchanged (its
+   category names and plain-text Math are accepted). Word/Google Docs exports are untested.
 
 1. Umair to check the reference sheet and the floating calculator in the app (untested).
 2. Commit and push the uncommitted work when Umair says so.
@@ -302,8 +308,9 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
    strings; the adaptive threshold (65% is a placeholder); Math difficulty source.
 4. Scaled scores need SAT Sharks' conversion tables (enter in Admin → Settings), and Umair's
    Resend values in `.env`. Terms/Privacy need legal review and a contact email
-   (`LEGAL_CONTACT_EMAIL` in `apps/web/src/components/legal-page.tsx`). Pricing figures are the
-   proposal's "starting suggestion" (`apps/web/src/lib/pricing.ts`).
+   (`LEGAL_CONTACT_EMAIL` in `apps/web/src/components/legal-page.tsx`). Pricing is set in Admin →
+   Settings (defaults: the proposal's "starting suggestion", `DEFAULT_PRICING` in packages/types).
+   The Terms page still says refund terms "will be published"; it should match the no-refund line.
 5. Remaining proposal items (§2 "Not built yet"), then deployment.
 
 ## 10. Change log
@@ -378,3 +385,23 @@ Newest last. One entry per session or major step.
   `apps/web/public/full-test/`. New deps: `pdfjs-dist`, `multer`, `katex` (API), `mathlive` (web),
   `mongodb-memory-server` (API dev). Tested as in §2 "Last verified". The kit's two §5 fixes did
   not apply here (no `UPDATED` status; the Papers list never loaded questions).
+- **2026-10-07 — The other site's PDFs.** Umair uploaded the other site's demo PDFs and every
+  question was rejected (its "SAT …" categories; plain-text Math with bare `$90`). Now accepted:
+  category aliases to our domains, English skill inferred from the prompt wording, and plain-text
+  Math detected per file and converted (`$` kept as `\$`, powers → superscripts). The renderer
+  shows `\$` outside a formula as `$` and never opens a formula at an escaped `$`. Unknown
+  categories are reported once per name. Tests: 14 parser tests, 14 end-to-end checks including
+  both of the other site's demo PDFs (extracted with no errors, saved through review unchanged).
+- **2026-10-07 — Home order (Umair).** Home now shows: the two start cards, Active Drills & Mocks
+  (an uploaded test in progress appears here as a full-test card), Exams, then Full-Length
+  Practice Tests at the bottom. Typecheck only.
+- **2026-10-08 — Editable pricing, refund line, sign-in/out fixes.** Pricing moved from
+  `lib/pricing.ts` constants to the `pricing` setting with an editor card in Admin → Settings
+  (`components/pricing-settings.tsx`), `GET /api/pricing` (public) and `GET/PUT
+  /api/admin/settings/pricing`; a refund-policy line shows under the plans. Sign-in: the form is
+  replaced at once by "Opening …" (the nav no longer shows the account over the login form) and the
+  destination is prefetched; `?next=` is only used when it suits the account (`nextPathFor`).
+  Sign-out from a protected page no longer opens the login form with `?next=` that page (the
+  cause of a student landing on /admin/settings). `RequireUser` sends an account that may not
+  open a page to its own home instead of "You do not have access". Checked in Chrome against the
+  in-memory test API: all of the above, plus the price change reaching /pricing.

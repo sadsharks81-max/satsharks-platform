@@ -6,6 +6,7 @@ import {
   getAdaptiveSettings,
   getConversionTables,
   getFacets,
+  getPricing,
   getQuestion,
   getReport,
   getStats,
@@ -20,6 +21,7 @@ import {
   updateUser,
   setPapersStatus,
   setPaperStatus,
+  setPricing,
   updateQuestion,
   uploadImage,
 } from "../controllers/admin.controller";
@@ -49,6 +51,8 @@ adminRouter.get("/settings/adaptive", getAdaptiveSettings);
 adminRouter.put("/settings/adaptive", requirePermission("papers:write"), setAdaptiveSettings);
 adminRouter.get("/settings/scoring", getConversionTables);
 adminRouter.put("/settings/scoring", requirePermission("papers:write"), setConversionTables);
+adminRouter.get("/settings/pricing", getPricing);
+adminRouter.put("/settings/pricing", requirePermission("papers:write"), setPricing);
 
 adminRouter.get("/users", requirePermission("users:read"), listUsers);
 adminRouter.get("/users/:id", requirePermission("users:read"), getUser);

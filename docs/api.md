@@ -213,6 +213,8 @@ In addition to the two paper routes above:
 | --- | --- | --- |
 | `GET /api/admin/stats` | `admin:access` | Counts of users (and by region), papers, questions, attempts and reports |
 | `GET /api/admin/settings/scoring` | `admin:access` | Conversion tables |
+| `GET /api/admin/settings/pricing` | `admin:access` | Plans, prices, comparison rows, tagline, schools note, refund policy (defaults until saved) |
+| `PUT /api/admin/settings/pricing` | `papers:write` | Body: the whole `PricingContent`. The four plans stay in their fixed order (`free`, `monthly`, `three_months`, `till_test_day`); at most one is "most popular". `GET /api/pricing` (public) serves the same content to the pricing page |
 | `PUT /api/admin/settings/scoring` | `papers:write` | Body: all four tables (see database.md, Setting) |
 | `GET /api/admin/reports` | `reports:read` | `?status=pending\|resolved&page&pageSize`. Returns `{ reports, total, page, pageSize, counts }` |
 | `GET /api/admin/reports/:id` | `reports:read` | `{ report, question (with answer key), related }` |

@@ -5,15 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { USER_REGION_LABELS, regionForCountry, type PublicUser } from "@satsharks/types";
 import { api, ApiError } from "@/lib/api";
-import { homePath, useSwitchUser } from "@/lib/auth";
+import { isStaffUser, nextPathFor, useSwitchUser } from "@/lib/auth";
 import { countryOptions, LOCAL_COUNTRY_CODE } from "@/lib/countries";
 import { AuthShell, FormAlert, PasswordField, SelectField, SubmitButton, TextField, authLink } from "./auth-ui";
-
-// Only same-site paths are accepted, so ?next= cannot be used to send someone to another website.
-// Without one, students go to their dashboard and admins to the admin portal.
-function safeNext(next: string | null, user: PublicUser): string {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : homePath(user);
-}
+import { Spinner } from "./ui";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -50,6 +45,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const [touched, setTouched] = useState<Partial<Record<keyof Values, boolean>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Signed in and on the way to the next page. The form is replaced at once, so the page never
+  // shows the login form under a nav bar that already belongs to the account.
+  const [opening, setOpening] = useState<string | null>(null);
   // Country names come from the browser's locale data, which differs slightly from the server's,
   // so the list is built after the page has loaded (building it on the server breaks hydration).
   const [countries, setCountries] = useState<{ code: string; name: string }[]>([]);
@@ -87,8 +85,12 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           password: values.password,
         },
       });
+      // ?next= is used only when it is on this site and suits the account (see nextPathFor).
+      const destination = nextPathFor(user, searchParams.get("next"));
+      router.prefetch(destination);
+      setOpening(isStaffUser(user) ? "Opening the admin portal" : "Opening your dashboard");
       switchUser(user);
-      router.push(safeNext(searchParams.get("next"), user));
+      router.push(destination);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409 && isRegister) {
         setErrors((current) => ({ ...current, email: "An account with this email already exists. Log in instead." }));
@@ -100,6 +102,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   }
 
   const region = values.country ? regionForCountry(values.country) : null;
+
+  if (opening) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Spinner label={opening} />
+      </div>
+    );
+  }
 
   return (
     <AuthShell

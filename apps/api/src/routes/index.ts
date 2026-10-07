@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getPricing } from "../controllers/admin.controller";
 import { getAsset } from "../controllers/asset.controller";
 import { getHealth } from "../controllers/health.controller";
 import { requireDb } from "../middleware/require-db";
@@ -14,3 +15,5 @@ apiRouter.use("/admin", adminRouter);
 apiRouter.use("/practice", practiceRouter);
 // Public: images are embedded in question content and carry no private data.
 apiRouter.get("/assets/:key", requireDb, getAsset);
+// Public: the plans and prices on the pricing page.
+apiRouter.get("/pricing", requireDb, getPricing);

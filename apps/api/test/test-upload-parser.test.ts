@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import katex from "katex";
 import { latexSegments, splitAcceptedValues, uploadQuestionProblems, type CatalogTopic, type UploadQuestion } from "@satsharks/types";
-import { parseSectionText, reflow } from "../src/services/test-upload-parser";
+import { isPlainMath, parseSectionText, plainMathToSite, reflow } from "../src/services/test-upload-parser";
 
 const mcq = (n: number, extra = "") => `QUESTION ${n}
 CATEGORY: Algebra
@@ -194,4 +194,32 @@ test("grid-in answers split on 'or', semicolons and comma-space, but not inside 
 test("latexSegments treats \\$ as a literal dollar sign", () => {
   assert.deepEqual(latexSegments("from $\\$78$ to $\\$81$ and $$x^2$$").segments, ["\\$78", "\\$81", "x^2"]);
   assert.equal(latexSegments("costs $5").balanced, false);
+});
+
+// ---------- plain-text Math (the other SAT Sharks site's PDFs) ----------
+
+test("a Math file with no LaTeX and only dollar amounts is read as plain text", () => {
+  assert.equal(isPlainMath("A fee of $90 plus $24. If x^2 = 9, what is x?"), true);
+  assert.equal(isPlainMath("What is x^2 - 3x + 2 = 0?"), true);
+  assert.equal(isPlainMath("If $3x + 7 = 22$, what is $x$?"), false);
+  assert.equal(isPlainMath(String.raw`It costs $\$78$.`), false);
+  assert.equal(isPlainMath(String.raw`What is \frac{1}{2}?`), false);
+});
+
+test("plain-text Math keeps dollar signs and turns simple powers into superscripts", () => {
+  assert.equal(plainMathToSite("A fee of $90 plus $24 per month"), String.raw`A fee of \$90 plus \$24 per month`);
+  assert.equal(plainMathToSite("f(x) = 3x^2 - 3x + 6"), "f(x) = 3x² - 3x + 6");
+  assert.equal(plainMathToSite("If (x^4)^3 * x^7 = x^n"), "If (x⁴)³ · x⁷ = xⁿ");
+  assert.equal(plainMathToSite("300(2)^t and πr^2h and x^(n+1) and x^-2"), "300(2)ᵗ and πr²h and x⁽ⁿ⁺¹⁾ and x⁻²");
+  // No superscript for "q": left as written rather than half-converted.
+  assert.equal(plainMathToSite("x^q"), "x^q");
+});
+
+test("a plain-text Math file parses with the conversion applied and passes the question rules", () => {
+  const doc = mathDocument.replaceAll("$", "").replace("If 3x + 7 = 22,", "A fee of $90. If 3x^2 + 7 = 22,").replace(/\\frac\{1\}\{2\}/g, "1/2");
+  const result = parseSectionText(doc);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.plainMath, true);
+  assert.equal(result.questions[0]!.prompt, String.raw`A fee of \$90. If 3x² + 7 = 22, what is the value of x?`);
+  assert.equal(problems({ prompt: result.questions[0]!.prompt, choices: result.questions[0]!.choices }), "");
 });

@@ -35,6 +35,21 @@ export const isStaffUser = (user: PublicUser | null | undefined) => user?.permis
 
 export const homePath = (user: PublicUser | null | undefined) => (isStaffUser(user) ? "/admin" : "/dashboard");
 
+// Where to go after signing in. A ?next= page is used only if it is on this site and suits the
+// account: an admin page for a student (or a student page for an admin) would only show "no
+// access", so the account's home is used instead.
+export function nextPathFor(user: PublicUser, next: string | null): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return homePath(user);
+  const adminPage = next === "/admin" || next.startsWith("/admin/");
+  return adminPage === isStaffUser(user) ? next : homePath(user);
+}
+
+// Set while the user is signing out on purpose, so pages that need a session do not send them to
+// the login form (with a ?next= back to the page they just left) before the sign-out navigation.
+// It lasts a few seconds: long enough for the navigation, not for a later visit while signed out.
+let signedOutAt = 0;
+export const isSigningOut = () => Date.now() - signedOutAt < 5_000;
+
 export function isMeQuery(queryKey: readonly unknown[]): boolean {
   return queryKey[0] === ME_QUERY_KEY[0] && queryKey[1] === ME_QUERY_KEY[1];
 }
@@ -46,6 +61,7 @@ export function isMeQuery(queryKey: readonly unknown[]): boolean {
 export function useSwitchUser() {
   const queryClient = useQueryClient();
   return (user: PublicUser | null) => {
+    signedOutAt = user === null ? Date.now() : 0;
     void queryClient.cancelQueries({ queryKey: ME_QUERY_KEY });
     queryClient.removeQueries({ predicate: (query) => !isMeQuery(query.queryKey) });
     queryClient.setQueryData(ME_QUERY_KEY, user);

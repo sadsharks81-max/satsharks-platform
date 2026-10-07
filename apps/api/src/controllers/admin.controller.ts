@@ -4,6 +4,7 @@ import {
   bulkPaperStatusSchema,
   conversionTablesSchema,
   objectIdSchema,
+  pricingContentSchema,
   paperStatusSchema,
   questionListQuerySchema,
   reopenReportSchema,
@@ -13,6 +14,7 @@ import {
   userListQuerySchema,
   type UpdateQuestionInput,
 } from "@satsharks/validation";
+import type { PricingContent } from "@satsharks/types";
 import { adminService } from "../services/admin.service";
 import { reportService } from "../services/report.service";
 import { userAdminService } from "../services/user-admin.service";
@@ -78,6 +80,17 @@ export async function getConversionTables(_req: Request, res: Response): Promise
 export async function setConversionTables(req: Request, res: Response): Promise<void> {
   const tables = conversionTablesSchema.parse(req.body);
   sendOk(res, await settingsService.setConversionTables(tables, String(req.user!._id)));
+}
+
+export async function getPricing(_req: Request, res: Response): Promise<void> {
+  sendOk(res, await settingsService.getPricing());
+}
+
+export async function setPricing(req: Request, res: Response): Promise<void> {
+  const parsed = pricingContentSchema.safeParse(req.body);
+  // The admin sees which field is wrong, not just "invalid request".
+  if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? "Check the pricing fields");
+  sendOk(res, await settingsService.setPricing(parsed.data as PricingContent, String(req.user!._id)));
 }
 
 export async function listReports(req: Request, res: Response): Promise<void> {

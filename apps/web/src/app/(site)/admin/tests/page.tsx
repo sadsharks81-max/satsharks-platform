@@ -24,9 +24,10 @@ function FormatHelp() {
             publish, add any images, and activate.
           </p>
           <p className="mt-2">
-            Write <b>CATEGORY</b> as a domain or skill from the question bank (e.g. <i>Algebra</i> or <i>Linear equations in one variable</i>). In Math, formulas go
-            between dollar signs in LaTeX, like the rest of the bank: <code className="rounded bg-slate-100 px-1">$x^2 + 3x$</code>, a dollar amount{" "}
-            <code className="rounded bg-slate-100 px-1">$\$78$</code>.
+            <b>CATEGORY</b> is a domain or skill from the question bank (e.g. <i>Algebra</i>, <i>Linear equations in one variable</i>); the other SAT Sharks
+            site&apos;s names (<i>SAT Algebra</i>, <i>SAT Vocabulary</i>, …) also work. Math can be plain text as on the other site (<code className="rounded bg-slate-100 px-1">x^2</code>,{" "}
+            <code className="rounded bg-slate-100 px-1">$90</code>) or LaTeX like the rest of the bank (<code className="rounded bg-slate-100 px-1">$x^2 + 3x$</code>,{" "}
+            <code className="rounded bg-slate-100 px-1">$\$78$</code>).
           </p>
         </div>
         <div className="flex flex-none flex-col gap-2 text-sm font-bold">
