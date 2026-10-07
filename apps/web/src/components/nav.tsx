@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { homePath, useMe, useSwitchUser } from "@/lib/auth";
+import { useMe, useSwitchUser } from "@/lib/auth";
 
 const button = "whitespace-nowrap rounded-[6px] bg-brand-500 px-5 py-2 text-[14px] font-bold tracking-tight text-white transition hover:opacity-90";
 const textLink = "whitespace-nowrap px-2 text-[14px] font-bold text-slate-600 transition hover:text-black";
@@ -44,7 +44,9 @@ export function Nav() {
   return (
     <header className="relative border-b border-slate-900 bg-white">
       <nav className="mx-auto flex w-full max-w-[1700px] items-center gap-4 px-4 py-3 md:px-8">
-        <Link href={user ? homePath(user) : "/"} className="mr-auto text-[24px] font-bold tracking-tight text-brand-500 sm:text-[28px]">
+        {/* Always the landing page. Signed-in accounts reach their own home from the buttons on the
+            right (and from the landing page's "Go to your dashboard"). */}
+        <Link href="/" className="mr-auto text-[24px] font-bold tracking-tight text-brand-500 sm:text-[28px]">
           SAT Sharks
         </Link>
 

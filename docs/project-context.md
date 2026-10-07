@@ -410,3 +410,6 @@ Newest last. One entry per session or major step.
   cause of a student landing on /admin/settings). `RequireUser` sends an account that may not
   open a page to its own home instead of "You do not have access". Checked in Chrome against the
   in-memory test API: all of the above, plus the price change reaching /pricing.
+- **2026-10-08 — Logo goes to the landing page.** The SAT Sharks logo in the nav opened the
+  account's home (/dashboard or /admin) when signed in, so on that page it seemed to do nothing.
+  It now always opens `/`, whose buttons send signed-in visitors to their dashboard. Typecheck only.
