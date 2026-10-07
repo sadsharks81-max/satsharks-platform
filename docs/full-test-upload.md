@@ -106,4 +106,5 @@ single-paper status change on one is refused. They do appear in the admin questi
   `node apps/api/test/e2e/make-test-pdfs.mjs <dir>` then `npx tsx apps/api/test/e2e/test-uploads.e2e.ts <dir>`
   (14 checks; copy the kit's `SAT-Sharks-Demo-Full-Test-*.pdf` into the folder as
   `other-site-english.pdf` / `other-site-math.pdf` to include the other-site check). Add `--serve 4100` to keep the seeded API running for a browser session
-  (web: `API_URL=http://localhost:4100 npx next dev -p 3100` in `apps/web`).
+  (web: `API_URL=http://localhost:4100 NEXT_DIST_DIR=.next-test npx next dev -p 3100` in `apps/web`,
+  with its own build folder so it never disturbs the normal dev server).

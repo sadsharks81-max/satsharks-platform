@@ -288,6 +288,11 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   showed garbled). Fixed in `rich-text.tsx`; formulas may contain escaped characters.
 - **mongodb-memory-server's first start** on this machine took over 10 s (binary scan): the e2e
   sets a 120 s launch timeout.
+- **Never run a second `next dev` in `apps/web` on the same build folder.** Claude's test web
+  server (port 3100) shared `.next` with Umair's server on 3000 and broke it (ChunkLoadError on
+  /admin/tests, 2026-10-08). Test servers now use `NEXT_DIST_DIR=.next-test`
+  (`API_URL=http://localhost:4100 NEXT_DIST_DIR=.next-test npx next dev -p 3100`); fix a broken
+  server by stopping it, deleting `apps/web/.next` and starting it again.
 - **Puppeteer clicks** can land on the review page's floating save bar; scroll the field to the
   centre first.
 - Auto mode once blocked reading local web files right after a read-only Atlas query, labelling it
