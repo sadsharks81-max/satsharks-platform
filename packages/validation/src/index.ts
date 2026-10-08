@@ -11,6 +11,7 @@ import {
   SECTION_SCORE_MIN,
   SECTIONS,
   sectionQuestionCount,
+  TEST_UPLOAD_KINDS,
   TIME_MULTIPLIERS,
   PAID_PLANS,
   PRICING_PLAN_IDS,
@@ -281,12 +282,28 @@ export type UpdateQuestionInput = z.infer<typeof updateQuestionSchema>;
 
 // ---------- admin: uploaded practice tests ----------
 
-// Multipart form fields arrive as strings.
-export const testUploadMetaSchema = z.object({
-  title: z.string().trim().min(1, "Enter a title").max(120),
-  year: z.coerce.number().int("Year must be a whole number").min(2000, "Year must be 2000–2100").max(2100, "Year must be 2000–2100"),
-  testNumber: z.coerce.number().int("Test number must be a whole number").min(1, "Test number must be 1 or more").max(100000),
-});
+// Multipart form fields arrive as strings. A practice test needs a year and a test number; an exam
+// needs its date (its year comes from the date, its number is assigned by the server).
+export const testUploadMetaSchema = z
+  .object({
+    kind: z.enum(TEST_UPLOAD_KINDS).default("practice"),
+    title: z.string().trim().min(1, "Enter a title").max(120),
+    year: z.coerce.number().int("Year must be a whole number").min(2000, "Year must be 2000–2100").max(2100, "Year must be 2000–2100").optional(),
+    testNumber: z.coerce.number().int("Test number must be a whole number").min(1, "Test number must be 1 or more").max(100000).optional(),
+    examDate: z
+      .string()
+      .regex(/^(20\d\d)-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, "Enter the exam date")
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.kind === "exam") {
+      if (!value.examDate) ctx.addIssue({ code: "custom", path: ["examDate"], message: "Enter the exam date" });
+      return;
+    }
+    if (value.year === undefined) ctx.addIssue({ code: "custom", path: ["year"], message: "Enter the year" });
+    if (value.testNumber === undefined) ctx.addIssue({ code: "custom", path: ["testNumber"], message: "Enter the test number" });
+  });
+export type TestUploadMetaInput = z.infer<typeof testUploadMetaSchema>;
 
 export const uploadSectionParamSchema = z.enum(SECTIONS);
 

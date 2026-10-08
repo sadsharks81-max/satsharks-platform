@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { DIFFICULTIES, UPLOAD_SECTION_STATUSES, type UploadQuestion, type UploadSectionStatus } from "@satsharks/types";
+import { DIFFICULTIES, TEST_UPLOAD_KINDS, UPLOAD_SECTION_STATUSES, type TestUploadKind, type UploadQuestion, type UploadSectionStatus } from "@satsharks/types";
 
 const { Schema } = mongoose;
 
@@ -8,6 +8,7 @@ const { Schema } = mongoose;
 // and only the extracted questions are kept here: hosts such as Railway wipe local files on every
 // deploy. Publishing turns the reviewed questions into two papers (one per section); after that
 // this record is the test's home: its title, its number and whether students can see it.
+// `kind` says where students find it: Full-Length Practice Tests, or Exams (a real administration).
 export interface TestUploadSectionDoc {
   fileName: string;
   fileSize: number;
@@ -22,9 +23,13 @@ export interface TestUploadSectionDoc {
 
 export interface TestUploadDoc {
   _id: mongoose.Types.ObjectId;
+  // Missing on uploads made before exams existed: read with kindOf().
+  kind?: TestUploadKind;
   title: string;
   year: number;
   testNumber: number;
+  // Exams only, YYYY-MM-DD.
+  examDate?: string | null;
   status: "draft" | "published";
   active: boolean;
   readingWriting: TestUploadSectionDoc | null;
@@ -71,9 +76,12 @@ const sectionSchema = new Schema<TestUploadSectionDoc>(
 
 const testUploadSchema = new Schema<TestUploadDoc>(
   {
+    kind: { type: String, enum: TEST_UPLOAD_KINDS, default: "practice" },
     title: { type: String, required: true, trim: true, maxlength: 120 },
     year: { type: Number, required: true },
+    // Exams get the next free number of their year, so this index holds for both kinds.
     testNumber: { type: Number, required: true },
+    examDate: { type: String, default: null },
     status: { type: String, enum: ["draft", "published"], default: "draft" },
     active: { type: Boolean, default: false },
     readingWriting: { type: sectionSchema, default: null },

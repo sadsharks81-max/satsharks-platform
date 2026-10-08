@@ -137,11 +137,13 @@ only their own attempts (another user's attempt answers `404`).
 
 Returns `{ exams, topics }`.
 
-- `exams[]`: `examId`, `name`, `examDate`, `sections` — per section, the `paperId` and `questionCount`.
-  Papers from the same exam are grouped into one entry.
+- `exams[]`: `examId`, `name`, `examDate`, `testUploadId` (an uploaded exam, also takeable as a full
+  test; otherwise null), `sections` — per section, the `paperId` and `questionCount`. Papers from the
+  same exam are grouped into one entry.
 - `topics`: per section, the list of `{ topic, skills[] }` present in published questions.
 
-Cached in memory for 60 seconds; cleared when an admin changes a paper's status or a question.
+Cached in memory for 60 seconds; cleared when an admin changes a paper's status or a question, or
+activates or edits an uploaded test.
 
 ### `POST /api/practice/attempts`
 
@@ -246,18 +248,19 @@ Details in `docs/full-test-upload.md`. Read routes need `papers:read`, the rest 
 | Route | Purpose |
 | --- | --- |
 | `GET /api/admin/test-uploads` | `{ uploads }`: summaries with per-module counts (no question bodies) |
-| `POST /api/admin/test-uploads` | Multipart: `title`, `year`, `testNumber`, files `readingWriting` and/or `math` (PDF, ≤ 20 MB). Each PDF is read during the request; a broken one is stored as `failed` with its reasons. `409` for a used year + number. `201 { upload }` |
+| `POST /api/admin/test-uploads` | Multipart: `kind` (`practice` default \| `exam`), `title`, and `year` + `testNumber` (practice) or `examDate` `YYYY-MM-DD` (exam), files `readingWriting` and/or `math` (PDF, ≤ 20 MB). Each PDF is read during the request; a broken one is stored as `failed` with its reasons. `409` for a used year + number. `201 { upload }` |
 | `GET /api/admin/test-uploads/:id` | `{ upload (with questions), topics }`; `topics` = the bank's domains and skills per section |
-| `PATCH /api/admin/test-uploads/:id` | Body `{ title, year, testNumber }` |
+| `PATCH /api/admin/test-uploads/:id` | Body as on upload: `{ kind, title, year, testNumber }` or `{ kind: "exam", title, examDate }`. Changing `kind` of a published test moves it between practice tests and Exams |
 | `POST /api/admin/test-uploads/:id/sections/:section/file` | Multipart `file`: replace one section (`reading_writing` / `math`). `409` once published |
 | `PUT /api/admin/test-uploads/:id/sections/:section` | Body `{ questions: UploadQuestion[] }` in order (renumbered per module). Validated like the PDF; marks the section `reviewed`. Up to 2 MB |
 | `POST /api/admin/test-uploads/:id/publish` | Both sections reviewed; creates two hidden papers and their tagged questions. `409` if already published |
 | `POST /api/admin/test-uploads/:id/active` | Body `{ active }`. Activating needs all six modules non-empty and every question answered |
 | `DELETE /api/admin/test-uploads/:id` | Drafts only (`409` for a published test) |
 
-Students: `GET /api/practice/tests` lists active uploaded tests (`{ tests: PracticeTestListing[] }`);
-`POST /api/practice/full-tests` with `testUploadId` starts a sitting of one (`paperIds` ignored). The
-catalog, drills and random mocks never include their questions (tag `full-test`).
+Students: `GET /api/practice/tests` lists active uploaded tests of both kinds (`{ tests:
+PracticeTestListing[] }`, each with `kind`); `POST /api/practice/full-tests` with `testUploadId`
+starts a sitting of one (`paperIds` ignored). The catalog, drills and random mocks never include a
+practice test's questions (tag `full-test`); an exam's are bank questions and its card is in the catalog.
 
 ## Assets
 

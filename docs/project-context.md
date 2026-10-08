@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-07 (uploaded practice tests).
+Last updated: 2026-10-08 (uploaded tests can go to Exams or Practice tests).
 
 ---
 
@@ -84,6 +84,10 @@ Last updated: 2026-10-07 (uploaded practice tests).
   follows the same routing rule (65%). The tagged questions never reach drills, random mocks or
   the catalog. Math may be LaTeX in `$…$` (like the bank) or plain text (the other site's style,
   converted); CATEGORY is a bank domain or skill, or one of the other site's category names.
+  **Each upload goes to Practice tests or Exams** (chosen in the upload dialog, changeable in Edit
+  details, also after publishing). An **exam** (a real administration, e.g. the December SAT) has
+  a title and exam date; when active it is a normal card under Exams (year/season filters, Start
+  Exam = drill), its questions join drills and random mocks, and the card adds **Take Full Test**.
 - **Question editor** (bank, reports, uploaded tests): image drag-and-drop upload (PNG/JPEG/WebP,
   stored in `assets`), editable choices with Set/Correct, question-type switch (Math), Math symbol
   bar and a visual equation editor (MathLive), live preview including the explanation.
@@ -136,13 +140,19 @@ Last updated: 2026-10-07 (uploaded practice tests).
   calculator were NOT tested in the app** — Umair asked for changes without testing. Only the type
   check was run. Check them in a Math drill or mock.
 
+- **Upload destination (2026-10-08):** typecheck clean; 49 unit tests (35 API, 14 worker) pass. A
+  new e2e check (exam upload → Exams card, drill, mock, full test; moved to practice and back) was
+  added to `test-uploads.e2e.ts` but **could not run**: the in-memory `mongod` exits with
+  0xC0000135 because the Visual C++ Redistributable is no longer installed (see §8). Not tested in
+  the browser either.
+
 ## 3. Git state
 
 - `main` (newest first): `41f2bef` user management in admin (Umair), `8354da1` Phase 2 (Umair),
   `40120f4` nav sign-in/out fix, `777eba9` login/port fix, fonts, adaptive mocks, reference sheet,
   calculator; below: `d61bff3`, `aff4a62` (Umair) and `73b574d` (Phase 1 commit by Claude).
-- **Uncommitted locally:** the uploaded-practice-test work of 2026-10-07 (see the change log) and
-  this file. Ask before committing or pushing.
+- **Uncommitted locally:** the DNS fix, the upload destination (Practice tests / Exams) work of
+  2026-10-08 and this file. Ask before committing or pushing.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -155,6 +165,7 @@ Last updated: 2026-10-07 (uploaded practice tests).
 npm install
 # .env at the repo root (never .env.example): MONGODB_URI, JWT_SECRET, PORT=4000, CLIENT_URL,
 # API_URL, SOURCE_API_KEY, SOURCE_ACCESS_TOKEN, RESEND_API_KEY, RESEND_FROM_EMAIL (see .env.example)
+# Optional DNS_SERVERS=8.8.8.8,1.1.1.1 if MongoDB fails with querySrv ENODATA (see §8)
 npm run dev:api     # http://localhost:4000/api/health
 npm run dev:web     # http://localhost:3000 (pinned to 3000)
 npm run typecheck
@@ -217,6 +228,7 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-03 | Keep testing light unless asked: typecheck plus a few targeted checks |
 | 2026-10-07 | Port the other site's full-test PDF upload; Umair left the design to Claude ("do what is best for this web"). Chosen: two papers per test + fixed-module mode in the mock engine; Math in LaTeX `$…$` like the bank; CATEGORY = bank domain or skill; students take uploaded tests as full tests only; test against an in-memory MongoDB, never Atlas |
 | 2026-10-07 | The admin question editor must work like the other site's: image upload, symbol bar, visual equation editor, editable choices with Set/Correct, question type |
+| 2026-10-08 | An upload asks where it goes: Practice tests or Exams. A real SAT (e.g. December) goes to Exams. Umair chose "exam card + full test": it behaves like the other exams (drill, random mocks) and can also be taken whole as a fixed adaptive test |
 
 ## 7. Facts about the source (verified)
 
@@ -288,6 +300,14 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   showed garbled). Fixed in `rich-text.tsx`; formulas may contain escaped characters.
 - **mongodb-memory-server's first start** on this machine took over 10 s (binary scan): the e2e
   sets a 120 s launch timeout.
+- **In-memory `mongod` exits with code 3221225781 (0xC0000135, DLL not found)** (2026-10-08):
+  `vcruntime140.dll` / `msvcp140.dll` are missing from System32 (the VC++ Redistributable x64 is
+  not installed any more). Install it from Microsoft (`aka.ms/vs/17/release/vc_redist.x64.exe`)
+  before running the e2e; it is a system install, so ask Umair first.
+- **`querySrv ENODATA _mongodb._tcp.cluster0…` on startup** (2026-10-08): the Wi-Fi router
+  (192.168.1.1) returns no SRV records, so `mongodb+srv://` cannot resolve; 8.8.8.8 answers fine.
+  `connectMongo` now calls `dns.setServers()` when `DNS_SERVERS` is set (local `.env` has
+  `8.8.8.8,1.1.1.1`). Alternative: set the Windows Wi-Fi DNS to 8.8.8.8 / 1.1.1.1.
 - **Never run a second `next dev` in `apps/web` on the same build folder.** Claude's test web
   server (port 3100) shared `.next` with Umair's server on 3000 and broke it (ChunkLoadError on
   /admin/tests, 2026-10-08). Test servers now use `NEXT_DIST_DIR=.next-test`
@@ -303,7 +323,9 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 
 ## 9. Open items and suggestions
 
-0. **Try the upload with the client's real PDFs** (Admin → Full tests). They must follow the format
+0. **Run the uploads e2e once the VC++ Redistributable is back** (checks the new Exam destination),
+   and click through: upload as Exam, activate, see the card under Exams with Take Full Test.
+   **Try the upload with the client's real PDFs** (Admin → Full tests). They must follow the format
    (`/full-test/format.html`). PDFs made for the other SAT Sharks site upload unchanged (its
    category names and plain-text Math are accepted). Word/Google Docs exports are untested.
 
@@ -413,3 +435,19 @@ Newest last. One entry per session or major step.
 - **2026-10-08 — Logo goes to the landing page.** The SAT Sharks logo in the nav opened the
   account's home (/dashboard or /admin) when signed in, so on that page it seemed to do nothing.
   It now always opens `/`, whose buttons send signed-in visitors to their dashboard. Typecheck only.
+- **2026-10-08 — Atlas DNS fix.** `npm run dev:api` failed with `querySrv ENODATA` because the
+  router's DNS does not answer SRV queries. Added optional `DNS_SERVERS` (comma-separated) read by
+  `connectMongo` in `packages/db/src/connection.ts`, documented in `.env.example`, set locally to
+  `8.8.8.8,1.1.1.1`. Typecheck plus a read-only Atlas ping with the override: ok.
+- **2026-10-08 — Upload destination: Practice tests or Exams (Umair).** A real SAT (e.g. December)
+  uploaded through Full tests landed in Full-Length Practice Tests; it belongs under Exams. Uploads
+  now have `kind` (`practice` default / `exam`) and, for exams, `examDate` (year from the date,
+  number auto-assigned from 1001 so practice numbers stay free). Upload dialog and Edit details
+  have an "Add to" choice; the list and test page show the kind. An exam's papers get source
+  `pdf-upload-exam` and exam metadata (`examId: upload:<id>`, name, date), its questions the tag
+  `uploaded-exam` instead of `full-test`, so the catalog shows one exam card (with `testUploadId`)
+  and drills/mocks use its questions; Admin → Papers still leaves it out (activate on its page).
+  Changing the kind of a published test rewrites papers and tags. Dashboard: exam cards of uploaded
+  exams add "Take Full Test"; Full-Length Practice Tests lists only practice tests. Catalog cache
+  is cleared on activate/edit. Typecheck and unit tests pass; the e2e could not run (VC++ runtime
+  missing, §8); not tested in the browser.

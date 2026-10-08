@@ -280,6 +280,8 @@ export interface CatalogExam {
   examId: string;
   name: string;
   examDate: string | null;
+  // An uploaded exam, which can also be taken as a fixed full test.
+  testUploadId: string | null;
   sections: Partial<Record<Section, { paperId: string; questionCount: number }>>;
 }
 
@@ -430,11 +432,23 @@ export interface FullTestSummary {
 
 // Papers made from an uploaded test, and their questions, carry this source.
 export const TEST_UPLOAD_SOURCE = "pdf-upload";
+// ...or this one when the upload is a real exam (shown under Exams, see TEST_UPLOAD_KINDS).
+export const EXAM_UPLOAD_SOURCE = "pdf-upload-exam";
+export const UPLOAD_SOURCES = [TEST_UPLOAD_SOURCE, EXAM_UPLOAD_SOURCE];
+
+// Where an uploaded test goes. "practice": Full-Length Practice Tests on Home; its questions are
+// used only in that test. "exam": a real administration (e.g. the December SAT), shown under Exams
+// like the bank's exams (drills, random mocks) and also takeable as a fixed full test.
+export const TEST_UPLOAD_KINDS = ["practice", "exam"] as const;
+export type TestUploadKind = (typeof TEST_UPLOAD_KINDS)[number];
 
 // Every question of an uploaded test carries this tag and the per-test one. Tagged questions belong
 // to their test only: drills, random mocks and the practice catalog never draw from them.
 export const FULL_TEST_QUESTION_TAG = "full-test";
 export const fullTestQuestionTag = (uploadId: string) => `${FULL_TEST_QUESTION_TAG}:${uploadId}`;
+// Questions of an uploaded exam carry this tag (and the per-test one) instead: they are bank
+// questions, but their paper is still managed on the Full tests page.
+export const UPLOADED_EXAM_QUESTION_TAG = "uploaded-exam";
 
 export const UPLOAD_SECTION_STATUSES = ["extracted", "reviewed", "failed"] as const;
 export type UploadSectionStatus = (typeof UPLOAD_SECTION_STATUSES)[number];
@@ -473,9 +487,13 @@ export interface TestUploadSection {
 
 export interface TestUploadSummary {
   id: string;
+  kind: TestUploadKind;
   title: string;
   year: number;
+  // Practice tests only; an exam's number is assigned automatically and not shown.
   testNumber: number;
+  // Exams only: the administration date, YYYY-MM-DD.
+  examDate: string | null;
   status: "draft" | "published";
   // Published tests only: students can see and start it.
   active: boolean;
@@ -491,6 +509,7 @@ export interface TestUploadSummary {
 // What a student sees of an active uploaded test.
 export interface PracticeTestListing {
   id: string;
+  kind: TestUploadKind;
   title: string;
   year: number;
   testNumber: number;

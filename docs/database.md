@@ -86,7 +86,7 @@ Indexes: `{ source, sourcePaperId }` unique; `status`.
 | `viz` | any \| null | Structured chart/table data from the source |
 | `sourceMetadata` | object | Source IDs, position and type as received |
 | `status` | `draft` \| `published` \| `hidden` | |
-| `tags` | string[] | `full-test` and `full-test:<upload id>` on questions of an uploaded practice test; every student bank query excludes `full-test` |
+| `tags` | string[] | `full-test` and `full-test:<upload id>` on questions of an uploaded practice test; every student bank query excludes `full-test`. An uploaded exam's questions have `uploaded-exam` and `full-test:<upload id>` (not excluded) |
 
 `correctAnswer` and `explanation` use `select: false`, so a query has to ask for them explicitly.
 This supports the proposal's rule that answers never reach the browser before submission.
@@ -198,11 +198,13 @@ carry `testUploadId` and `paperId` (the section's paper) and take their modules 
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `title`, `year`, `testNumber` | | `{ year, testNumber }` unique |
+| `kind` | `practice` \| `exam` | Missing on older uploads = `practice`. An exam is listed under Exams |
+| `title`, `year`, `testNumber` | | `{ year, testNumber }` unique. An exam's year is its date's; its number is assigned from 1001 |
+| `examDate` | `YYYY-MM-DD` \| null | Exams only |
 | `status` | `draft` \| `published` | |
 | `active` | boolean | Published tests only: students can start it |
 | `readingWriting`, `math` | section \| null | `{ fileName, fileSize, status: extracted\|reviewed\|failed, errorMessage, warnings[], questions: UploadQuestion[], uploadedAt, reviewedAt, reviewedBy }`. The PDF itself is never stored |
-| `paperIds.reading_writing`, `paperIds.math` | ObjectId → Paper \| null | Created on publish (`source: "pdf-upload"`) |
+| `paperIds.reading_writing`, `paperIds.math` | ObjectId → Paper \| null | Created on publish (`source: "pdf-upload"`, or `"pdf-upload-exam"` for an exam) |
 | `publishedAt`, `uploadedBy` | | |
 
 ## ProblemReport (`problemreports`)

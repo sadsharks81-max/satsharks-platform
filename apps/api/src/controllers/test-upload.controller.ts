@@ -6,6 +6,7 @@ import {
   testUploadMetaSchema,
   uploadSectionParamSchema,
 } from "@satsharks/validation";
+import { invalidateCatalog } from "../services/practice.service";
 import { testUploadService, type UploadedFile } from "../services/test-upload.service";
 import { AppError } from "../utils/app-error";
 import { sendOk } from "../utils/respond";
@@ -28,8 +29,11 @@ export async function createTestUpload(req: Request, res: Response): Promise<voi
   sendOk(res, { upload }, 201);
 }
 
+// Both can move an uploaded exam into or out of the Exams list.
 export async function updateTestUpload(req: Request, res: Response): Promise<void> {
-  sendOk(res, { upload: await testUploadService.update(uploadId(req), testUploadMetaSchema.parse(req.body)) });
+  const upload = await testUploadService.update(uploadId(req), testUploadMetaSchema.parse(req.body));
+  invalidateCatalog();
+  sendOk(res, { upload });
 }
 
 export async function replaceTestUploadSection(req: Request, res: Response): Promise<void> {
@@ -49,7 +53,9 @@ export async function publishTestUpload(req: Request, res: Response): Promise<vo
 
 export async function setTestUploadActive(req: Request, res: Response): Promise<void> {
   const { active } = testUploadActiveSchema.parse(req.body);
-  sendOk(res, { upload: await testUploadService.setActive(uploadId(req), active) });
+  const upload = await testUploadService.setActive(uploadId(req), active);
+  invalidateCatalog();
+  sendOk(res, { upload });
 }
 
 export async function deleteTestUpload(req: Request, res: Response): Promise<void> {

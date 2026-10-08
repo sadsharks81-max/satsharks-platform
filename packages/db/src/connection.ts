@@ -1,3 +1,4 @@
+import { setServers } from "node:dns";
 import mongoose from "mongoose";
 
 let connecting: Promise<typeof mongoose> | null = null;
@@ -6,6 +7,10 @@ let connecting: Promise<typeof mongoose> | null = null;
 export async function connectMongo(uri: string): Promise<typeof mongoose> {
   if (mongoose.connection.readyState === 1) return mongoose;
   if (!connecting) {
+    // Some home routers answer no SRV records, which breaks mongodb+srv:// URIs
+    // (querySrv ENODATA). DNS_SERVERS=8.8.8.8,1.1.1.1 sends Node's lookups elsewhere.
+    const dnsServers = process.env.DNS_SERVERS?.split(",").map((s) => s.trim()).filter(Boolean);
+    if (dnsServers?.length) setServers(dnsServers);
     mongoose.set("strictQuery", true);
     // Reject query operators smuggled in through user input, e.g. { email: { $ne: null } }.
     mongoose.set("sanitizeFilter", true);

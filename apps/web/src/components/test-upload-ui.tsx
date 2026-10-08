@@ -1,13 +1,58 @@
 "use client";
 
 import { useState } from "react";
-import { MOCK_FORMAT, MOCK_MODULE_LABELS, MOCK_MODULES, type Section, type TestUploadSection, type TestUploadSummary } from "@satsharks/types";
+import { MOCK_FORMAT, MOCK_MODULE_LABELS, MOCK_MODULES, TEST_UPLOAD_KINDS, type Section, type TestUploadKind, type TestUploadSection, type TestUploadSummary } from "@satsharks/types";
 import { Badge } from "./ui";
 
 // Pieces shared by the uploaded-test list and the test page.
 
 export const SECTION_FILE_LABELS: Record<Section, string> = { reading_writing: "English (Reading & Writing)", math: "Math" };
 export const sectionOf = (upload: TestUploadSummary, section: Section) => (section === "math" ? upload.math : upload.readingWriting);
+
+const KIND_TEXT: Record<TestUploadKind, { label: string; help: string }> = {
+  practice: {
+    label: "Practice test",
+    help: "Shown under Full-Length Practice Tests. Its questions are used only in this test.",
+  },
+  exam: {
+    label: "Exam",
+    help: "A real SAT administration. Shown under Exams with the past exams: students can drill it, its questions join random mocks, and it can be taken as a full test.",
+  },
+};
+
+export const kindLabel = (kind: TestUploadKind) => KIND_TEXT[kind].label;
+
+// "Exam · 6 Dec 2026" or "2026 · Test 23".
+export function uploadSubtitle(upload: Pick<TestUploadSummary, "kind" | "year" | "testNumber" | "examDate">): string {
+  if (upload.kind === "exam" && upload.examDate) {
+    const date = new Date(`${upload.examDate}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    return `Exam · ${date}`;
+  }
+  return `${upload.year} · Test ${upload.testNumber}`;
+}
+
+// Where the test goes: Full-Length Practice Tests or Exams.
+export function KindChoice({ value, onChange, disabled }: { value: TestUploadKind; onChange: (kind: TestUploadKind) => void; disabled?: boolean }) {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 text-sm font-bold">Add to</legend>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {TEST_UPLOAD_KINDS.map((kind) => (
+          <label
+            key={kind}
+            className={`flex cursor-pointer gap-2.5 rounded-lg border p-3 text-sm ${value === kind ? "border-brand-500 bg-brand-50 ring-1 ring-brand-500/20" : "border-slate-300 bg-white hover:bg-slate-50"}`}
+          >
+            <input type="radio" name="kind" className="mt-0.5 h-4 w-4 flex-none accent-brand-500" checked={value === kind} disabled={disabled} onChange={() => onChange(kind)} />
+            <span>
+              <span className="block font-bold">{kind === "exam" ? "Exams" : "Practice tests"}</span>
+              <span className="mt-0.5 block text-xs text-slate-600">{KIND_TEXT[kind].help}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
 
 export function TestStatusBadge({ upload }: { upload: TestUploadSummary }) {
   if (upload.status === "draft") return <Badge tone="amber">Draft</Badge>;

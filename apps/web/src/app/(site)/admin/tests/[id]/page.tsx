@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MOCK_MODULE_LABELS, MOCK_MODULES, SECTION_LABELS, SECTIONS, type AdminQuestion, type CatalogTopic, type Section, type TestUploadSummary } from "@satsharks/types";
+import { MOCK_MODULE_LABELS, MOCK_MODULES, SECTION_LABELS, SECTIONS, type AdminQuestion, type CatalogTopic, type Section, type TestUploadKind, type TestUploadSummary } from "@satsharks/types";
 import { RequireUser } from "@/components/require-user";
-import { FailureDetails, ModuleCounts, SECTION_FILE_LABELS, SectionBadge, sectionOf, TestStatusBadge, Warnings } from "@/components/test-upload-ui";
+import { FailureDetails, KindChoice, kindLabel, ModuleCounts, SECTION_FILE_LABELS, SectionBadge, sectionOf, TestStatusBadge, uploadSubtitle, Warnings } from "@/components/test-upload-ui";
 import { Button, Card, Notice, PageHeader, Spinner } from "@/components/ui";
 import { api, apiUpload } from "@/lib/api";
 import { toPlainText } from "@/lib/rich-text";
@@ -77,16 +77,22 @@ function SectionCard({ upload, section, canWrite, onChanged }: { upload: TestUpl
 }
 
 function DetailsForm({ upload, onSaved, onCancel }: { upload: TestUploadSummary; onSaved: (upload: TestUploadSummary) => void; onCancel: () => void }) {
+  const [kind, setKind] = useState<TestUploadKind>(upload.kind);
   const [title, setTitle] = useState(upload.title);
   const [year, setYear] = useState(String(upload.year));
-  const [testNumber, setTestNumber] = useState(String(upload.testNumber));
+  // An exam's number is assigned by the server and never shown, so switching to a practice test
+  // asks for a real one.
+  const [testNumber, setTestNumber] = useState(upload.kind === "exam" ? "" : String(upload.testNumber));
+  const [examDate, setExamDate] = useState(upload.examDate ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const moving = upload.status === "published" && kind !== upload.kind;
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      const { upload: saved } = await api<{ upload: TestUploadSummary }>(`/api/admin/test-uploads/${upload.id}`, { method: "PATCH", body: { title, year, testNumber } });
+      const body = kind === "exam" ? { kind, title, examDate } : { kind, title, year, testNumber };
+      const { upload: saved } = await api<{ upload: TestUploadSummary }>(`/api/admin/test-uploads/${upload.id}`, { method: "PATCH", body });
       onSaved(saved);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save");
@@ -95,23 +101,40 @@ function DetailsForm({ upload, onSaved, onCancel }: { upload: TestUploadSummary;
   }
   return (
     <Card className="mb-4 space-y-3">
-      <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
+      <KindChoice value={kind} onChange={setKind} disabled={busy} />
+      <div className={`grid gap-3 ${kind === "exam" ? "sm:grid-cols-[2fr_1fr]" : "sm:grid-cols-[2fr_1fr_1fr]"}`}>
         <label className="text-sm font-bold">
           Title
           <input className={inputClass} value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} />
         </label>
-        <label className="text-sm font-bold">
-          Year
-          <input className={inputClass} type="number" value={year} onChange={(event) => setYear(event.target.value)} />
-        </label>
-        <label className="text-sm font-bold">
-          Test number
-          <input className={inputClass} type="number" value={testNumber} onChange={(event) => setTestNumber(event.target.value)} />
-        </label>
+        {kind === "exam" ? (
+          <label className="text-sm font-bold">
+            Exam date
+            <input className={inputClass} type="date" min="2000-01-01" max="2099-12-31" value={examDate} onChange={(event) => setExamDate(event.target.value)} />
+          </label>
+        ) : (
+          <>
+            <label className="text-sm font-bold">
+              Year
+              <input className={inputClass} type="number" value={year} onChange={(event) => setYear(event.target.value)} />
+            </label>
+            <label className="text-sm font-bold">
+              Test number
+              <input className={inputClass} type="number" value={testNumber} onChange={(event) => setTestNumber(event.target.value)} />
+            </label>
+          </>
+        )}
       </div>
+      {moving && (
+        <Notice tone="info">
+          {kind === "exam"
+            ? "Saving moves this test to Exams: its questions will also appear in drills and random mocks. Students' past results are kept."
+            : "Saving moves this test to Full-Length Practice Tests: its questions leave drills and random mocks. Students' past results are kept."}
+        </Notice>
+      )}
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex gap-2">
-        <Button size="sm" disabled={busy || !title.trim()} onClick={save}>
+        <Button size="sm" disabled={busy || !title.trim() || (kind === "exam" ? !examDate : !testNumber)} onClick={save}>
           Save
         </Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={onCancel}>
@@ -223,8 +246,9 @@ function TestDetail({ id, canWrite }: { id: string; canWrite: boolean }) {
     <>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <TestStatusBadge upload={upload} />
+        <span className="rounded-full border border-slate-300 px-2 py-0.5 text-xs font-bold text-slate-700">{kindLabel(upload.kind)}</span>
         <span className="text-sm text-slate-600">
-          {upload.year} · Test {upload.testNumber}
+          {uploadSubtitle(upload)}
           {upload.publishedAt && <> · published {new Date(upload.publishedAt).toLocaleDateString()}</>}
         </span>
         {canWrite && !editing && (

@@ -5,12 +5,16 @@
 // through the ordinary full-test flow; practice.service uses the test's fixed modules instead of
 // drawing questions from the bank, and routes Module 2 with the same rule as every other mock.
 //
-// The questions are tagged "full-test" so drills, random mocks and the practice catalog never use
-// them (see the tag filters in practice.service).
+// Each upload is a practice test or an exam (`kind`, chosen at upload and changeable later). A
+// practice test's questions are tagged "full-test" so drills, random mocks and the practice catalog
+// never use them (see the tag filters in practice.service). An exam is a real administration: its
+// papers carry exam metadata and their own source, so the catalog shows them as one exam card and
+// its questions join drills and random mocks; students can also take it as a fixed full test.
 import katex from "katex";
 import mongoose from "mongoose";
 import { PaperModel, QuestionModel, TestUploadModel, trusted, type TestUploadDoc, type TestUploadSectionDoc } from "@satsharks/db";
 import {
+  EXAM_UPLOAD_SOURCE,
   FULL_TEST_QUESTION_TAG,
   fullTestQuestionTag,
   looseMathWarning,
@@ -20,16 +24,18 @@ import {
   SECTION_LABELS,
   SECTIONS,
   TEST_UPLOAD_SOURCE,
+  UPLOADED_EXAM_QUESTION_TAG,
   uploadQuestionProblems,
   type CatalogTopic,
   type MockModule,
   type PracticeTestListing,
   type Section,
+  type TestUploadKind,
   type TestUploadSection,
   type TestUploadSummary,
   type UploadQuestion,
 } from "@satsharks/types";
-import type { SaveUploadSectionInput } from "@satsharks/validation";
+import type { SaveUploadSectionInput, TestUploadMetaInput } from "@satsharks/validation";
 import { AppError } from "../utils/app-error";
 import { readPdfText } from "./pdf-text";
 import { parseSectionText, type ParsedQuestion } from "./test-upload-parser";
@@ -37,6 +43,8 @@ import { parseSectionText, type ParsedQuestion } from "./test-upload-parser";
 const SECTION_FIELD = { reading_writing: "readingWriting", math: "math" } as const;
 const SECTION_FILE_LABEL: Record<Section, string> = { reading_writing: "English (Reading & Writing)", math: "Math" };
 const MAX_LISTED_ERRORS = 20;
+// Exams are numbered from here within their year, out of the way of practice-test numbers.
+const FIRST_EXAM_NUMBER = 1001;
 
 export interface UploadedFile {
   originalname: string;
@@ -269,9 +277,11 @@ function toSummary(upload: TestUploadDoc, withQuestions = false, uploaderName: s
   for (const section of SECTIONS) if (upload.paperIds?.[section]) paperIds[section] = String(upload.paperIds[section]);
   return {
     id: String(upload._id),
+    kind: kindOf(upload),
     title: upload.title,
     year: upload.year,
     testNumber: upload.testNumber,
+    examDate: upload.examDate ?? null,
     status: upload.status,
     active: upload.active,
     readingWriting: toSection(upload.readingWriting, withQuestions),
@@ -296,7 +306,69 @@ function assertDraft(upload: TestUploadDoc): void {
 async function assertFree(year: number, testNumber: number, exceptId?: mongoose.Types.ObjectId): Promise<void> {
   const filter: Record<string, unknown> = { year, testNumber };
   if (exceptId) filter._id = trusted({ $ne: exceptId });
-  if (await TestUploadModel.exists(filter)) throw AppError.conflict(`Test ${testNumber} of ${year} already exists. Choose a different test number.`);
+  const taken = await TestUploadModel.findOne(filter).select("title").lean<Pick<TestUploadDoc, "title">>();
+  if (taken) throw AppError.conflict(`Test ${testNumber} of ${year} is already used by "${taken.title}". Choose a different test number.`);
+}
+
+const kindOf = (upload: Pick<TestUploadDoc, "kind">): TestUploadKind => upload.kind ?? "practice";
+
+interface UploadMeta {
+  kind: TestUploadKind;
+  title: string;
+  year: number;
+  testNumber: number;
+  examDate: string | null;
+}
+
+// The stored details for the form's input. An exam's year is its date's; it keeps its number while
+// the year stays the same, otherwise it takes the next free exam number of that year.
+async function resolveMeta(input: TestUploadMetaInput, current?: TestUploadDoc): Promise<UploadMeta> {
+  if (input.kind === "exam") {
+    const examDate = input.examDate!;
+    const year = Number(examDate.slice(0, 4));
+    let testNumber = current?.testNumber;
+    if (!current || current.year !== year) {
+      const last = await TestUploadModel.findOne({ year }).sort({ testNumber: -1 }).select("testNumber").lean<Pick<TestUploadDoc, "testNumber">>();
+      testNumber = Math.max(FIRST_EXAM_NUMBER - 1, last?.testNumber ?? 0) + 1;
+    }
+    return { kind: "exam", title: input.title, year, testNumber: testNumber!, examDate };
+  }
+  await assertFree(input.year!, input.testNumber!, current?._id);
+  return { kind: "practice", title: input.title, year: input.year!, testNumber: input.testNumber!, examDate: null };
+}
+
+// Where an upload's papers and questions show up. A practice test's are kept out of the catalog,
+// drills and random mocks; an exam's papers are grouped into one exam card by the catalog.
+function placement(upload: TestUploadDoc) {
+  const id = String(upload._id);
+  if (kindOf(upload) === "exam") {
+    return {
+      source: EXAM_UPLOAD_SOURCE,
+      tags: [UPLOADED_EXAM_QUESTION_TAG, fullTestQuestionTag(id)],
+      sourceMetadata: { examId: `upload:${id}`, examName: upload.title, examDate: upload.examDate ?? null },
+      description: `Uploaded exam (${upload.examDate}).`,
+    };
+  }
+  return {
+    source: TEST_UPLOAD_SOURCE,
+    tags: [FULL_TEST_QUESTION_TAG, fullTestQuestionTag(id)],
+    sourceMetadata: {},
+    description: `Uploaded practice test ${upload.testNumber} (${upload.year}).`,
+  };
+}
+
+const paperTitle = (upload: TestUploadDoc, section: Section) => `${upload.title} — ${SECTION_LABELS[section]}`;
+
+// After a published test's details change: paper titles, and where its papers and questions show up.
+async function placePapers(upload: TestUploadDoc): Promise<void> {
+  const { source, tags, sourceMetadata, description } = placement(upload);
+  const paperIds = SECTIONS.map((section) => upload.paperIds[section]).filter((id): id is mongoose.Types.ObjectId => id !== null);
+  for (const section of SECTIONS) {
+    if (upload.paperIds[section]) {
+      await PaperModel.updateOne({ _id: upload.paperIds[section] }, { $set: { title: paperTitle(upload, section), source, sourceMetadata, description } });
+    }
+  }
+  await QuestionModel.updateMany({ paperId: trusted({ $in: paperIds }) }, { $set: { source, tags } });
 }
 
 // Numbers questions 1..n inside each module, in the order they were sent, and drops fields that do
@@ -330,15 +402,15 @@ const moduleNumberOf = (module: MockModule) => (module === "m1" ? 1 : 2);
 
 async function publish(upload: TestUploadDoc): Promise<TestUploadDoc> {
   const id = String(upload._id);
-  const tags = [FULL_TEST_QUESTION_TAG, fullTestQuestionTag(id)];
+  const { source, tags, sourceMetadata, description } = placement(upload);
   const paperIds = { reading_writing: new mongoose.Types.ObjectId(), math: new mongoose.Types.ObjectId() };
   const papers = SECTIONS.map((section) => {
     const questions = upload[SECTION_FIELD[section]]!.questions;
     return {
       _id: paperIds[section],
-      title: `${upload.title} — ${SECTION_LABELS[section]}`,
-      description: `Uploaded practice test ${upload.testNumber} (${upload.year}).`,
-      source: TEST_UPLOAD_SOURCE,
+      title: paperTitle(upload, section),
+      description,
+      source,
       // Unique with the source, so a second publish of the same upload cannot create papers too.
       sourcePaperId: `${id}:${section}`,
       // Hidden until the admin activates the test.
@@ -355,13 +427,13 @@ async function publish(upload: TestUploadDoc): Promise<TestUploadDoc> {
       adaptive: { isAdaptive: true, routing: "server_side" as const, observedRoute: null, module1Correct: null, routingThreshold: null },
       questionCount: questions.length,
       metadata: { testUploadId: id, year: upload.year, testNumber: upload.testNumber },
-      sourceMetadata: {},
+      sourceMetadata,
     };
   });
   const questionDocs = SECTIONS.flatMap((section) =>
     upload[SECTION_FIELD[section]]!.questions.map((question) => ({
       paperId: paperIds[section],
-      source: TEST_UPLOAD_SOURCE,
+      source,
       sourceQuestionId: `${question.module}-${question.questionNumber}`,
       section,
       moduleNumber: moduleNumberOf(question.module),
@@ -443,9 +515,9 @@ export const testUploadService = {
     return { upload: toSummary(upload, true), topics: { reading_writing: rw.topics, math: math.topics } };
   },
 
-  async create(meta: { title: string; year: number; testNumber: number }, files: Partial<Record<Section, UploadedFile>>, userId: string): Promise<TestUploadSummary> {
+  async create(input: TestUploadMetaInput, files: Partial<Record<Section, UploadedFile>>, userId: string): Promise<TestUploadSummary> {
     if (!files.reading_writing && !files.math) throw AppError.badRequest("Choose the English PDF, the Math PDF, or both.");
-    await assertFree(meta.year, meta.testNumber);
+    const meta = await resolveMeta(input);
     const [readingWriting, math] = await Promise.all([
       files.reading_writing ? extractSection(files.reading_writing, "reading_writing") : null,
       files.math ? extractSection(files.math, "math") : null,
@@ -460,18 +532,22 @@ export const testUploadService = {
     }
   },
 
-  async update(id: string, meta: { title: string; year: number; testNumber: number }): Promise<TestUploadSummary> {
+  // Title, number or date, and whether it is a practice test or an exam. On a published test the
+  // papers and questions follow at once (students see the paper titles; the kind moves the test
+  // between Full-Length Practice Tests and Exams).
+  async update(id: string, input: TestUploadMetaInput): Promise<TestUploadSummary> {
     const upload = await loadUpload(id);
-    await assertFree(meta.year, meta.testNumber, upload._id);
-    const set: Record<string, unknown> = { ...meta };
-    const saved = await TestUploadModel.findByIdAndUpdate(upload._id, { $set: set }, { new: true }).lean<TestUploadDoc>();
-    // Students see the paper titles, so they follow the test's title.
-    if (saved && saved.status === "published") {
-      for (const section of SECTIONS) {
-        if (saved.paperIds[section]) await PaperModel.updateOne({ _id: saved.paperIds[section] }, { $set: { title: `${saved.title} — ${SECTION_LABELS[section]}` } });
-      }
+    const meta = await resolveMeta(input, upload);
+    let saved: TestUploadDoc | null;
+    try {
+      saved = await TestUploadModel.findByIdAndUpdate(upload._id, { $set: meta }, { new: true }).lean<TestUploadDoc>();
+    } catch (error) {
+      if ((error as { code?: unknown }).code === 11000) throw AppError.conflict(`Test ${meta.testNumber} of ${meta.year} already exists. Choose a different test number.`);
+      throw error;
     }
-    return toSummary(saved!);
+    if (!saved) throw AppError.notFound("Test not found");
+    if (saved.status === "published") await placePapers(saved);
+    return toSummary(saved);
   },
 
   async replaceSection(id: string, section: Section, file: UploadedFile): Promise<TestUploadSummary> {
@@ -563,12 +639,13 @@ export const testUploadService = {
 
   async listActive(): Promise<PracticeTestListing[]> {
     const uploads = await TestUploadModel.find({ status: "published", active: true })
-      .select("title year testNumber paperIds status")
+      .select("kind title year testNumber paperIds status")
       .sort({ year: -1, testNumber: -1 })
       .lean<TestUploadDoc[]>();
     return Promise.all(
       uploads.map(async (upload) => ({
         id: String(upload._id),
+        kind: kindOf(upload),
         title: upload.title,
         year: upload.year,
         testNumber: upload.testNumber,

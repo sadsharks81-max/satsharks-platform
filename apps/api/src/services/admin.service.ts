@@ -3,7 +3,8 @@ import { AssetModel, AttemptModel, PaperModel, ProblemReportModel, QuestionModel
 import {
   FULL_TEST_QUESTION_TAG,
   PAPER_STATUSES,
-  TEST_UPLOAD_SOURCE,
+  UPLOAD_SOURCES,
+  UPLOADED_EXAM_QUESTION_TAG,
   SECTIONS,
   type AdminQuestion,
   type AdminStats,
@@ -82,11 +83,11 @@ export const adminService = {
   // Uploaded practice tests are left out: they are shown or hidden only by activating them on their
   // own page, where the six modules are checked first.
   async setPaperStatus(status: PaperStatus, ids?: string[]): Promise<{ papers: number; questions: number }> {
-    if (ids && (await PaperModel.exists({ _id: trusted({ $in: ids }), source: TEST_UPLOAD_SOURCE }))) {
-      throw AppError.badRequest("This paper belongs to an uploaded practice test. Activate or deactivate the test under Full tests.");
+    if (ids && (await PaperModel.exists({ _id: trusted({ $in: ids }), source: trusted({ $in: UPLOAD_SOURCES }) }))) {
+      throw AppError.badRequest("This paper belongs to an uploaded test. Activate or deactivate the test under Full tests.");
     }
-    const paperFilter = ids ? { _id: trusted({ $in: ids }) } : { source: trusted({ $ne: TEST_UPLOAD_SOURCE }) };
-    const questionFilter = ids ? { paperId: trusted({ $in: ids }) } : { tags: trusted({ $ne: FULL_TEST_QUESTION_TAG }) };
+    const paperFilter = ids ? { _id: trusted({ $in: ids }) } : { source: trusted({ $nin: UPLOAD_SOURCES }) };
+    const questionFilter = ids ? { paperId: trusted({ $in: ids }) } : { tags: trusted({ $nin: [FULL_TEST_QUESTION_TAG, UPLOADED_EXAM_QUESTION_TAG] }) };
     const papers = await PaperModel.updateMany(paperFilter, { $set: { status } });
     if (ids && papers.matchedCount === 0) throw AppError.notFound("Paper not found");
     const questions = await QuestionModel.updateMany(questionFilter, { $set: { status } });

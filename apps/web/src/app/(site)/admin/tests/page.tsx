@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { SECTIONS, type TestUploadSummary } from "@satsharks/types";
+import { SECTIONS, type TestUploadKind, type TestUploadSummary } from "@satsharks/types";
 import { RequireUser } from "@/components/require-user";
-import { ModuleCounts, SECTION_FILE_LABELS, SectionBadge, sectionOf, TestStatusBadge } from "@/components/test-upload-ui";
+import { KindChoice, kindLabel, ModuleCounts, SECTION_FILE_LABELS, SectionBadge, sectionOf, TestStatusBadge, uploadSubtitle } from "@/components/test-upload-ui";
 import { Button, Card, Modal, Notice, PageHeader, Spinner } from "@/components/ui";
 import { api, apiUpload } from "@/lib/api";
 
@@ -22,6 +22,11 @@ function FormatHelp() {
             A test is two PDFs: English and Math, each with <b>Module 1</b>, <b>Module 2 Easy</b> and <b>Module 2 Hard</b>. Students who answer at least the routing
             threshold of Module 1 correctly (Settings, now 65%) get the hard Module 2. Each PDF is checked as soon as it is uploaded; then you review the questions,
             publish, add any images, and activate.
+          </p>
+          <p className="mt-2">
+            When uploading, choose where the test goes: <b>Practice tests</b> (Full-Length Practice Tests on the student home; its questions stay in that test) or{" "}
+            <b>Exams</b> for a real SAT administration (listed with the past exams by its date; students can drill it or take it as a full test, and its
+            questions join random mocks).
           </p>
           <p className="mt-2">
             <b>CATEGORY</b> is a domain or skill from the question bank (e.g. <i>Algebra</i>, <i>Linear equations in one variable</i>); the other SAT Sharks
@@ -49,9 +54,11 @@ function FormatHelp() {
 function UploadDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [kind, setKind] = useState<TestUploadKind>("practice");
   const [title, setTitle] = useState("");
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [testNumber, setTestNumber] = useState("");
+  const [examDate, setExamDate] = useState("");
   const [files, setFiles] = useState<{ readingWriting?: File; math?: File }>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +69,14 @@ function UploadDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const form = new FormData();
+      form.append("kind", kind);
       form.append("title", title);
-      form.append("year", year);
-      form.append("testNumber", testNumber);
+      if (kind === "exam") {
+        form.append("examDate", examDate);
+      } else {
+        form.append("year", year);
+        form.append("testNumber", testNumber);
+      }
       if (files.readingWriting) form.append("readingWriting", files.readingWriting);
       if (files.math) form.append("math", files.math);
       const { upload } = await apiUpload<{ upload: TestUploadSummary }>("/api/admin/test-uploads", form);
@@ -90,22 +102,38 @@ function UploadDialog({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <Modal title="Upload a practice test" onClose={busy ? () => undefined : onClose}>
+    <Modal title="Upload a test" onClose={busy ? () => undefined : onClose}>
       <form onSubmit={submit} className="space-y-4">
+        <KindChoice value={kind} onChange={setKind} disabled={busy} />
         <label className="block text-sm font-bold">
           Title
-          <input className={inputClass} value={title} maxLength={120} required onChange={(event) => setTitle(event.target.value)} placeholder="e.g. SAT Sharks Practice Test 1" />
+          <input
+            className={inputClass}
+            value={title}
+            maxLength={120}
+            required
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={kind === "exam" ? "e.g. SAT December 05, 2026 Administration" : "e.g. SAT Sharks Practice Test 1"}
+          />
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        {kind === "exam" ? (
           <label className="block text-sm font-bold">
-            Year
-            <input className={inputClass} type="number" min={2000} max={2100} required value={year} onChange={(event) => setYear(event.target.value)} />
+            Exam date
+            <input className={inputClass} type="date" min="2000-01-01" max="2099-12-31" required value={examDate} onChange={(event) => setExamDate(event.target.value)} />
+            <span className="mt-1 block text-xs font-normal text-slate-600">Students filter exams by its year and season.</span>
           </label>
-          <label className="block text-sm font-bold">
-            Test number
-            <input className={inputClass} type="number" min={1} required value={testNumber} onChange={(event) => setTestNumber(event.target.value)} />
-          </label>
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm font-bold">
+              Year
+              <input className={inputClass} type="number" min={2000} max={2100} required value={year} onChange={(event) => setYear(event.target.value)} />
+            </label>
+            <label className="block text-sm font-bold">
+              Test number
+              <input className={inputClass} type="number" min={1} required value={testNumber} onChange={(event) => setTestNumber(event.target.value)} />
+            </label>
+          </div>
+        )}
         {fileField("readingWriting", "English (Reading & Writing) PDF")}
         {fileField("math", "Math PDF")}
         <p className="text-xs text-slate-600">Each PDF is checked straight away. You can upload one now and the other later, and re-upload a section that failed.</p>
@@ -131,7 +159,10 @@ function Tests({ canWrite }: { canWrite: boolean }) {
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeader title="Full tests" subtitle="Fixed adaptive practice tests uploaded as PDFs. Their questions are used only in their own test, never in drills or random mocks." />
+        <PageHeader
+          title="Full tests"
+          subtitle="Fixed adaptive tests uploaded as PDFs: practice tests (their questions stay in their own test) and real SAT exams (listed under Exams)."
+        />
         {canWrite && <Button onClick={() => setUploading(true)}>Upload test</Button>}
       </div>
       <FormatHelp />
@@ -158,9 +189,8 @@ function Tests({ canWrite }: { canWrite: boolean }) {
                 </Link>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                   <TestStatusBadge upload={upload} />
-                  <span>
-                    {upload.year} · Test {upload.testNumber}
-                  </span>
+                  <span className="rounded-full border border-slate-300 px-2 py-0.5 font-bold text-slate-700">{kindLabel(upload.kind)}</span>
+                  <span>{uploadSubtitle(upload)}</span>
                 </div>
               </div>
               {SECTIONS.map((section) => {

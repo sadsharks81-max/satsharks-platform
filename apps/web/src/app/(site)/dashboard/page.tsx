@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AttemptSummary, CatalogExam, FullTestSummary, PracticeCatalog } from "@satsharks/types";
+import type { AttemptSummary, CatalogExam, FullTestSummary, PracticeCatalog, PracticeTestListing } from "@satsharks/types";
 import { AttemptCard, FullTestCard } from "@/components/attempt-card";
 import { CreateDrill } from "@/components/create-drill";
 import { CreateMock } from "@/components/create-mock";
-import { PracticeTests } from "@/components/practice-tests";
+import { PracticeTests, StartPracticeTest, usePracticeTests } from "@/components/practice-tests";
 import { RequireUser } from "@/components/require-user";
 import { Button, Card, Notice, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -52,6 +52,8 @@ function Home() {
   const catalog = useQuery({ queryKey: ["practice", "catalog"], queryFn: () => api<PracticeCatalog>("/api/practice/catalog") });
   const attempts = useQuery({ queryKey: ["practice", "attempts"], queryFn: () => api<{ attempts: AttemptSummary[] }>("/api/practice/attempts") });
   const fullTests = useQuery({ queryKey: ["practice", "full-tests"], queryFn: () => api<{ fullTests: FullTestSummary[] }>("/api/practice/full-tests") });
+  const uploadedTests = usePracticeTests();
+  const [fullTestOf, setFullTestOf] = useState<PracticeTestListing | null>(null);
   const [year, setYear] = useState<number | "all">("all");
   const [season, setSeason] = useState<(typeof SEASONS)[number] | "all">("all");
   // undefined = closed, null = open without a preselected exam.
@@ -122,6 +124,8 @@ function Home() {
           {visible.map((exam) => {
             const rw = exam.sections.reading_writing?.questionCount ?? 0;
             const math = exam.sections.math?.questionCount ?? 0;
+            // An uploaded exam can also be taken whole, as a fixed adaptive test.
+            const whole = exam.testUploadId ? uploadedTests.data?.tests.find((test) => test.id === exam.testUploadId) : undefined;
             return (
               <div key={exam.examId} className="flex flex-col justify-between gap-4 rounded-[14px] border border-black bg-white p-4 text-black sm:p-5">
                 <div className="flex flex-col gap-3">
@@ -134,13 +138,24 @@ function Home() {
                   </div>
                   <h3 className="flex min-h-[44px] items-center text-[18px] font-bold leading-snug tracking-tight">{exam.name}</h3>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setDrillExam(exam.examId)}
-                  className="flex h-[42px] w-full cursor-pointer items-center justify-center rounded-[10px] bg-brand-500 text-[14px] font-bold text-white hover:opacity-90"
-                >
-                  Start Exam
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDrillExam(exam.examId)}
+                    className="flex h-[42px] w-full cursor-pointer items-center justify-center rounded-[10px] bg-brand-500 text-[14px] font-bold text-white hover:opacity-90"
+                  >
+                    Start Exam
+                  </button>
+                  {whole && (
+                    <button
+                      type="button"
+                      onClick={() => setFullTestOf(whole)}
+                      className="flex h-[42px] w-full cursor-pointer items-center justify-center rounded-[10px] border border-brand-500 bg-white text-[14px] font-bold text-brand-500 hover:bg-brand-50"
+                    >
+                      Take Full Test
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -151,6 +166,7 @@ function Home() {
 
       {drillExam !== undefined && catalog.data && <CreateDrill catalog={catalog.data} initialExamId={drillExam ?? undefined} onClose={() => setDrillExam(undefined)} />}
       {mockOpen && catalog.data && <CreateMock catalog={catalog.data} onClose={() => setMockOpen(false)} />}
+      {fullTestOf && <StartPracticeTest test={fullTestOf} onClose={() => setFullTestOf(null)} />}
     </div>
   );
 }

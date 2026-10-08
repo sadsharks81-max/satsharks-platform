@@ -10,8 +10,9 @@ import { Modal, Notice } from "./ui";
 const heading = "text-[20px] font-bold tracking-tight text-black sm:text-[22px]";
 const total = (test: PracticeTestListing, section: (typeof SECTIONS)[number]) => test.moduleCounts[section].m1 + test.moduleCounts[section].m2_easy;
 
-// Starting a fixed practice test: the same choices as a full adaptive mock, without the exam pool.
-function StartPracticeTest({ test, onClose }: { test: PracticeTestListing; onClose: () => void }) {
+// Starting a fixed practice test (or an uploaded exam taken whole): the same choices as a full
+// adaptive mock, without the exam pool.
+export function StartPracticeTest({ test, onClose }: { test: PracticeTestListing; onClose: () => void }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [timed, setTimed] = useState(true);
@@ -98,11 +99,14 @@ function StartPracticeTest({ test, onClose }: { test: PracticeTestListing; onClo
   );
 }
 
+// Active uploaded tests, practice tests and exams alike (exams are shown on their exam card).
+export const usePracticeTests = () => useQuery({ queryKey: ["practice", "tests"], queryFn: () => api<{ tests: PracticeTestListing[] }>("/api/practice/tests") });
+
 // Fixed full-length tests published by SAT Sharks. Hidden when there are none.
 export function PracticeTests() {
-  const tests = useQuery({ queryKey: ["practice", "tests"], queryFn: () => api<{ tests: PracticeTestListing[] }>("/api/practice/tests") });
+  const tests = usePracticeTests();
   const [starting, setStarting] = useState<PracticeTestListing | null>(null);
-  const list = tests.data?.tests ?? [];
+  const list = tests.data?.tests.filter((test) => test.kind === "practice") ?? [];
   if (list.length === 0) return null;
 
   return (

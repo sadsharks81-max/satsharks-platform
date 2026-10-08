@@ -24,7 +24,7 @@ process.env.MONGODB_URI = uri;
 process.env.JWT_SECRET = "e2e-secret-that-is-long-enough-0123456789";
 process.env.NODE_ENV = "test";
 
-const { connectMongo, PaperModel, QuestionModel, TestUploadModel, UserModel, AttemptModel } = await import("@satsharks/db");
+const { connectMongo, PaperModel, QuestionModel, TestUploadModel, UserModel, AttemptModel, trusted } = await import("@satsharks/db");
 const { createApp } = await import("../../src/app");
 await connectMongo(uri);
 assert.equal((await import("mongoose")).default.connection.host, "127.0.0.1");
@@ -413,6 +413,78 @@ async function run() {
     assert.equal((await admin.call("DELETE", `/api/admin/test-uploads/${draft.json.data.upload.id}`)).status, 200);
     assert.equal(await TestUploadModel.countDocuments(), 1);
     assert.equal(await PaperModel.countDocuments({ source: "pdf-upload" }), 2);
+  });
+
+  // A real administration uploaded as an exam: listed under Exams (drills, random mocks) and also
+  // takeable whole; moving it to the practice tests takes it out of the bank again.
+  await check("an uploaded exam joins the Exams list, drills and mocks, and can be moved to practice tests", async () => {
+    const examTitle = "SAT December 05, 2026 Administration";
+    assert.equal((await upload({ kind: "exam", title: examTitle }, { math: "demo-math.pdf" })).status, 400);
+    const created = await upload({ kind: "exam", title: examTitle, examDate: "2026-12-05" }, { readingWriting: "demo-english.pdf", math: "demo-math.pdf" });
+    assert.equal(created.status, 201, JSON.stringify(created.json.error));
+    const exam = created.json.data.upload;
+    assert.deepEqual([exam.kind, exam.year, exam.examDate], ["exam", 2026, "2026-12-05"]);
+    assert.ok(exam.testNumber >= 1001);
+    const { json } = await admin.call("GET", `/api/admin/test-uploads/${exam.id}`);
+    for (const [section, field] of [["reading_writing", "readingWriting"], ["math", "math"]] as const) {
+      const questions = json.data.upload[field].questions.map(({ questionNumber: _n, ...rest }: Record<string, unknown>) => rest);
+      assert.equal((await admin.call("PUT", `/api/admin/test-uploads/${exam.id}/sections/${section}`, { questions })).status, 200);
+    }
+    const published = await admin.call("POST", `/api/admin/test-uploads/${exam.id}/publish`);
+    assert.equal(published.status, 200, JSON.stringify(published.json.error));
+    const examPapers = published.json.data.upload.paperIds;
+    const papers = await PaperModel.find({ source: "pdf-upload-exam" }).lean();
+    assert.equal(papers.length, 2);
+    assert.ok(papers.every((paper) => paper.sourceMetadata.examId === `upload:${exam.id}` && paper.sourceMetadata.examDate === "2026-12-05"));
+    const questions = await QuestionModel.find({ tags: `full-test:${exam.id}` }).lean();
+    assert.equal(questions.length, 81 + 66);
+    assert.ok(questions.every((q) => q.tags.includes("uploaded-exam") && !q.tags.includes("full-test")));
+
+    // Still managed only on its own page.
+    await admin.call("POST", "/api/admin/papers/status", { status: "published" });
+    assert.equal(await PaperModel.countDocuments({ source: "pdf-upload-exam", status: "published" }), 0);
+    assert.equal((await admin.call("PATCH", `/api/admin/papers/${examPapers.math}/status`, { status: "published" })).status, 400);
+    assert.ok((await admin.call("GET", "/api/admin/papers")).json.data.papers.every((paper: { source: string }) => paper.source !== "pdf-upload-exam"));
+
+    const examCard = async () =>
+      (await student.call("GET", "/api/practice/catalog")).json.data.exams.find((entry: { testUploadId: string | null }) => entry.testUploadId === exam.id);
+    assert.equal(await examCard(), undefined);
+    assert.equal((await admin.call("POST", `/api/admin/test-uploads/${exam.id}/active`, { active: true })).status, 200);
+    const card = await examCard();
+    assert.ok(card, "the active exam is in the catalog");
+    assert.deepEqual([card.name, card.examDate, card.sections.math.paperId, card.sections.reading_writing.paperId], [examTitle, "2026-12-05", examPapers.math, examPapers.reading_writing]);
+
+    const drill = await student.call("POST", "/api/practice/attempts", { paperId: examPapers.math, limit: 10 });
+    assert.equal(drill.status, 201, JSON.stringify(drill.json.error));
+    const mock = await student.call("POST", "/api/practice/mocks", { section: "math", paperIds: [examPapers.math] });
+    assert.equal(mock.status, 201, JSON.stringify(mock.json.error));
+    const listed = (await student.call("GET", "/api/practice/tests")).json.data.tests;
+    assert.deepEqual(listed.map((test: { id: string; kind: string }) => [test.id, test.kind]), [[exam.id, "exam"]]);
+    const whole = await student.call("POST", "/api/practice/full-tests", { testUploadId: exam.id });
+    assert.equal(whole.status, 201, JSON.stringify(whole.json.error));
+    const firstModule = await AttemptModel.findById(whole.json.data.fullTest.readingWriting.id).lean();
+    const m1 = questions.filter((q) => q.section === "reading_writing" && q.moduleType === "m1").sort((a, b) => a.questionNumber - b.questionNumber);
+    assert.deepEqual(firstModule!.items.map((item) => String(item.questionId)), m1.map((q) => String(q._id)));
+    for (const attemptId of [drill.json.data.attempt.id, mock.json.data.attempt.id]) await student.call("DELETE", `/api/practice/attempts/${attemptId}`);
+    await student.call("DELETE", `/api/practice/full-tests/${whole.json.data.fullTest.id}`);
+
+    // Moved to the practice tests: a practice test number is needed and must be free.
+    const taken = await admin.call("PATCH", `/api/admin/test-uploads/${exam.id}`, { kind: "practice", title: "December practice", year: 2026, testNumber: 1 });
+    assert.equal(taken.status, 409);
+    assert.match(taken.json.error!.message, /already used by "E2E Practice Test 1"/);
+    const moved = await admin.call("PATCH", `/api/admin/test-uploads/${exam.id}`, { kind: "practice", title: "December practice", year: 2026, testNumber: 3 });
+    assert.equal(moved.status, 200, JSON.stringify(moved.json.error));
+    assert.deepEqual([moved.json.data.upload.kind, moved.json.data.upload.examDate], ["practice", null]);
+    assert.equal(await examCard(), undefined);
+    assert.equal(await PaperModel.countDocuments({ _id: trusted({ $in: Object.values(examPapers) }), source: "pdf-upload", sourceMetadata: {} }), 2);
+    assert.ok((await QuestionModel.find({ tags: `full-test:${exam.id}` }).lean()).every((q) => q.tags.includes("full-test") && !q.tags.includes("uploaded-exam")));
+    assert.equal((await student.call("POST", "/api/practice/attempts", { paperId: examPapers.math })).status, 404);
+    assert.deepEqual((await student.call("GET", "/api/practice/tests")).json.data.tests.map((test: { kind: string }) => test.kind), ["practice"]);
+
+    // ...and back to Exams.
+    const back = await admin.call("PATCH", `/api/admin/test-uploads/${exam.id}`, { kind: "exam", title: examTitle, examDate: "2026-12-05" });
+    assert.equal(back.status, 200, JSON.stringify(back.json.error));
+    assert.ok(await examCard());
   });
 
   console.log(`\n${passed} end-to-end checks passed.`);

@@ -29,6 +29,7 @@ import {
 } from "@satsharks/db";
 import {
   FULL_TEST_BREAK_MINUTES,
+  EXAM_UPLOAD_SOURCE,
   FULL_TEST_QUESTION_TAG,
   MOCK_FORMAT,
   MOCK_MODULE_LABELS,
@@ -505,6 +506,8 @@ export const practiceService = {
         examId,
         name: typeof meta.examName === "string" ? meta.examName : paper.title,
         examDate: typeof meta.examDate === "string" ? meta.examDate : null,
+        // Uploaded exams can also be taken whole, as a fixed full test.
+        testUploadId: paper.source === EXAM_UPLOAD_SOURCE && typeof paper.metadata?.testUploadId === "string" ? paper.metadata.testUploadId : null,
         sections: {},
       };
       for (const section of paper.sections) {

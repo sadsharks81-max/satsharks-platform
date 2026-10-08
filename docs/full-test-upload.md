@@ -9,6 +9,19 @@ Ported from the other SAT Sharks site (kit in `docs/prompts/full-test-port-kit/`
 site stores fixed 6-module tests; this one builds mocks from the bank, so a published upload becomes
 **two papers** with `m1` / `m2_easy` / `m2_hard` modules and the mock engine gained a fixed-module mode.
 
+**Practice test or exam (`kind`).** The upload dialog asks where the test goes; Edit details can
+change it later, also after publishing.
+
+- **Practice test** (default): year + test number; listed under Full-Length Practice Tests on Home;
+  its questions stay in the test (below).
+- **Exam**: a real SAT administration (e.g. the December SAT): title + exam date. The year comes
+  from the date; the server gives it the next free number from 1001 in that year (never shown), so
+  practice-test numbers stay free. Once active it is an ordinary card under **Exams** (year/season
+  filters from the date; Start Exam = drill), its questions join drills, the topic lists and random
+  mocks, and the card also has **Take Full Test** (the fixed adaptive test, as for a practice test).
+  Its papers have `source: "pdf-upload-exam"` and `sourceMetadata { examId: "upload:<id>",
+  examName, examDate }`, which the catalog groups into one card with `testUploadId`.
+
 ## Admin flow
 
 1. **Admin → Full tests → Upload test**: title, year (2000–2100), test number, one or both PDFs.
@@ -81,10 +94,13 @@ that wrapped and leaves a broken line break mid-sentence (the other site shows t
 
 ## Keeping the questions to their test
 
-Questions get `tags: ["full-test", "full-test:<uploadId>"]`. Excluded from: the practice catalog
+Practice-test questions get `tags: ["full-test", "full-test:<uploadId>"]` (an exam's get
+`["uploaded-exam", "full-test:<uploadId>"]` and are not excluded). Excluded from: the practice catalog
 (exam list and topic/skill lists), drill creation, the random mock / full-test pool, and the exam
-check of a mock. Upload papers are left out of Admin → Papers and its bulk publish/hide, and a
-single-paper status change on one is refused. They do appear in the admin question bank.
+check of a mock. Upload papers of both kinds are left out of Admin → Papers and its bulk
+publish/hide, and a single-paper status change on one is refused: they are shown and hidden only by
+activating the test. Changing the kind of a published test rewrites its papers' source and
+metadata and its questions' tags at once; students' past attempts are kept. They do appear in the admin question bank.
 
 ## Code
 
