@@ -161,7 +161,7 @@ function Tests({ canWrite }: { canWrite: boolean }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader
           title="Full tests"
-          subtitle="Fixed adaptive tests uploaded as PDFs: practice tests (their questions stay in their own test) and real SAT exams (listed under Exams)."
+          subtitle="Fixed adaptive tests uploaded as PDFs: practice tests (their questions stay in their own test) and real SAT exams"
         />
         {canWrite && <Button onClick={() => setUploading(true)}>Upload test</Button>}
       </div>
