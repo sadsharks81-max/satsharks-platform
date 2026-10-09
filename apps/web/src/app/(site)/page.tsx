@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { HomeActions } from "@/components/home-actions";
 
 export const metadata: Metadata = {
-  title: { absolute: "SAT Sharks — Digital SAT practice on real past papers" },
+  title: { absolute: "SAT Sharks | Digital SAT practice on real past papers" },
   description: "Full-length adaptive Digital SAT practice tests and focused drills from 26 past SAT exams, in a Bluebook-style test screen, scored 400–1600.",
 };
 

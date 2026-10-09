@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useMe, useSwitchUser } from "@/lib/auth";
+import { Logo } from "./logo";
 
 const button = "whitespace-nowrap rounded-[6px] bg-brand-500 px-5 py-2 text-[14px] font-bold tracking-tight text-white transition hover:opacity-90";
 const textLink = "whitespace-nowrap px-2 text-[14px] font-bold text-slate-600 transition hover:text-black";
@@ -46,8 +47,8 @@ export function Nav() {
       <nav className="mx-auto flex w-full max-w-[1700px] items-center gap-4 px-4 py-3 md:px-8">
         {/* Always the landing page. Signed-in accounts reach their own home from the buttons on the
             right (and from the landing page's "Go to your dashboard"). */}
-        <Link href="/" className="mr-auto text-[24px] font-bold tracking-tight text-brand-500 sm:text-[28px]">
-          SAT Sharks
+        <Link href="/" className="mr-auto text-brand-500 transition hover:opacity-90">
+          <Logo className="h-9 w-auto sm:h-11" />
         </Link>
 
         {/* Tablets and up: the full row. */}

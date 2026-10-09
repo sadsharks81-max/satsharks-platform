@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useId, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { Logo } from "./logo";
 
 // Shared building blocks for the sign-in, sign-up and password pages.
 
@@ -19,8 +20,8 @@ export function AuthShell({ title, subtitle, children, footer }: { title: string
           <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10" />
           <div aria-hidden className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-white/5" />
           <div className="relative">
-            <Link href="/" className="text-[26px] font-bold tracking-tight">
-              SAT Sharks
+            <Link href="/" className="inline-block text-white">
+              <Logo className="h-14 w-auto" />
             </Link>
             <p className="mt-6 text-[28px] font-bold leading-tight tracking-tight">Practise the Digital SAT the way it is really taken.</p>
           </div>

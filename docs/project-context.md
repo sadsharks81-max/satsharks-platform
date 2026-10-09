@@ -95,6 +95,11 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
   bar and a visual equation editor (MathLive), live preview including the explanation.
 - Rendering: LaTeX (KaTeX, Math only), tables, bar/line charts, right triangles, images,
   `**bold**`, `*italic*`, `__underline__`, bullets, blanks, `{viz}` figure placement.
+- **Logo and favicon** (2026-10-09): the client's logo traced to SVG (`components/logo.tsx`,
+  `currentColor`; brand blue `#324dc7` in the nav, white on the sign-in panel), sources in
+  `docs/brand/`. Favicon = the fin and wave in white on a brand-blue rounded square:
+  `app/icon.svg`, `app/favicon.ico` (16/32/48, bolder at small sizes), `app/apple-icon.png`.
+  Tab titles use "|" (e.g. "Log in | SAT Sharks"), never a dash.
 - Fonts Roboto (interface) and Noto Serif (question text) via `next/font`. Page container up to
   1700px wide, 16px/32px side padding — measured from the reference site's stylesheet.
 
@@ -107,7 +112,6 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
 - AI extraction from free-form PDFs (proposal Checkpoint 1.2). Only the strict-format test upload
   exists. Building papers from approved bank questions.
 - Highlighter/notes, line reader (Checkpoint 2.1). Re-grading old attempts after an answer key is fixed.
-- Favicon.
 
 ### Deployment (in progress, 2026-10-09)
 
@@ -121,7 +125,7 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
 - **Vercel** (client account): project `satsharks-platform`, root directory `apps/web`, preset
   Next.js, default commands, `API_URL=https://satsharksapi-production.up.railway.app` (with
   `https://`, no trailing slash; read at build time, so redeploy after changing it).
-- First Vercel build failed (`Cannot find module 'typescript'`, §8); fixed locally, not yet pushed.
+- First Vercel build failed (`Cannot find module 'typescript'`, §8); fixed in `9319fcc`.
   Not yet checked: `/api/health` on Railway, the live site end to end.
 
 ### Last verified
@@ -169,8 +173,8 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
   calculator; below: `d61bff3`, `aff4a62` (Umair) and `73b574d` (Phase 1 commit by Claude).
 - Umair has since committed and pushed up to `02e41e2` ("chnaged button location"), which includes
   the 2026-10-08 work, to both `origin` and `client`.
-- **Uncommitted locally (2026-10-09):** `typescript` and `@types/node` added to `apps/web`
-  devDependencies (+ lockfile) for the Vercel build, and this file. Ask before committing or pushing.
+- `9319fcc` (2026-10-09, Claude): Vercel build fix + deployment notes, pushed to both remotes.
+  Ask before committing or pushing.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -331,6 +335,8 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   /admin/tests, 2026-10-08). Test servers now use `NEXT_DIST_DIR=.next-test`
   (`API_URL=http://localhost:4100 NEXT_DIST_DIR=.next-test npx next dev -p 3100`); fix a broken
   server by stopping it, deleting `apps/web/.next` and starting it again.
+- **A `next dev` with `NEXT_DIST_DIR=.next-test` rewrites `apps/web/tsconfig.json`** (expands it
+  and adds `.next-test/types/**/*.ts`). Run `git checkout -- apps/web/tsconfig.json` after testing.
 - **Puppeteer clicks** can land on the review page's floating save bar; scroll the field to the
   centre first.
 - Auto mode once blocked reading local web files right after a read-only Atlas query, labelling it
@@ -480,3 +486,11 @@ Newest last. One entry per session or major step.
   devDependency. Added `typescript` and `@types/node` to `apps/web` devDependencies; a clean-clone
   `next build` (install inside `apps/web`, like Vercel) now passes, type check included, 27 routes.
   First production build of the project.
+- **2026-10-09 — Logo and favicon (Umair).** The client's PNG logo (navy, transparent) traced with
+  potrace into one SVG path and drawn in `currentColor`, so it matches the site's brand blue
+  instead of the artwork's navy; it replaces the "SAT Sharks" text in the nav (36px phone / 44px
+  desktop, made a little smaller at Umair's request) and the sign-in panel (white). Favicon set
+  generated from the fin and wave (see §2). Landing page tab title "SAT Sharks — …" → "SAT Sharks
+  | …" (the only title with a dash). Typecheck clean; headless Chrome screenshots of the landing
+  page (1440/390px) and login checked on a test server (port 3100, `.next-test`). That test server
+  rewrites `apps/web/tsconfig.json` (adds `.next-test/types`); revert it afterwards (§8).
