@@ -10,6 +10,11 @@
   --font-serif: var(--font-noto-serif), "Noto Serif", "Times New Roman", Times, serif;
 }
 
+/* Light mode only; see the viewport in layout.tsx. */
+:root {
+  color-scheme: only light;
+}
+
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }

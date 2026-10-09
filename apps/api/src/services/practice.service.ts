@@ -723,16 +723,17 @@ export const practiceService = {
     return { attempt: await summary(attempt), navigation: toNavigation(attempt) };
   },
 
-  async getQuestion(userId: string, attemptId: string, position: number): Promise<AttemptQuestion> {
+  // `peek`: the test screen loading the next question ahead of time. The student is not looking at
+  // it yet, so the view (and its timing) is not recorded.
+  async getQuestion(userId: string, attemptId: string, position: number, peek = false): Promise<AttemptQuestion> {
     const attempt = await loadAttempt(userId, attemptId);
     const item = itemAt(attempt, position);
     const reveal = item.checked || attempt.status === "done";
     const query = QuestionModel.findById(item.questionId);
     if (reveal) query.select("+correctAnswer +explanation");
-    const question = await query.lean<QuestionDoc>();
+    // Independent of each other, so one database round trip instead of two.
+    const [question] = await Promise.all([query.lean<QuestionDoc>(), peek ? undefined : recordView(attempt, position)]);
     if (!question) throw AppError.notFound("This question is no longer available");
-
-    await recordView(attempt, position);
     return toQuestionView(question, item, position, reveal);
   },
 

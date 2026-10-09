@@ -50,6 +50,29 @@ export function nextPathFor(user: PublicUser, next: string | null): string {
 let signedOutAt = 0;
 export const isSigningOut = () => Date.now() - signedOutAt < 5_000;
 
+// The account last seen signed in, kept in this browser so pages can open at once while the session
+// is checked again (the API decides on every request; this only picks what to show first). Cleared
+// on sign-out or when the server says nobody is signed in.
+const REMEMBERED_KEY = "satsharks.me";
+
+export function readRememberedUser(): PublicUser | null {
+  try {
+    const raw = localStorage.getItem(REMEMBERED_KEY);
+    return raw ? (JSON.parse(raw) as PublicUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberUser(user: PublicUser | null | undefined): void {
+  try {
+    if (user) localStorage.setItem(REMEMBERED_KEY, JSON.stringify(user));
+    else localStorage.removeItem(REMEMBERED_KEY);
+  } catch {
+    // Storage blocked (private mode, settings): pages simply wait for the check, as before.
+  }
+}
+
 export function isMeQuery(queryKey: readonly unknown[]): boolean {
   return queryKey[0] === ME_QUERY_KEY[0] && queryKey[1] === ME_QUERY_KEY[1];
 }

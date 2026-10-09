@@ -44,10 +44,12 @@ export function Nav() {
 
   return (
     <header className="relative border-b border-slate-900 bg-white">
-      <nav className="mx-auto flex w-full max-w-[1700px] items-center gap-4 px-4 py-3 md:px-8">
+      {/* Bottom-aligned: the logo's letters sit on the same line as the bottom of the buttons (its
+          fin rises above them). */}
+      <nav className="mx-auto flex w-full max-w-[1700px] items-end gap-4 px-4 py-3 md:px-8">
         {/* Always the landing page. Signed-in accounts reach their own home from the buttons on the
             right (and from the landing page's "Go to your dashboard"). */}
-        <Link href="/" className="mr-auto text-brand-500 transition hover:opacity-90">
+        <Link href="/" className="mr-auto block text-brand-500 transition hover:opacity-90">
           <Logo className="h-9 w-auto sm:h-11" />
         </Link>
 

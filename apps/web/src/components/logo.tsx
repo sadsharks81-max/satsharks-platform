@@ -6,7 +6,7 @@ const LOGO_PATH =
 
 export function Logo({ className }: { className?: string }) {
   return (
-    <svg role="img" aria-label="SAT Sharks" viewBox="0 0 1996 757" width={1996} height={757} className={className} fill="currentColor">
+    <svg role="img" aria-label="SAT Sharks" viewBox="0 0 1996 757" width={1996} height={757} className={`block ${className ?? ""}`} fill="currentColor">
       <path fillRule="evenodd" d={LOGO_PATH} />
     </svg>
   );

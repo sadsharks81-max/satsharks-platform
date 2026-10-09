@@ -1,9 +1,10 @@
 "use client";
 
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import type { PublicUser } from "@satsharks/types";
 import { ApiError } from "@/lib/api";
-import { isMeQuery, ME_QUERY_KEY } from "@/lib/auth";
+import { isMeQuery, ME_QUERY_KEY, readRememberedUser, rememberUser } from "@/lib/auth";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => {
@@ -28,5 +29,24 @@ export function Providers({ children }: { children: ReactNode }) {
     });
     return client;
   });
+
+  // Show the remembered account straight away instead of "Checking your session"; the check still
+  // runs (the data is marked stale) and its answer replaces it. Done after mount, so the server
+  // render and the first client render match. Every later answer is remembered for next time.
+  useEffect(() => {
+    const cache = queryClient.getQueryCache();
+    const remembered = readRememberedUser();
+    if (remembered && queryClient.getQueryData(ME_QUERY_KEY) === undefined) {
+      queryClient.setQueryData(ME_QUERY_KEY, remembered, { updatedAt: 0 });
+      // Keeps a check that is already running rather than starting it again.
+      void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY }, { cancelRefetch: false });
+    }
+    return cache.subscribe((event) => {
+      if (event.type !== "updated" || !isMeQuery(event.query.queryKey)) return;
+      const { status, data } = event.query.state;
+      if (status === "success") rememberUser(data as PublicUser | null);
+    });
+  }, [queryClient]);
+
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

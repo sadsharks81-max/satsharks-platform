@@ -41,7 +41,7 @@ export async function getAttempt(req: Request, res: Response): Promise<void> {
 }
 
 export async function getQuestion(req: Request, res: Response): Promise<void> {
-  sendOk(res, { question: await practiceService.getQuestion(userId(req), attemptId(req), position(req)) });
+  sendOk(res, { question: await practiceService.getQuestion(userId(req), attemptId(req), position(req), req.query.peek === "1") });
 }
 
 export async function saveAnswer(req: Request, res: Response): Promise<void> {

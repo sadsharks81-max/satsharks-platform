@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel).
+Last updated: 2026-10-09 (deployment; logo; faster test screen and session; light mode only).
 
 ---
 
@@ -19,7 +19,7 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
   SAT Sharks keeps its own name and branding; layout, fonts and spacing follow the reference.
 - **Repository:** `https://github.com/satsharks20/bluesharks` (public, remote `origin`), branch
   `main`. **Client copy (deploys from here):** `https://github.com/sadsharks81-max/satsharks-platform`
-  (remote `client`). Push to both. The client account's other repo `satsharks` is the older site.
+  (remote `client`, public since 2026-10-09). Push to both. The client account's other repo `satsharks` is the older site.
 - **Phase 1 brief:** `docs/prompts/phase1.txt`. Status report: `docs/phase-1-completion.md`
   (accurate up to the adaptive-mock work; see the change log for what came after).
 
@@ -99,7 +99,16 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
   `currentColor`; brand blue `#324dc7` in the nav, white on the sign-in panel), sources in
   `docs/brand/`. Favicon = the fin and wave in white on a brand-blue rounded square:
   `app/icon.svg`, `app/favicon.ico` (16/32/48, bolder at small sizes), `app/apple-icon.png`.
-  Tab titles use "|" (e.g. "Log in | SAT Sharks"), never a dash.
+  Tab titles use "|" (e.g. "Log in | SAT Sharks"), never a dash. Nav is bottom-aligned (logo
+  letters level with the button bottoms).
+- **Light mode only:** `colorScheme: "only light"` (viewport) + `color-scheme: only light` (CSS),
+  so phone browsers' automatic dark mode does not recolour the site (it turned the brand blue
+  pale purple). A real dark theme would be a separate piece of work.
+- **Fast test screen:** the next question is fetched ahead (`GET …/questions/:n?peek=1`, which
+  does not record a view), questions already seen are kept, so Next/Back show at once; the normal
+  GET (records the view and timing) still runs in the background, one at a time in order.
+  **Remembered session:** the last signed-in account is kept in `localStorage` (`satsharks.me`) and
+  shown at once while `/api/auth/me` re-checks; cleared on sign-out or a 401.
 - Fonts Roboto (interface) and Noto Serif (question text) via `next/font`. Page container up to
   1700px wide, 16px/32px side padding — measured from the reference site's stylesheet.
 
@@ -122,10 +131,20 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
   `MONGODB_URI`, `JWT_SECRET` (new, production only), `CLIENT_URL` (= the Vercel URL), Resend.
   The auto-created `web` and `worker` services were deleted (web is on Vercel; the worker needs
   Redis and is not used live). Atlas Network Access must allow `0.0.0.0/0`.
+- **Latency (2026-10-09):** Atlas cluster `cluster0.wprq5io` is in **Mumbai**; the Railway API was
+  in Railway's default (US) region, so each database round trip cost ~300 ms (live `/api/health`
+  ~330 ms vs `/api/pricing` ~650 ms from Pakistan) and a question load ~1–2 s. **Move the Railway
+  service to Southeast Asia (Singapore)** (service → Settings → Deploy → Regions); asked of Umair.
 - **Vercel** (client account): project `satsharks-platform`, root directory `apps/web`, preset
   Next.js, default commands, `API_URL=https://satsharksapi-production.up.railway.app` (with
   `https://`, no trailing slash; read at build time, so redeploy after changing it).
 - First Vercel build failed (`Cannot find module 'typescript'`, §8); fixed in `9319fcc`.
+- **Vercel Hobby blocks private-repo commits not authored by the Vercel owner** ("Deployment
+  Blocked", also for builds started by a Deploy Hook). Umair made the client repo **public**
+  (2026-10-09), so pushes by `satsharks20` deploy again. If it ever goes private: author commits
+  as `sadsharks81-max <309707139+sadsharks81-max@users.noreply.github.com>`, or Vercel Pro.
+  A Deploy Hook (branch `main`) exists; its URL is in local `.env` as `VERCEL_DEPLOY_HOOK`
+  (secret, never commit or print it). POST to it to rebuild the latest `main`.
   Not yet checked: `/api/health` on Railway, the live site end to end.
 
 ### Last verified
@@ -160,11 +179,15 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
   calculator were NOT tested in the app** — Umair asked for changes without testing. Only the type
   check was run. Check them in a Math drill or mock.
 
-- **Upload destination (2026-10-08):** typecheck clean; 49 unit tests (35 API, 14 worker) pass. A
-  new e2e check (exam upload → Exams card, drill, mock, full test; moved to practice and back) was
-  added to `test-uploads.e2e.ts` but **could not run**: the in-memory `mongod` exits with
-  0xC0000135 because the Visual C++ Redistributable is no longer installed (see §8). Not tested in
-  the browser either.
+- **Upload destination (2026-10-08):** typecheck clean; 49 unit tests pass. Its e2e check (exam
+  upload → Exams card, drill, mock, full test; moved to practice and back) **passed on 2026-10-09**
+  (VC++ runtime back; all 14 e2e checks pass).
+- **Speed + session (2026-10-09):** 12 browser checks (puppeteer-core from the scratchpad, every API
+  call delayed 800 ms) against the e2e `--serve 4100` API and a `.next-test` web on 3100: Next
+  and Back 25–65 ms with no spinner, look-ahead uses `peek=1`, the real view is still recorded,
+  answers kept on return, `lastPosition` correct after fast Back/Next, dashboard shows before
+  `/me` answers, sign-out and expired sessions clear the remembered account and reach /login.
+  Forced dark (Chrome `WebContentsForceDark`) leaves the pages light; nav alignment screenshot.
 
 ## 3. Git state
 
@@ -174,6 +197,9 @@ Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel)
 - Umair has since committed and pushed up to `02e41e2` ("chnaged button location"), which includes
   the 2026-10-08 work, to both `origin` and `client`.
 - `9319fcc` (2026-10-09, Claude): Vercel build fix + deployment notes, pushed to both remotes.
+- `592337f` (2026-10-09, Claude): logo and favicon, pushed to both remotes.
+- Next commit (2026-10-09, Claude): "Faster test screen and session, nav alignment, light mode
+  only", pushed to both remotes (see `git log`).
   Ask before committing or pushing.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
@@ -322,7 +348,11 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   showed garbled). Fixed in `rich-text.tsx`; formulas may contain escaped characters.
 - **mongodb-memory-server's first start** on this machine took over 10 s (binary scan): the e2e
   sets a 120 s launch timeout.
-- **In-memory `mongod` exits with code 3221225781 (0xC0000135, DLL not found)** (2026-10-08):
+- **Two question views sent at once can land in either order** and leave the server timing the
+  wrong question (`recordView` only writes if nobody moved the view first). The test screen sends
+  views one at a time (`views` promise chain); keep it that way.
+- **In-memory `mongod` exits with code 3221225781 (0xC0000135, DLL not found)** (2026-10-08, fixed
+  2026-10-09 once the runtime was reinstalled):
   `vcruntime140.dll` / `msvcp140.dll` are missing from System32 (the VC++ Redistributable x64 is
   not installed any more). Install it from Microsoft (`aka.ms/vs/17/release/vc_redist.x64.exe`)
   before running the e2e; it is a system install, so ask Umair first.
@@ -352,8 +382,9 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 
 ## 9. Open items and suggestions
 
-0. **Run the uploads e2e once the VC++ Redistributable is back** (checks the new Exam destination),
-   and click through: upload as Exam, activate, see the card under Exams with Take Full Test.
+0. **Move the Railway API to Singapore** (near the Mumbai database; see §2 Deployment). Then
+   click through an uploaded Exam in the browser: upload, activate, card under Exams with Take
+   Full Test (the API side passed the e2e).
    **Try the upload with the client's real PDFs** (Admin → Full tests). They must follow the format
    (`/full-test/format.html`). PDFs made for the other SAT Sharks site upload unchanged (its
    category names and plain-text Math are accepted). Word/Google Docs exports are untested.
@@ -494,3 +525,10 @@ Newest last. One entry per session or major step.
   | …" (the only title with a dash). Typecheck clean; headless Chrome screenshots of the landing
   page (1440/390px) and login checked on a test server (port 3100, `.next-test`). That test server
   rewrites `apps/web/tsconfig.json` (adds `.next-test/types`); revert it afterwards (§8).
+- **2026-10-09 — Speed, alignment, dark mode (Umair).** Each Next showed "Loading question" for
+  1–2 s and pages "Checking your session": measured ~300 ms per database trip on the live API
+  (Railway in the US, Atlas in Mumbai; Umair to move Railway to Singapore). Code: question and
+  view recorded in parallel on the server; the test screen fetches the next question ahead
+  (`?peek=1`), keeps loaded ones, and sends views in order; the session is remembered in
+  `localStorage`. Nav bottom-aligned (logo SVG `block`, no inline gap). `color-scheme: only light`
+  stops phone dark modes turning the blue purple. Tested as in §2 "Last verified".

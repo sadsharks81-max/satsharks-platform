@@ -117,6 +117,14 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
   const ending = useRef(false);
   // The typed answer last saved for the current question, to avoid saving unchanged text.
   const savedAnswer = useRef("");
+  // Questions of this module already loaded (or loaded ahead), by position, as last shown. Moving to
+  // one shows it at once; the server is still asked, which records the view, and its reply replaces
+  // what is shown unless the student has already changed something.
+  const loaded = useRef(new Map<number, AttemptQuestion>());
+  const edits = useRef({ touched: false });
+  // Opening questions reaches the server one at a time, in the order the student moved: two at once
+  // could land in either order and leave the server timing the wrong question.
+  const views = useRef<Promise<unknown>>(Promise.resolve());
 
   // Applies a server snapshot: navigation, clock, and where to resume inside the current module.
   const applyState = useCallback(
@@ -141,25 +149,53 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     if (attemptQuery.data && attempt === null) applyState(attemptQuery.data);
   }, [attemptQuery.data, attempt, applyState]);
 
-  // Load the question whenever the position changes.
+  // Load the question whenever the position changes, then the next one ahead of time.
+  const lastPosition = attempt ? (attempt.mock?.moduleStart ?? 1) + (attempt.mock?.moduleQuestionCount ?? attempt.total) - 1 : 0;
   useEffect(() => {
     if (position === null) return;
     let cancelled = false;
-    setLoadingQuestion(true);
+    const mine = { touched: false };
+    edits.current = mine;
+    const show = (next: AttemptQuestion) => {
+      setQuestion(next);
+      setAnswer(next.answer ?? "");
+      savedAnswer.current = next.answer ?? "";
+    };
+    const known = loaded.current.get(position);
+    if (known) show(known);
+    setLoadingQuestion(!known);
     setError(null);
-    api<{ question: AttemptQuestion }>(`/api/practice/attempts/${attemptId}/questions/${position}`)
-      .then(({ question: loaded }) => {
+    // Asked for even when known: opening a question is what times it on the server. Skipped if the
+    // student has already moved on before its turn came.
+    const view = views.current.then(() => (cancelled ? null : api<{ question: AttemptQuestion }>(`/api/practice/attempts/${attemptId}/questions/${position}`)));
+    views.current = view.catch(() => undefined);
+    view
+      .then((reply) => {
+        if (!reply || mine.touched) return;
+        const fresh = reply.question;
+        loaded.current.set(position, fresh);
         if (cancelled) return;
-        setQuestion(loaded);
-        setAnswer(loaded.answer ?? "");
-        savedAnswer.current = loaded.answer ?? "";
+        show(fresh);
+        const ahead = position + 1;
+        if (ahead <= lastPosition && !loaded.current.has(ahead)) {
+          api<{ question: AttemptQuestion }>(`/api/practice/attempts/${attemptId}/questions/${ahead}?peek=1`)
+            .then(({ question: next }) => !loaded.current.has(ahead) && loaded.current.set(ahead, next))
+            .catch(() => undefined);
+        }
       })
       .catch((caught: Error) => !cancelled && setError(caught.message))
       .finally(() => !cancelled && setLoadingQuestion(false));
     return () => {
       cancelled = true;
     };
-  }, [attemptId, position]);
+  }, [attemptId, position, lastPosition]);
+
+  // The student changed the question on screen: keep it for coming back, and stop a late reply
+  // from the server from replacing it.
+  const remember = useCallback((next: AttemptQuestion) => {
+    edits.current.touched = true;
+    loaded.current.set(next.position, next);
+  }, []);
 
   const isMock = attempt?.kind === "mock";
   const inModuleOne = isMock && attempt?.mock?.currentModule === "m1";
@@ -189,6 +225,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     try {
       const state = await api<AttemptState>(`/api/practice/attempts/${attemptId}/submit-module`, { method: "POST" });
       setEliminated({});
+      loaded.current.clear();
       applyState(state, state.attempt.mock?.moduleStart);
       setModuleNotice("Module 1 is submitted. Module 2 has started.");
     } catch (caught) {
@@ -236,9 +273,12 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
   const commitTyped = useCallback(async () => {
     if (!question || question.questionType === "mcq" || question.checked || answer === savedAnswer.current) return true;
     const ok = await save({ answer: answer === "" ? null : answer }, question.position);
-    if (ok) savedAnswer.current = answer;
+    if (ok) {
+      savedAnswer.current = answer;
+      remember({ ...question, answer: answer === "" ? null : answer });
+    }
     return ok;
-  }, [question, answer, save]);
+  }, [question, answer, save, remember]);
 
   const moduleStart = attempt?.mock?.moduleStart ?? 1;
   const moduleCount = attempt?.mock?.moduleQuestionCount ?? attempt?.total ?? 0;
@@ -276,7 +316,18 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
     if (!question || locked) return;
     const previous = answer;
     setAnswer(key);
-    if (!(await save({ answer: key }, question.position))) setAnswer(previous);
+    remember({ ...question, answer: key });
+    if (!(await save({ answer: key }, question.position))) {
+      setAnswer(previous);
+      remember({ ...question, answer: previous || null });
+    }
+  }
+
+  // Typed text is kept for coming back only once saved (commitTyped), so unsaved text is never
+  // taken for saved.
+  function typeAnswer(value: string) {
+    edits.current.touched = true;
+    setAnswer(value);
   }
 
   async function toggleFlag() {
@@ -295,6 +346,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
       if (!(await commitTyped())) return;
       const { question: checked } = await api<{ question: AttemptQuestion }>(`/api/practice/attempts/${attemptId}/questions/${question.position}/check`, { method: "POST" });
       setQuestion(checked);
+      remember(checked);
       setNavigation((items) => items.map((entry) => (entry.position === checked.position ? { ...entry, checked: true, answered: true } : entry)));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not check the answer");
@@ -342,7 +394,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
       {isSpr ? (
         <ResponseInput
           value={answer}
-          onChange={setAnswer}
+          onChange={typeAnswer}
           onCommit={() => void commitTyped()}
           disabled={locked}
           correctAnswer={question.result?.correctAnswer}

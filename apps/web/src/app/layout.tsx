@@ -27,7 +27,10 @@ export const metadata: Metadata = {
   description: "Digital SAT practice with real past papers.",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1 };
+// The site is designed for light mode only. "only light" stops browsers that darken pages on their
+// own (Chrome and Samsung Internet on phones in dark mode) from recolouring it, which turned the
+// brand blue into a pale purple.
+export const viewport: Viewport = { width: "device-width", initialScale: 1, colorScheme: "only light" };
 
 // Pages live in two groups: (site) adds the navigation bar, (test) is the full-screen test view.
 export default function RootLayout({ children }: { children: ReactNode }) {
