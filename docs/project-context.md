@@ -314,6 +314,9 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   the CLI directly: `npx tsx apps/api/src/cli/create-admin.ts --email … --role admin`.
 - **PowerShell safety check** misreads regexes or here-strings containing `/` as paths and blocks
   `Remove-Item`. Write scripts with the Write tool, run and delete them in separate steps.
+- **Commit messages with double quotes** break in PowerShell 5.1 here-strings passed to `git commit
+  -m` (split into pathspecs, nothing committed). Write the message to a scratchpad file and use
+  `git commit -F <file>`.
 - **The Bash tool has at times lost `node`, `sed`, `grep`, `curl`** from its PATH. Use PowerShell or
   the Edit/Grep tools.
 - **Background dev servers started by Claude are killed** when the session's background time limit
