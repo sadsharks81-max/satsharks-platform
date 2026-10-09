@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-09 (log in / sign up redesign from Claude Design; pushed to both remotes).
+Last updated: 2026-10-09 (nav hydration error fixed in `useMe`; pushed to both remotes).
 
 ---
 
@@ -425,12 +425,13 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   must be listed in `apps/web/package.json`. Check with a clean clone in the scratchpad:
   `npm install` inside `apps/web`, then `npm run build` (never build in the working copy while
   Umair's dev server uses `apps/web/.next`).
-- **Nav hydration error after sign-in (open, found 2026-10-09):** every page load in a browser
-  with a remembered account logs "Hydration failed" for the nav's button row (dev overlay shows
-  "1 Issue"). `providers.tsx` fills the "me" query from `localStorage` in an effect of the root,
-  which runs before the `(site)` layout's Suspense segment (with the nav) hydrates, so the nav's
-  first client render already has a user while the server HTML had none. React recovers by
-  re-rendering the nav on the client. Not fixed yet.
+- **Hydration and the remembered account (fixed 2026-10-09):** `providers.tsx` fills the "me"
+  query from `localStorage` in an effect of the root, which runs before nested layouts/pages
+  (nav, landing buttons, auth links) hydrate, so their first client render had a user while the
+  server HTML said "still checking" → "Hydration failed" on every page load. Fix: `useMe()` in
+  `lib/auth.ts` reports "loading, no user" while its component hydrates (`useHydrated()`,
+  `useSyncExternalStore` with a `false` server snapshot), then the remembered account on the next
+  render. Anything user-dependent must read the account through `useMe()`, not the query directly.
 - Testing in the app needs an account. Use temporary accounts `phase1-test-*@example.com`
   (create with `create:admin` or `/api/auth/register`) and delete them afterwards. Never use or
   change Umair's own accounts.
@@ -447,7 +448,6 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
    **Set up Admin → Access** after deploying it: choose the free exams/tests (the proposal says
    2 full papers for free), which ways of practising are free, and "added later" (Paid only fits
    "every paper, plus each new one" for paid plans). Until saved, everything is free.
-   Fix the nav hydration error (§8).
 
 1. Umair to check the reference sheet and the floating calculator in the app (untested).
 2. Commit and push the uncommitted work when Umair says so.
@@ -627,3 +627,9 @@ Newest last. One entry per session or major step.
   line was not added), forgot-password link, `?next=` and `?reset=1`. Checked: web type check;
   screenshots of all four pages at 1440/820/390px with no horizontal overflow; register validation,
   show-password toggle and country list (251 options) on a phone. Pushed to `origin` and `client`.
+- **2026-10-09 — Nav hydration error fixed.** Cause and fix in §8 ("Hydration and the remembered
+  account"); one change in `apps/web/src/lib/auth.ts`. Checked: type check; with a made-up
+  remembered account in `localStorage` (no real account used), `/`, `/login`, `/register`,
+  `/pricing`, `/dashboard` logged "Hydration failed" once each before the fix and none after; with
+  the session check delayed 4 s the nav shows the remembered account at 1.5 s, then follows the
+  server's answer. Pushed to `origin` and `client`.

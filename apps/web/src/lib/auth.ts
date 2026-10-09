@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 import type { PublicUser } from "@satsharks/types";
 import { api, ApiError } from "./api";
 
@@ -17,8 +18,19 @@ async function fetchMe(): Promise<PublicUser | null> {
   }
 }
 
+// false while React is hydrating the server's HTML, true from then on (and at once for anything
+// mounted later, e.g. after a client-side navigation).
+const noSubscribe = () => () => {};
+export function useHydrated() {
+  return useSyncExternalStore(
+    noSubscribe,
+    () => true,
+    () => false,
+  );
+}
+
 export function useMe() {
-  return useQuery({
+  const query = useQuery({
     queryKey: ME_QUERY_KEY,
     queryFn: fetchMe,
     staleTime: 30_000,
@@ -27,6 +39,14 @@ export function useMe() {
     // recently it was loaded, in case another tab signed out or signed in as someone else.
     refetchOnWindowFocus: "always",
   });
+  // The server never knows who is signed in, so it renders every user-dependent part as "still
+  // checking". The remembered account (providers.tsx) can already be in the cache when a nested
+  // layout or page hydrates; showing it in that first render would not match the server's HTML
+  // (React's "Hydration failed"). So while hydrating, report what the server saw; the very next
+  // render shows the account.
+  const hydrated = useHydrated();
+  if (hydrated) return query;
+  return { ...query, data: undefined, isLoading: true, isPending: true, isSuccess: false, status: "pending" } as typeof query;
 }
 
 // Admin and staff accounts run the site; they do not take drills or mocks. Their home is the
