@@ -25,7 +25,9 @@ import {
   SECTIONS,
   TEST_UPLOAD_SOURCE,
   UPLOADED_EXAM_QUESTION_TAG,
+  uploadAccessKey,
   uploadQuestionProblems,
+  type AccessItem,
   type CatalogTopic,
   type MockModule,
   type PracticeTestListing,
@@ -637,7 +639,23 @@ export const testUploadService = {
 
   // ---------- students ----------
 
-  async listActive(): Promise<PracticeTestListing[]> {
+  // Published tests for Admin → Access (uploaded exams that are not active are not in the catalog).
+  async listPublished(): Promise<AccessItem[]> {
+    const uploads = await TestUploadModel.find({ status: "published" })
+      .select("kind title examDate active")
+      .sort({ year: -1, testNumber: -1 })
+      .lean<TestUploadDoc[]>();
+    return uploads.map((upload) => ({
+      key: uploadAccessKey(String(upload._id)),
+      kind: kindOf(upload) === "exam" ? "exam" : "practice",
+      name: upload.title,
+      date: upload.examDate ?? null,
+      active: upload.active,
+    }));
+  },
+
+  // The locks are added per account by practice.service.
+  async listActive(): Promise<Omit<PracticeTestListing, "locked">[]> {
     const uploads = await TestUploadModel.find({ status: "published", active: true })
       .select("kind title year testNumber paperIds status")
       .sort({ year: -1, testNumber: -1 })

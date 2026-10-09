@@ -283,6 +283,8 @@ export interface CatalogExam {
   // An uploaded exam, which can also be taken as a fixed full test.
   testUploadId: string | null;
   sections: Partial<Record<Section, { paperId: string; questionCount: number }>>;
+  // Kept for paid accounts and this account is free (see Admin → Access).
+  locked: boolean;
 }
 
 export interface CatalogTopic {
@@ -293,6 +295,7 @@ export interface CatalogTopic {
 export interface PracticeCatalog {
   exams: CatalogExam[];
   topics: Record<Section, CatalogTopic[]>;
+  access: PracticeAccess;
 }
 
 export interface ModuleResult {
@@ -514,6 +517,8 @@ export interface PracticeTestListing {
   year: number;
   testNumber: number;
   moduleCounts: Record<Section, Record<MockModule, number>>;
+  // Kept for paid accounts and this account is free.
+  locked: boolean;
 }
 
 const MAX_SPR_LENGTH = 5;
@@ -706,6 +711,103 @@ export const DEFAULT_PRICING: PricingContent = {
   schoolsNote: "",
   refundPolicy: "All payments are final: SAT Sharks does not offer refunds.",
 };
+
+// ---------- access by plan (edited in Admin → Access) ----------
+
+// "free": every account. "paid": accounts with an active paid plan (and staff/admins).
+export const ACCESS_LEVELS = ["free", "paid"] as const;
+export type AccessLevel = (typeof ACCESS_LEVELS)[number];
+
+// Ways of practising that can be kept for paid accounts. Fixed tests (uploaded practice tests and
+// uploaded exams taken whole) are set one by one instead, like exams.
+export const ACCESS_FEATURES = ["drills", "mocks", "full_tests"] as const;
+export type AccessFeature = (typeof ACCESS_FEATURES)[number];
+
+export const ACCESS_FEATURE_LABELS: Record<AccessFeature, { label: string; description: string }> = {
+  drills: { label: "Practice drills", description: "Question sets from one exam, with answer checks" },
+  mocks: { label: "Adaptive section mocks", description: "One section in two modules, drawn from the exam pool" },
+  full_tests: { label: "Adaptive full tests", description: "Both sections and a break, drawn from the exam pool" },
+};
+
+// An exam or uploaded test in the access rules is known by its catalog exam id. Everything uploaded
+// on the Full tests page (exam or practice test) is "upload:<id>", which is also its exam id.
+export const uploadAccessKey = (uploadId: string) => `upload:${uploadId}`;
+
+export interface AccessRule {
+  key: string;
+  level: AccessLevel;
+}
+
+export interface AccessSettings {
+  features: Record<AccessFeature, AccessLevel>;
+  // Exams and uploaded tests set one by one. Rules for exams that are hidden right now are kept.
+  content: AccessRule[];
+  // For exams and tests without a rule: those that appeared after the last save.
+  newContent: AccessLevel;
+}
+
+// Everything open until an admin saves their own, so existing accounts lose nothing on release.
+export const DEFAULT_ACCESS: AccessSettings = {
+  features: { drills: "free", mocks: "free", full_tests: "free" },
+  content: [],
+  newContent: "free",
+};
+
+export function contentAccessLevel(settings: AccessSettings, key: string): AccessLevel {
+  return settings.content.find((rule) => rule.key === key)?.level ?? settings.newContent;
+}
+
+// One exam or uploaded test on the Access page.
+export interface AccessItem {
+  key: string;
+  kind: "exam" | "practice";
+  name: string;
+  // Exams: the administration date (YYYY-MM-DD) when known.
+  date: string | null;
+  // Uploaded tests that are not active are not shown to students yet.
+  active: boolean;
+}
+
+export interface AdminAccess {
+  settings: AccessSettings;
+  items: AccessItem[];
+}
+
+// What the signed-in account may use; sent with the practice catalog.
+export interface PracticeAccess {
+  // Paid plan, staff or admin.
+  paid: boolean;
+  features: Record<AccessFeature, boolean>;
+}
+
+// ---------- announcements (Admin → Announcements, shown as banners to students) ----------
+
+// "free" / "paid" use the same rule as access: paid = an active paid plan.
+export const ANNOUNCEMENT_AUDIENCES = ["all", "free", "paid"] as const;
+export type AnnouncementAudience = (typeof ANNOUNCEMENT_AUDIENCES)[number];
+
+export const ANNOUNCEMENT_AUDIENCE_LABELS: Record<AnnouncementAudience, string> = {
+  all: "All students",
+  free: "Free accounts",
+  paid: "Paid accounts",
+};
+
+export const ANNOUNCEMENT_TONES = ["info", "important"] as const;
+export type AnnouncementTone = (typeof ANNOUNCEMENT_TONES)[number];
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  audience: AnnouncementAudience;
+  tone: AnnouncementTone;
+  // Off = kept as a draft or taken down.
+  active: boolean;
+  // Hidden after this moment (ISO); null = until turned off.
+  endsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // ---------- problem reports ----------
 

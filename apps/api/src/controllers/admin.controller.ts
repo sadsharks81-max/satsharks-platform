@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import {
+  accessSettingsSchema,
   adaptiveSettingsSchema,
   bulkPaperStatusSchema,
   conversionTablesSchema,
@@ -14,8 +15,10 @@ import {
   userListQuerySchema,
   type UpdateQuestionInput,
 } from "@satsharks/validation";
-import type { PricingContent } from "@satsharks/types";
+import type { AccessItem, AdminAccess, PricingContent } from "@satsharks/types";
 import { adminService } from "../services/admin.service";
+import { practiceService } from "../services/practice.service";
+import { testUploadService } from "../services/test-upload.service";
 import { reportService } from "../services/report.service";
 import { userAdminService } from "../services/user-admin.service";
 import { settingsService } from "../services/settings.service";
@@ -91,6 +94,26 @@ export async function setPricing(req: Request, res: Response): Promise<void> {
   // The admin sees which field is wrong, not just "invalid request".
   if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? "Check the pricing fields");
   sendOk(res, await settingsService.setPricing(parsed.data as PricingContent, String(req.user!._id)));
+}
+
+// Access by plan, and everything it can apply to: the catalog's exams (as students see them) and
+// every published uploaded test (exams among them may be inactive, so not in the catalog).
+export async function getAccess(_req: Request, res: Response): Promise<void> {
+  const [settings, exams, uploads] = await Promise.all([settingsService.getAccess(), practiceService.catalogExams(), testUploadService.listPublished()]);
+  const uploadKeys = new Set(uploads.map((item) => item.key));
+  const items: AccessItem[] = [
+    ...exams
+      .filter((exam) => !uploadKeys.has(exam.examId))
+      .map((exam): AccessItem => ({ key: exam.examId, kind: "exam", name: exam.name, date: exam.examDate, active: true })),
+    ...uploads,
+  ];
+  sendOk(res, { settings, items } satisfies AdminAccess);
+}
+
+export async function setAccess(req: Request, res: Response): Promise<void> {
+  const parsed = accessSettingsSchema.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? "Check the access settings");
+  sendOk(res, await settingsService.setAccess(parsed.data, String(req.user!._id)));
 }
 
 export async function listReports(req: Request, res: Response): Promise<void> {

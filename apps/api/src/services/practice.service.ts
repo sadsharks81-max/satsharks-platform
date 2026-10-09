@@ -49,11 +49,13 @@ import {
   type Section,
   type TimeMultiplier,
   TEST_UPLOAD_SOURCE,
+  uploadAccessKey,
 } from "@satsharks/types";
 import type { CreateAttemptInput, CreateFullTestInput, CreateMockInput, SaveAnswerInput } from "@satsharks/validation";
 import mongoose from "mongoose";
 import { AppError } from "../utils/app-error";
 import { gradeAnswer } from "../utils/grading";
+import { paidOnly, requireContent, requireFeature, type UserAccess } from "./access.service";
 import { orderModule, pickModule, requiredForHard, type Candidate } from "./mock-assembly";
 import { sectionScore, totalScore } from "./scoring";
 import { settingsService } from "./settings.service";
@@ -65,11 +67,19 @@ const CATALOG_TTL_MS = 60_000;
 // for at most this long (a tab left open overnight is not ten hours of work).
 const UNTIMED_VIEW_CAP_SECONDS = 10 * 60;
 
-let catalogCache: { value: PracticeCatalog; expires: number } | null = null;
+// The catalog as every account sees it; locks are added per account on each request.
+type BaseCatalog = { exams: Omit<CatalogExam, "locked">[]; topics: PracticeCatalog["topics"] };
+let catalogCache: { value: BaseCatalog; expires: number } | null = null;
 
 export function invalidateCatalog(): void {
   catalogCache = null;
 }
+
+// Papers from the same exam (one per section) share this id; it is also the exam's access key.
+const examKeyOf = (paper: Pick<PaperDoc, "_id" | "sourceMetadata">): string => {
+  const examId = paper.sourceMetadata?.examId;
+  return examId != null ? String(examId) : String(paper._id);
+};
 
 type Item = AttemptDoc["items"][number];
 
@@ -310,18 +320,35 @@ async function mockPool(section: Section, paperIds: mongoose.Types.ObjectId[]): 
   return rows.map((row) => ({ id: String(row._id), skill: row.skill, topic: row.topic, difficulty: row.difficulty }));
 }
 
-// Checks the chosen exams and that the pool can fill both modules without repeats.
-async function checkedMockPool(section: Section, ids: string[]): Promise<{ paperIds: mongoose.Types.ObjectId[]; pool: Candidate[] }> {
-  const paperIds = [...new Set(ids)].map((id) => new mongoose.Types.ObjectId(id));
+// Checks the chosen exams and that the pool can fill both modules without repeats. With `access`,
+// the exams must be open to the account, and "all exams" (no ids) means all exams open to it.
+// Without it (continuing a full test already begun) nothing is checked against the plan.
+async function checkedMockPool(section: Section, ids: string[], access?: UserAccess): Promise<{ paperIds: mongoose.Types.ObjectId[]; pool: Candidate[] }> {
+  let paperIds = [...new Set(ids)].map((id) => new mongoose.Types.ObjectId(id));
+  let limited = false;
   if (paperIds.length > 0) {
-    const usable = await PaperModel.countDocuments({ _id: trusted({ $in: paperIds }), status: "published", sections: section, source: trusted({ $ne: TEST_UPLOAD_SOURCE }) });
-    if (usable !== paperIds.length) throw AppError.badRequest(`Some selected exams are not available for ${SECTION_LABELS[section]}`);
+    const papers = await PaperModel.find({ _id: trusted({ $in: paperIds }), status: "published", sections: section, source: trusted({ $ne: TEST_UPLOAD_SOURCE }) })
+      .select("sourceMetadata")
+      .lean<PaperDoc[]>();
+    if (papers.length !== paperIds.length) throw AppError.badRequest(`Some selected exams are not available for ${SECTION_LABELS[section]}`);
+    if (access && papers.some((paper) => !access.content(examKeyOf(paper)))) throw paidOnly("Some of the selected exams are");
+  } else if (access && !access.paid) {
+    const exams = (await baseCatalog()).exams.filter((exam) => exam.sections[section]);
+    const open = exams.filter((exam) => access.content(exam.examId)).map((exam) => new mongoose.Types.ObjectId(exam.sections[section]!.paperId));
+    // An empty list means "every exam" to the pool, so a free account with none open stops here.
+    if (open.length === 0) throw paidOnly(`${SECTION_LABELS[section]} exams are`);
+    if (open.length < exams.length) {
+      paperIds = open;
+      limited = true;
+    }
   }
   const format = MOCK_FORMAT[section];
   const pool = await mockPool(section, paperIds);
   if (pool.length < format.questionsPerModule * 2) {
     throw AppError.badRequest(
-      `A ${SECTION_LABELS[section]} mock needs ${format.questionsPerModule * 2} questions; the selected exams have ${pool.length}. Choose more exams.`,
+      limited
+        ? `A ${SECTION_LABELS[section]} mock needs ${format.questionsPerModule * 2} questions; the exams open on the free plan have ${pool.length}. See the Pricing page to upgrade.`
+        : `A ${SECTION_LABELS[section]} mock needs ${format.questionsPerModule * 2} questions; the selected exams have ${pool.length}. Choose more exams.`,
     );
   }
   return { paperIds, pool };
@@ -491,58 +518,75 @@ async function fullTestSummary(userId: string, fullTest: FullTestDoc): Promise<F
   };
 }
 
-export const practiceService = {
-  // What a student can practise: published papers grouped by exam, and the topic/skill vocabulary.
-  async catalog(): Promise<PracticeCatalog> {
-    if (catalogCache && catalogCache.expires > Date.now()) return catalogCache.value;
+// What can be practised: published papers grouped by exam, and the topic/skill vocabulary.
+async function baseCatalog(): Promise<BaseCatalog> {
+  if (catalogCache && catalogCache.expires > Date.now()) return catalogCache.value;
 
-    const papers = await PaperModel.find({ status: "published", source: trusted({ $ne: TEST_UPLOAD_SOURCE }) }).lean<PaperDoc[]>();
-    const exams = new Map<string, CatalogExam>();
-    for (const paper of papers) {
-      const meta = paper.sourceMetadata ?? {};
-      // Papers from the same exam (one per section) are shown as one card.
-      const examId = meta.examId != null ? String(meta.examId) : String(paper._id);
-      const exam = exams.get(examId) ?? {
-        examId,
-        name: typeof meta.examName === "string" ? meta.examName : paper.title,
-        examDate: typeof meta.examDate === "string" ? meta.examDate : null,
-        // Uploaded exams can also be taken whole, as a fixed full test.
-        testUploadId: paper.source === EXAM_UPLOAD_SOURCE && typeof paper.metadata?.testUploadId === "string" ? paper.metadata.testUploadId : null,
-        sections: {},
-      };
-      for (const section of paper.sections) {
-        exam.sections[section] = { paperId: String(paper._id), questionCount: paper.questionCount };
-      }
-      exams.set(examId, exam);
-    }
-
-    const rows = await QuestionModel.aggregate<{ _id: { section: Section; topic: string | null; skill: string | null } }>([
-      { $match: { status: "published", tags: { $ne: FULL_TEST_QUESTION_TAG } } },
-      { $group: { _id: { section: "$section", topic: "$topic", skill: "$skill" } } },
-    ]);
-    const topics = Object.fromEntries(SECTIONS.map((section) => [section, [] as CatalogTopic[]])) as Record<Section, CatalogTopic[]>;
-    for (const { _id } of rows) {
-      if (!_id.topic) continue;
-      let topic = topics[_id.section].find((entry) => entry.topic === _id.topic);
-      if (!topic) topics[_id.section].push((topic = { topic: _id.topic, skills: [] }));
-      if (_id.skill && !topic.skills.includes(_id.skill)) topic.skills.push(_id.skill);
-    }
-    for (const section of SECTIONS) {
-      topics[section].sort((a, b) => a.topic.localeCompare(b.topic));
-      for (const topic of topics[section]) topic.skills.sort((a, b) => a.localeCompare(b));
-    }
-
-    const value: PracticeCatalog = {
-      exams: [...exams.values()].sort((a, b) => (b.examDate ?? "").localeCompare(a.examDate ?? "")),
-      topics,
+  const papers = await PaperModel.find({ status: "published", source: trusted({ $ne: TEST_UPLOAD_SOURCE }) }).lean<PaperDoc[]>();
+  const exams = new Map<string, BaseCatalog["exams"][number]>();
+  for (const paper of papers) {
+    const meta = paper.sourceMetadata ?? {};
+    // Papers from the same exam (one per section) are shown as one card.
+    const examId = examKeyOf(paper);
+    const exam = exams.get(examId) ?? {
+      examId,
+      name: typeof meta.examName === "string" ? meta.examName : paper.title,
+      examDate: typeof meta.examDate === "string" ? meta.examDate : null,
+      // Uploaded exams can also be taken whole, as a fixed full test.
+      testUploadId: paper.source === EXAM_UPLOAD_SOURCE && typeof paper.metadata?.testUploadId === "string" ? paper.metadata.testUploadId : null,
+      sections: {},
     };
-    catalogCache = { value, expires: Date.now() + CATALOG_TTL_MS };
-    return value;
+    for (const section of paper.sections) {
+      exam.sections[section] = { paperId: String(paper._id), questionCount: paper.questionCount };
+    }
+    exams.set(examId, exam);
+  }
+
+  const rows = await QuestionModel.aggregate<{ _id: { section: Section; topic: string | null; skill: string | null } }>([
+    { $match: { status: "published", tags: { $ne: FULL_TEST_QUESTION_TAG } } },
+    { $group: { _id: { section: "$section", topic: "$topic", skill: "$skill" } } },
+  ]);
+  const topics = Object.fromEntries(SECTIONS.map((section) => [section, [] as CatalogTopic[]])) as Record<Section, CatalogTopic[]>;
+  for (const { _id } of rows) {
+    if (!_id.topic) continue;
+    let topic = topics[_id.section].find((entry) => entry.topic === _id.topic);
+    if (!topic) topics[_id.section].push((topic = { topic: _id.topic, skills: [] }));
+    if (_id.skill && !topic.skills.includes(_id.skill)) topic.skills.push(_id.skill);
+  }
+  for (const section of SECTIONS) {
+    topics[section].sort((a, b) => a.topic.localeCompare(b.topic));
+    for (const topic of topics[section]) topic.skills.sort((a, b) => a.localeCompare(b));
+  }
+
+  const value: BaseCatalog = {
+    exams: [...exams.values()].sort((a, b) => (b.examDate ?? "").localeCompare(a.examDate ?? "")),
+    topics,
+  };
+  catalogCache = { value, expires: Date.now() + CATALOG_TTL_MS };
+  return value;
+}
+
+export const practiceService = {
+  // The catalog for one account: exams kept for paid accounts are listed, but locked.
+  async catalog(access: UserAccess): Promise<PracticeCatalog> {
+    const base = await baseCatalog();
+    return {
+      exams: base.exams.map((exam) => ({ ...exam, locked: !access.content(exam.examId) })),
+      topics: base.topics,
+      access: access.summary,
+    };
   },
 
-  async createAttempt(userId: string, input: CreateAttemptInput): Promise<AttemptSummary> {
+  // Every exam an admin can set access for (published ones, as students see them).
+  async catalogExams(): Promise<BaseCatalog["exams"]> {
+    return (await baseCatalog()).exams;
+  },
+
+  async createAttempt(userId: string, input: CreateAttemptInput, access: UserAccess): Promise<AttemptSummary> {
+    requireFeature(access, "drills");
     const paper = await PaperModel.findOne({ _id: input.paperId, status: "published", source: trusted({ $ne: TEST_UPLOAD_SOURCE }) }).lean<PaperDoc>();
     if (!paper) throw AppError.notFound("That exam is not available");
+    requireContent(access, examKeyOf(paper));
     const section = paper.sections[0];
     if (!section) throw AppError.badRequest("That exam has no questions");
 
@@ -585,8 +629,9 @@ export const practiceService = {
   },
 
   // Starts an adaptive mock: builds Module 1 now. Module 2 is built when Module 1 is submitted.
-  async createMock(userId: string, input: CreateMockInput): Promise<AttemptSummary> {
-    const { paperIds, pool } = await checkedMockPool(input.section, input.paperIds);
+  async createMock(userId: string, input: CreateMockInput, access: UserAccess): Promise<AttemptSummary> {
+    requireFeature(access, "mocks");
+    const { paperIds, pool } = await checkedMockPool(input.section, input.paperIds, access);
     const attempt = await startMock(userId, {
       section: input.section,
       source: { pool, paperIds },
@@ -599,10 +644,15 @@ export const practiceService = {
 
   // Starts a full test with its Reading & Writing section. Both pools are checked now, so the
   // student does not discover after the break that Math cannot be built.
-  async createFullTest(userId: string, input: CreateFullTestInput): Promise<FullTestSummary> {
-    if (input.testUploadId) return this.createPracticeTest(userId, input.testUploadId, input);
-    const rw = await checkedMockPool("reading_writing", input.paperIds.reading_writing);
-    const math = await checkedMockPool("math", input.paperIds.math);
+  async createFullTest(userId: string, input: CreateFullTestInput, access: UserAccess): Promise<FullTestSummary> {
+    if (input.testUploadId) {
+      // A fixed test is set on its own, like an exam; the full-test feature is for pool-built tests.
+      requireContent(access, uploadAccessKey(input.testUploadId), "This test is");
+      return this.createPracticeTest(userId, input.testUploadId, input);
+    }
+    requireFeature(access, "full_tests");
+    const rw = await checkedMockPool("reading_writing", input.paperIds.reading_writing, access);
+    const math = await checkedMockPool("math", input.paperIds.math, access);
     const fullTest = await FullTestModel.create({
       userId,
       name: input.name || "Full practice test",
@@ -623,8 +673,9 @@ export const practiceService = {
   },
 
   // Active uploaded practice tests a student can sit.
-  async practiceTests(): Promise<PracticeTestListing[]> {
-    return testUploadService.listActive();
+  async practiceTests(access: UserAccess): Promise<PracticeTestListing[]> {
+    const tests = await testUploadService.listActive();
+    return tests.map((test) => ({ ...test, locked: !access.content(uploadAccessKey(test.id)) }));
   },
 
   // A sitting of an uploaded practice test: the ordinary full-test flow with the test's fixed modules.

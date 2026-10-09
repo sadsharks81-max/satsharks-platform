@@ -8,6 +8,7 @@ import {
   type CreateReportInput,
   type SaveAnswerInput,
 } from "@satsharks/validation";
+import { userAccess } from "../services/access.service";
 import { practiceService } from "../services/practice.service";
 import { reportService } from "../services/report.service";
 import { AppError } from "../utils/app-error";
@@ -20,16 +21,22 @@ function userId(req: Request): string {
 const attemptId = (req: Request) => objectIdSchema.parse(req.params.id);
 const position = (req: Request) => positionSchema.parse(req.params.position);
 
-export async function getCatalog(_req: Request, res: Response): Promise<void> {
-  sendOk(res, await practiceService.catalog());
+// What this account's plan opens (Admin → Access).
+function access(req: Request) {
+  if (!req.user) throw AppError.unauthorized();
+  return userAccess(req.user);
 }
 
-export async function listPracticeTests(_req: Request, res: Response): Promise<void> {
-  sendOk(res, { tests: await practiceService.practiceTests() });
+export async function getCatalog(req: Request, res: Response): Promise<void> {
+  sendOk(res, await practiceService.catalog(await access(req)));
+}
+
+export async function listPracticeTests(req: Request, res: Response): Promise<void> {
+  sendOk(res, { tests: await practiceService.practiceTests(await access(req)) });
 }
 
 export async function createAttempt(req: Request, res: Response): Promise<void> {
-  sendOk(res, { attempt: await practiceService.createAttempt(userId(req), req.body as CreateAttemptInput) }, 201);
+  sendOk(res, { attempt: await practiceService.createAttempt(userId(req), req.body as CreateAttemptInput, await access(req)) }, 201);
 }
 
 export async function listAttempts(req: Request, res: Response): Promise<void> {
@@ -53,7 +60,7 @@ export async function checkQuestion(req: Request, res: Response): Promise<void> 
 }
 
 export async function createMock(req: Request, res: Response): Promise<void> {
-  sendOk(res, { attempt: await practiceService.createMock(userId(req), req.body as CreateMockInput) }, 201);
+  sendOk(res, { attempt: await practiceService.createMock(userId(req), req.body as CreateMockInput, await access(req)) }, 201);
 }
 
 export async function submitModule(req: Request, res: Response): Promise<void> {
@@ -71,7 +78,7 @@ export async function getResult(req: Request, res: Response): Promise<void> {
 const fullTestId = (req: Request) => objectIdSchema.parse(req.params.id);
 
 export async function createFullTest(req: Request, res: Response): Promise<void> {
-  sendOk(res, { fullTest: await practiceService.createFullTest(userId(req), req.body as CreateFullTestInput) }, 201);
+  sendOk(res, { fullTest: await practiceService.createFullTest(userId(req), req.body as CreateFullTestInput, await access(req)) }, 201);
 }
 
 export async function listFullTests(req: Request, res: Response): Promise<void> {

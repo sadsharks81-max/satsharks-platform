@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  ACCESS_FEATURES,
+  ACCESS_LEVELS,
+  ANNOUNCEMENT_AUDIENCES,
+  ANNOUNCEMENT_TONES,
   DIFFICULTIES,
   isCountryCode,
   MODULE_TYPES,
@@ -19,6 +23,7 @@ import {
   USER_REGIONS,
   USER_ROLES,
   USER_STATUSES,
+  type AccessFeature,
   type Section,
 } from "@satsharks/types";
 
@@ -354,6 +359,31 @@ export const pricingContentSchema = z.object({
   schoolsNote: z.string().trim().max(200),
   refundPolicy: z.string().trim().max(200),
 });
+
+// ---------- admin: access by plan ----------
+
+const accessLevelSchema = z.enum(ACCESS_LEVELS);
+
+export const accessSettingsSchema = z.object({
+  features: z.object(Object.fromEntries(ACCESS_FEATURES.map((feature) => [feature, accessLevelSchema])) as Record<AccessFeature, typeof accessLevelSchema>),
+  content: z
+    .array(z.object({ key: z.string().trim().min(1).max(100), level: accessLevelSchema }))
+    .max(2000)
+    .refine((rules) => new Set(rules.map((rule) => rule.key)).size === rules.length, "Each exam may appear only once"),
+  newContent: accessLevelSchema,
+});
+
+// ---------- admin: announcements ----------
+
+export const announcementSchema = z.object({
+  title: z.string().trim().min(1, "Enter a title").max(120),
+  message: z.string().trim().min(1, "Enter the message").max(2000),
+  audience: z.enum(ANNOUNCEMENT_AUDIENCES),
+  tone: z.enum(ANNOUNCEMENT_TONES),
+  active: z.boolean(),
+  endsAt: z.string().datetime({ message: "Choose a valid end time" }).nullable(),
+});
+export type AnnouncementInput = z.infer<typeof announcementSchema>;
 
 // ---------- admin: users ----------
 

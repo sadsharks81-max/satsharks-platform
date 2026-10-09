@@ -135,15 +135,27 @@ only their own attempts (another user's attempt answers `404`).
 
 ### `GET /api/practice/catalog`
 
-Returns `{ exams, topics }`.
+Returns `{ exams, topics, access }`.
 
 - `exams[]`: `examId`, `name`, `examDate`, `testUploadId` (an uploaded exam, also takeable as a full
   test; otherwise null), `sections` — per section, the `paperId` and `questionCount`. Papers from the
-  same exam are grouped into one entry.
+  same exam are grouped into one entry. `locked`: the exam is kept for paid plans and this account
+  is free (see "Access by plan").
 - `topics`: per section, the list of `{ topic, skills[] }` present in published questions.
+- `access`: `{ paid, features: { drills, mocks, full_tests } }` for this account (`true` = may use).
 
-Cached in memory for 60 seconds; cleared when an admin changes a paper's status or a question, or
-activates or edits an uploaded test.
+Cached in memory for 60 seconds (locks are added per request); cleared when an admin changes a
+paper's status or a question, or activates or edits an uploaded test. `GET /api/practice/tests`
+also marks each uploaded test `locked`.
+
+### Access by plan
+
+Set in Admin → Access (`/api/admin/settings/access`). A free account gets `403` ("… only available on
+the paid plans") when it starts a drill (`drills` feature + the exam), a single-section mock (`mocks`
++ every chosen exam), a pool-built full test (`full_tests` + every chosen exam) or a fixed uploaded
+test (that test only). A free account's mock or full test with no exams chosen draws only from the
+exams open to it (`403` if none are). Paid plans (not expired), staff and admins may open
+everything. Attempts and full tests already started can always be continued and finished.
 
 ### `POST /api/practice/attempts`
 
@@ -218,6 +230,11 @@ In addition to the two paper routes above:
 | `GET /api/admin/settings/pricing` | `admin:access` | Plans, prices, comparison rows, tagline, schools note, refund policy (defaults until saved) |
 | `PUT /api/admin/settings/pricing` | `papers:write` | Body: the whole `PricingContent`. The four plans stay in their fixed order (`free`, `monthly`, `three_months`, `till_test_day`); at most one is "most popular". `GET /api/pricing` (public) serves the same content to the pricing page |
 | `PUT /api/admin/settings/scoring` | `papers:write` | Body: all four tables (see database.md, Setting) |
+| `GET /api/admin/announcements` | `admin:access` | Every announcement, newest first. `GET /api/announcements` (any signed-in account) returns only the active, not-ended ones for that account's plan (newest 5) |
+| `POST /api/admin/announcements`, `PUT /api/admin/announcements/:id` | `papers:write` | Body `{ title, message, audience: all\|free\|paid, tone: info\|important, active, endsAt: ISO \| null }` |
+| `DELETE /api/admin/announcements/:id` | `papers:write` | `404` if already gone |
+| `GET /api/admin/settings/access` | `papers:read` | `{ settings, items }`: the access rules and every exam and published uploaded test they can apply to (`key`, `kind` exam/practice, `name`, `date`, `active`) |
+| `PUT /api/admin/settings/access` | `papers:write` | Body `AccessSettings`: `features` (`drills`, `mocks`, `full_tests` → `free`/`paid`), `content[]` (`{ key, level }`; key = catalog `examId`, `upload:<id>` for uploaded tests), `newContent` (level for exams/tests without a rule). Until saved, everything is free |
 | `GET /api/admin/reports` | `reports:read` | `?status=pending\|resolved&page&pageSize`. Returns `{ reports, total, page, pageSize, counts }` |
 | `GET /api/admin/reports/:id` | `reports:read` | `{ report, question (with answer key), related }` |
 | `POST /api/admin/reports/:id/resolve` | `reports:write` | Body `{ note?, includeSameQuestion? }`. `409` if already resolved |

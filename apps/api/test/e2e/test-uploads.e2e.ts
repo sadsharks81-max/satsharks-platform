@@ -487,5 +487,109 @@ async function run() {
     assert.ok(await examCard());
   });
 
+  // Admin → Access: what free accounts may open. Paid accounts (and expired ones, which count as
+  // free) and a test begun before a downgrade.
+  await check("access by plan: free accounts open only what is free, paid accounts everything", async () => {
+    const catalog = async () => (await student.call("GET", "/api/practice/catalog")).json.data;
+    const before = await catalog();
+    assert.ok(before.exams.every((exam: { locked: boolean }) => !exam.locked), "everything is open until an admin saves");
+    assert.deepEqual(before.access, { paid: false, features: { drills: true, mocks: true, full_tests: true } });
+
+    assert.equal((await student.call("GET", "/api/admin/settings/access")).status, 403);
+    const { json } = await admin.call("GET", "/api/admin/settings/access");
+    const items = json.data.items as { key: string; kind: string; active: boolean }[];
+    const bankMath = (await PaperModel.findOne({ sourcePaperId: "bank-math" }).lean())!;
+    const bankRw = (await PaperModel.findOne({ sourcePaperId: "bank-reading_writing" }).lean())!;
+    const exam = (await TestUploadModel.findOne({ kind: "exam" }).lean())!;
+    const keys = { math: String(bankMath._id), rw: String(bankRw._id), exam: `upload:${exam._id}`, practice: `upload:${id}` };
+    assert.deepEqual(
+      items.map((item) => [item.key, item.kind, item.active]).sort(),
+      [[keys.math, "exam", true], [keys.rw, "exam", true], [keys.exam, "exam", true], [keys.practice, "practice", false]].sort(),
+    );
+    const duplicate = await admin.call("PUT", "/api/admin/settings/access", { features: { drills: "free", mocks: "free", full_tests: "free" }, content: [{ key: "a", level: "free" }, { key: "a", level: "paid" }], newContent: "free" });
+    assert.equal(duplicate.status, 400);
+
+    // Only the bank's Reading & Writing exam is free; everything without a rule follows newContent.
+    const saved = await admin.call("PUT", "/api/admin/settings/access", {
+      features: { drills: "free", mocks: "free", full_tests: "paid" },
+      content: [{ key: keys.rw, level: "free" }, { key: keys.math, level: "paid" }],
+      newContent: "paid",
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.json.error));
+    await admin.call("POST", `/api/admin/test-uploads/${id}/active`, { active: true });
+
+    const free = await catalog();
+    const lockedOf = (key: string) => free.exams.find((exam: { examId: string }) => exam.examId === key)?.locked;
+    assert.deepEqual([lockedOf(keys.rw), lockedOf(keys.math), lockedOf(keys.exam)], [false, true, true]);
+    assert.equal(free.access.features.full_tests, false);
+    const tests = (await student.call("GET", "/api/practice/tests")).json.data.tests;
+    assert.ok(tests.length === 2 && tests.every((test: { locked: boolean }) => test.locked));
+
+    const lockedDrill = await student.call("POST", "/api/practice/attempts", { paperId: keys.math, limit: 5 });
+    assert.equal(lockedDrill.status, 403);
+    assert.match(lockedDrill.json.error!.message, /This exam is only available on the paid plans/);
+    assert.equal((await student.call("POST", "/api/practice/attempts", { paperId: keys.rw, limit: 5 })).status, 201);
+    // "All exams" for a free account = the open ones: none for Math, the bank's for Reading & Writing.
+    assert.equal((await student.call("POST", "/api/practice/mocks", { section: "math", paperIds: [] })).status, 403);
+    assert.equal((await student.call("POST", "/api/practice/mocks", { section: "math", paperIds: [String(exam.paperIds.math)] })).status, 403);
+    const rwMock = await student.call("POST", "/api/practice/mocks", { section: "reading_writing", paperIds: [] });
+    assert.equal(rwMock.status, 201, JSON.stringify(rwMock.json.error));
+    assert.deepEqual((await AttemptModel.findById(rwMock.json.data.attempt.id).lean())!.paperIds.map(String), [keys.rw]);
+    assert.equal((await student.call("POST", "/api/practice/full-tests", { paperIds: { reading_writing: [], math: [] } })).status, 403);
+    assert.equal((await student.call("POST", "/api/practice/full-tests", { testUploadId: String(exam._id) })).status, 403);
+    assert.equal((await student.call("POST", "/api/practice/full-tests", { testUploadId: id })).status, 403);
+
+    // A paid plan opens everything; a full test begun on it can be finished after the plan ends.
+    await UserModel.updateOne({ email: "phase1-test-student@example.com" }, { $set: { plan: "paid", paidPlan: "monthly", planExpiresAt: null } });
+    const paid = await catalog();
+    assert.ok(paid.access.paid && paid.exams.every((exam: { locked: boolean }) => !exam.locked));
+    assert.ok((await student.call("GET", "/api/practice/tests")).json.data.tests.every((test: { locked: boolean }) => !test.locked));
+    assert.equal((await student.call("POST", "/api/practice/attempts", { paperId: keys.math, limit: 5 })).status, 201);
+    const full = await student.call("POST", "/api/practice/full-tests", { paperIds: { reading_writing: [], math: [] } });
+    assert.equal(full.status, 201, JSON.stringify(full.json.error));
+    await UserModel.updateOne({ email: "phase1-test-student@example.com" }, { $set: { planExpiresAt: new Date(Date.now() - 60_000) } });
+    assert.equal((await catalog()).access.paid, false, "an expired paid plan counts as free");
+    await student.call("POST", `/api/practice/attempts/${full.json.data.fullTest.readingWriting.id}/end`);
+    const continued = await student.call("POST", `/api/practice/full-tests/${full.json.data.fullTest.id}/continue`);
+    assert.equal(continued.status, 200, JSON.stringify(continued.json.error));
+    assert.equal((await student.call("POST", "/api/practice/full-tests", { paperIds: { reading_writing: [], math: [] } })).status, 403);
+
+    // Staff and admins are never locked out.
+    assert.ok((await admin.call("GET", "/api/practice/catalog")).json.data.exams.every((exam: { locked: boolean }) => !exam.locked));
+  });
+
+  await check("announcements reach only their audience, end on time, and only admins write them", async () => {
+    const body = (title: string, audience: string, extra: Record<string, unknown> = {}) => ({ title, message: "Hello", audience, tone: "info", active: true, endsAt: null, ...extra });
+    assert.equal((await student.call("POST", "/api/admin/announcements", body("x", "all"))).status, 403);
+    assert.equal((await admin.call("POST", "/api/admin/announcements", body("", "all"))).status, 400);
+    assert.equal((await admin.call("POST", "/api/admin/announcements", body("x", "everyone"))).status, 400);
+    const ids: Record<string, string> = {};
+    for (const [title, audience, extra] of [
+      ["To all", "all", {}],
+      ["To free", "free", {}],
+      ["To paid", "paid", {}],
+      ["Off", "all", { active: false }],
+      ["Ended", "all", { endsAt: new Date(Date.now() - 60_000).toISOString() }],
+      ["Ends later", "all", { endsAt: new Date(Date.now() + 3_600_000).toISOString() }],
+    ] as const) {
+      const created = await admin.call("POST", "/api/admin/announcements", body(title, audience, extra));
+      assert.equal(created.status, 201, JSON.stringify(created.json.error));
+      ids[title] = created.json.data.announcement.id;
+    }
+    const seen = async () => ((await student.call("GET", "/api/announcements")).json.data.announcements as { title: string }[]).map((a) => a.title).sort();
+    // The student's paid plan expired in the access check, so it is free now.
+    assert.deepEqual(await seen(), ["Ends later", "To all", "To free"]);
+    await UserModel.updateOne({ email: "phase1-test-student@example.com" }, { $set: { planExpiresAt: null } });
+    assert.deepEqual(await seen(), ["Ends later", "To all", "To paid"]);
+
+    const turnedOn = await admin.call("PUT", `/api/admin/announcements/${ids.Off}`, body("Off", "paid", { active: true }));
+    assert.equal(turnedOn.status, 200);
+    assert.deepEqual(await seen(), ["Ends later", "Off", "To all", "To paid"]);
+    assert.equal((await admin.call("DELETE", `/api/admin/announcements/${ids["To all"]}`)).status, 200);
+    assert.equal((await admin.call("DELETE", `/api/admin/announcements/${ids["To all"]}`)).status, 404);
+    assert.equal((await admin.call("GET", "/api/admin/announcements")).json.data.announcements.length, 5);
+    assert.equal((await student.call("GET", "/api/admin/announcements")).status, 403);
+  });
+
   console.log(`\n${passed} end-to-end checks passed.`);
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,10 +33,17 @@ const MODES: { id: Mode; label: string }[] = [
 // Reading & Writing comes first on the real test.
 const sectionsOf = (mode: Mode): Section[] => (mode === "full" ? ["reading_writing", "math"] : [mode]);
 
+// A full test and a single-section mock are set separately in Admin → Access.
+const modeOpen = (catalog: PracticeCatalog, mode: Mode) => (mode === "full" ? catalog.access.features.full_tests : catalog.access.features.mocks);
+// Opens on the first mode this account can start: its kind of mock is open, and so is an exam for
+// every section of it.
+const usableMode = (catalog: PracticeCatalog) =>
+  MODES.find((entry) => modeOpen(catalog, entry.id) && sectionsOf(entry.id).every((section) => catalog.exams.some((exam) => !exam.locked && exam.sections[section])))?.id ?? "full";
+
 export function CreateMock({ catalog, onClose }: { catalog: PracticeCatalog; onClose: () => void }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<Mode>("full");
+  const [mode, setMode] = useState<Mode>(() => usableMode(catalog));
   const [selected, setSelected] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [timed, setTimed] = useState(true);
@@ -44,8 +52,12 @@ export function CreateMock({ catalog, onClose }: { catalog: PracticeCatalog; onC
   const [error, setError] = useState<string | null>(null);
 
   const sections = useMemo(() => sectionsOf(mode), [mode]);
-  // Exams that have questions in any section of this mode can be part of the pool.
-  const exams = useMemo(() => catalog.exams.filter((exam) => sections.some((section) => exam.sections[section])), [catalog, sections]);
+  // Exams that have questions in any section of this mode can be part of the pool. For a free
+  // account, "All Exams" means the exams open to it (the server applies the same rule).
+  const inMode = useMemo(() => catalog.exams.filter((exam) => sections.some((section) => exam.sections[section])), [catalog, sections]);
+  const exams = useMemo(() => inMode.filter((exam) => !exam.locked), [inMode]);
+  const lockedCount = inMode.length - exams.length;
+  const open = modeOpen(catalog, mode);
   const chosen = selected.length === 0 ? exams : exams.filter((exam) => selected.includes(exam.examId));
   const pools = sections.map((section) => {
     const needed = MOCK_FORMAT[section].questionsPerModule * 2;
@@ -102,6 +114,7 @@ export function CreateMock({ catalog, onClose }: { catalog: PracticeCatalog; onC
                   }`}
                 >
                   {entry.label}
+                  {!modeOpen(catalog, entry.id) && <span className="ml-1 font-normal opacity-80">(Paid)</span>}
                 </button>
               ))}
             </div>
@@ -112,17 +125,37 @@ export function CreateMock({ catalog, onClose }: { catalog: PracticeCatalog; onC
             </p>
           </div>
 
+          {!open && (
+            <Notice tone="info">
+              {mode === "full" ? "Full tests are" : "Single-section mocks are"} available on the paid plans.{" "}
+              <Link href="/pricing" className="font-bold text-brand-500 hover:underline">
+                See plans
+              </Link>
+            </Notice>
+          )}
+
           <div>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-bold">Exam Question Pool</span>
-              <span className="text-xs font-bold text-brand-500">{selected.length === 0 ? "All exams selected" : `${selected.length} selected`}</span>
+              <span className="text-xs font-bold text-brand-500">
+                {selected.length === 0 ? (lockedCount > 0 ? "All open exams selected" : "All exams selected") : `${selected.length} selected`}
+              </span>
             </div>
+            {lockedCount > 0 && (
+              <p className="-mt-1 mb-2 text-xs text-slate-600">
+                {lockedCount} more {lockedCount === 1 ? "exam opens" : "exams open"} with a{" "}
+                <Link href="/pricing" className="font-bold text-brand-500 hover:underline">
+                  paid plan
+                </Link>
+                .
+              </p>
+            )}
             {exams.length === 0 ? (
-              <Notice tone="info">No published exams have questions for this test yet.</Notice>
+              <Notice tone="info">{lockedCount > 0 ? "No exam open on your plan has questions for this test." : "No published exams have questions for this test yet."}</Notice>
             ) : (
               <div className="grid max-h-[290px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
                 <button type="button" aria-pressed={selected.length === 0} onClick={() => setSelected([])} className={option(selected.length === 0)}>
-                  All Exams
+                  {lockedCount > 0 ? "All Open Exams" : "All Exams"}
                 </button>
                 {exams.map((exam) => (
                   <button
@@ -220,7 +253,7 @@ export function CreateMock({ catalog, onClose }: { catalog: PracticeCatalog; onC
 
           <button
             type="button"
-            disabled={submitting || exams.length === 0 || short.length > 0}
+            disabled={submitting || !open || exams.length === 0 || short.length > 0}
             onClick={start}
             className="h-[44px] w-full cursor-pointer rounded-[10px] bg-brand-500 text-[14px] font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >

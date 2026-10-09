@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,9 +23,11 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const firstExam = catalog.exams.find((exam) => exam.examId === initialExamId) ?? catalog.exams[0];
+  // Exams kept for paid plans are not offered to a free account.
+  const exams = useMemo(() => catalog.exams.filter((exam) => !exam.locked), [catalog]);
+  const firstExam = exams.find((exam) => exam.examId === initialExamId) ?? exams[0];
   const [examId, setExamId] = useState(firstExam?.examId ?? "");
-  const exam = catalog.exams.find((entry) => entry.examId === examId);
+  const exam = exams.find((entry) => entry.examId === examId);
   const [section, setSection] = useState<Section>(firstExam?.sections.math ? "math" : "reading_writing");
   const [topics, setTopics] = useState<string[]>([]);
   const [skills, setSkills] = useState<string[]>([]);
@@ -100,12 +103,21 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
               Exam
             </label>
             <select id="drill-exam" value={examId} onChange={(event) => setExamId(event.target.value)} className={inputClass}>
-              {catalog.exams.map((entry) => (
+              {exams.map((entry) => (
                 <option key={entry.examId} value={entry.examId}>
                   {entry.name}
                 </option>
               ))}
             </select>
+            {exams.length < catalog.exams.length && (
+              <p className="mt-1.5 text-xs text-slate-600">
+                {catalog.exams.length - exams.length} more {catalog.exams.length - exams.length === 1 ? "exam opens" : "exams open"} with a{" "}
+                <Link href="/pricing" className="font-bold text-brand-500 hover:underline">
+                  paid plan
+                </Link>
+                .
+              </p>
+            )}
           </div>
 
           <div>

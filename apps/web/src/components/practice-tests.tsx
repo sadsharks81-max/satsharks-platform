@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FULL_TEST_BREAK_MINUTES, MOCK_FORMAT, SECTION_LABELS, SECTIONS, TIME_MULTIPLIERS, type FullTestSummary, type PracticeTestListing, type TimeMultiplier } from "@satsharks/types";
 import { api } from "@/lib/api";
+import { PaidBadge, UnlockButton } from "./plan-lock";
 import { Modal, Notice } from "./ui";
 
 const heading = "text-[20px] font-bold tracking-tight text-black sm:text-[22px]";
@@ -125,14 +126,23 @@ export function PracticeTests() {
               <p className="text-xs text-slate-600">
                 RW: {total(test, "reading_writing")} · Math: {total(test, "math")} questions
               </p>
+              {test.locked && (
+                <span>
+                  <PaidBadge />
+                </span>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => setStarting(test)}
-              className="flex h-[42px] w-full cursor-pointer items-center justify-center rounded-[10px] bg-brand-500 text-[14px] font-bold text-white hover:opacity-90"
-            >
-              Start Test
-            </button>
+            {test.locked ? (
+              <UnlockButton className="w-full" />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStarting(test)}
+                className="flex h-[42px] w-full cursor-pointer items-center justify-center rounded-[10px] bg-brand-500 text-[14px] font-bold text-white hover:opacity-90"
+              >
+                Start Test
+              </button>
+            )}
           </div>
         ))}
       </div>

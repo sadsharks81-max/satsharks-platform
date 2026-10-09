@@ -1,16 +1,26 @@
 import { SettingModel } from "@satsharks/db";
-import { DEFAULT_PRICING, DEFAULT_ROUTING_THRESHOLD_PERCENT, type AdaptiveSettings, type ConversionTables, type PricingContent } from "@satsharks/types";
-import { conversionTablesSchema, pricingContentSchema } from "@satsharks/validation";
+import {
+  DEFAULT_ACCESS,
+  DEFAULT_PRICING,
+  DEFAULT_ROUTING_THRESHOLD_PERCENT,
+  type AccessSettings,
+  type AdaptiveSettings,
+  type ConversionTables,
+  type PricingContent,
+} from "@satsharks/types";
+import { accessSettingsSchema, conversionTablesSchema, pricingContentSchema } from "@satsharks/validation";
 import { emptyConversionTables } from "./scoring";
 
 const ADAPTIVE_KEY = "adaptive";
 const SCORING_KEY = "scoring.conversionTables";
 const PRICING_KEY = "pricing";
+const ACCESS_KEY = "access";
 
 // Scores are read for every attempt in a list, so the tables are kept in memory briefly. Saving
 // clears the copy at once on this instance.
 const TABLES_TTL_MS = 30_000;
 let tablesCache: { value: ConversionTables; expires: number } | null = null;
+let accessCache: { value: AccessSettings; expires: number } | null = null;
 
 export const settingsService = {
   async getAdaptive(): Promise<AdaptiveSettings> {
@@ -56,5 +66,22 @@ export const settingsService = {
   async setPricing(pricing: PricingContent, userId: string): Promise<PricingContent> {
     await SettingModel.updateOne({ key: PRICING_KEY }, { $set: { value: pricing, updatedBy: userId } }, { upsert: true });
     return this.getPricing();
+  },
+
+  // Read on every catalog load and every start, so kept in memory briefly like the tables.
+  async getAccess(): Promise<AccessSettings> {
+    if (accessCache && accessCache.expires > Date.now()) return accessCache.value;
+    const stored = await SettingModel.findOne({ key: ACCESS_KEY }).lean();
+    const parsed = accessSettingsSchema.safeParse(stored?.value);
+    const value = parsed.success ? parsed.data : DEFAULT_ACCESS;
+    accessCache = { value, expires: Date.now() + TABLES_TTL_MS };
+    return value;
+  },
+
+  // Applies to what is started from now on; attempts already begun can always be finished.
+  async setAccess(settings: AccessSettings, userId: string): Promise<AccessSettings> {
+    await SettingModel.updateOne({ key: ACCESS_KEY }, { $set: { value: settings, updatedBy: userId } }, { upsert: true });
+    accessCache = null;
+    return this.getAccess();
   },
 };

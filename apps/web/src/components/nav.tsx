@@ -8,11 +8,33 @@ import { useMe, useSwitchUser } from "@/lib/auth";
 import { Logo } from "./logo";
 
 const button = "whitespace-nowrap rounded-[6px] bg-brand-500 px-5 py-2 text-[14px] font-bold tracking-tight text-white transition hover:opacity-90";
-const textLink = "whitespace-nowrap px-2 text-[14px] font-bold text-slate-600 transition hover:text-black";
+
+// "light": the white bar on every page. "brand": white on the blue hero of the landing page.
+const TONES = {
+  light: {
+    header: "border-b border-slate-900 bg-white",
+    logo: "text-brand-500",
+    button,
+    strong: button,
+    textLink: "whitespace-nowrap px-2 text-[14px] font-bold text-slate-600 transition hover:text-black",
+    divider: "bg-slate-400",
+    menuButton: "border-slate-300 text-slate-800 hover:bg-slate-50",
+  },
+  brand: {
+    header: "",
+    logo: "text-white",
+    button: "whitespace-nowrap rounded-xl border border-white/25 bg-white/10 px-5 py-2.5 text-[14px] font-bold tracking-tight text-white transition hover:bg-white/20",
+    strong: "whitespace-nowrap rounded-xl bg-white px-5 py-2.5 text-[14px] font-bold tracking-tight text-brand-700 transition hover:bg-brand-50",
+    textLink: "whitespace-nowrap px-2 text-[14px] font-bold text-white/85 transition hover:text-white",
+    divider: "bg-white/30",
+    menuButton: "border-white/40 text-white hover:bg-white/10",
+  },
+} as const;
 // Phone menu rows: full width and at least 44px tall, so they are easy to tap.
 const menuRow = "flex min-h-11 items-center rounded-lg px-3 text-[15px] font-bold text-slate-800 hover:bg-slate-100";
 
-export function Nav() {
+export function Nav({ tone = "light" }: { tone?: keyof typeof TONES }) {
+  const style = TONES[tone];
   const router = useRouter();
   const pathname = usePathname();
   const switchUser = useSwitchUser();
@@ -43,13 +65,13 @@ export function Nav() {
     : [{ href: "/pricing", label: "Pricing" }];
 
   return (
-    <header className="relative border-b border-slate-900 bg-white">
+    <header className={`relative z-30 ${style.header}`}>
       {/* Bottom-aligned: the logo's letters sit on the same line as the bottom of the buttons (its
           fin rises above them). */}
       <nav className="mx-auto flex w-full max-w-[1700px] items-end gap-4 px-4 py-3 md:px-8">
         {/* Always the landing page. Signed-in accounts reach their own home from the buttons on the
             right (and from the landing page's "Go to your dashboard"). */}
-        <Link href="/" className="mr-auto block text-brand-500 transition hover:opacity-90">
+        <Link href="/" className={`mr-auto block transition hover:opacity-90 ${style.logo}`}>
           <Logo className="h-9 w-auto sm:h-11" />
         </Link>
 
@@ -57,25 +79,25 @@ export function Nav() {
         {user && (
           <div className="hidden items-center gap-4 sm:flex">
             {links.map((link) => (
-              <Link key={link.href} href={link.href} className={button}>
+              <Link key={link.href} href={link.href} className={style.button}>
                 {link.label}
               </Link>
             ))}
-            <span aria-hidden className="mx-1 h-6 w-px bg-slate-400" />
-            <button type="button" onClick={logout} className={`${button} cursor-pointer`}>
+            <span aria-hidden className={`mx-1 h-6 w-px ${style.divider}`} />
+            <button type="button" onClick={logout} className={`${style.strong} cursor-pointer`}>
               Sign Out
             </button>
           </div>
         )}
         {!user && !isLoading && (
           <div className="hidden items-center gap-4 sm:flex">
-            <Link href="/pricing" className={textLink}>
+            <Link href="/pricing" className={style.textLink}>
               Pricing
             </Link>
-            <Link href="/login" className={textLink}>
+            <Link href="/login" className={style.textLink}>
               Log In
             </Link>
-            <Link href="/register" className={button}>
+            <Link href="/register" className={style.strong}>
               Sign Up
             </Link>
           </div>
@@ -83,7 +105,7 @@ export function Nav() {
 
         {/* Phones: Sign Up stays visible for visitors; everything else is in the menu. */}
         {!user && !isLoading && (
-          <Link href="/register" className={`${button} px-4 sm:hidden`}>
+          <Link href="/register" className={`${style.strong} px-4 sm:hidden`}>
             Sign Up
           </Link>
         )}
@@ -94,7 +116,7 @@ export function Nav() {
             aria-expanded={menuOpen}
             aria-controls="mobile-menu"
             aria-label={menuOpen ? "Close menu" : "Open menu"}
-            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg border border-slate-300 text-slate-800 hover:bg-slate-50 sm:hidden"
+            className={`flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg border sm:hidden ${style.menuButton}`}
           >
             <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}

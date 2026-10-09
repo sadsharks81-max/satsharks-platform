@@ -39,6 +39,64 @@ body {
   );
 }
 
+/* Landing page motion: floating tool callouts, devices rising in, a pulsing "live" dot. */
+@keyframes landing-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes landing-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.landing-bob {
+  animation: landing-bob 6s ease-in-out infinite;
+}
+.landing-rise {
+  animation: landing-rise 0.9s ease-out both;
+}
+.landing-blink {
+  animation: landing-blink 2s ease-in-out infinite;
+}
+.landing-lift {
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.landing-lift:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 30px 60px -30px rgba(31, 45, 140, 0.45);
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-bob,
+  .landing-rise,
+  .landing-blink {
+    animation: none;
+  }
+  .landing-lift:hover {
+    transform: none;
+  }
+}
+
 /* Question text follows the test's serif typography. */
 .question-text {
   font-family: var(--font-serif);

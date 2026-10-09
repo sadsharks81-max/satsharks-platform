@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AttemptSummary, CatalogExam, FullTestSummary, PracticeCatalog, PracticeTestListing } from "@satsharks/types";
 import { AttemptCard, FullTestCard } from "@/components/attempt-card";
 import { CreateDrill } from "@/components/create-drill";
 import { CreateMock } from "@/components/create-mock";
+import { PaidBadge, UnlockButton } from "@/components/plan-lock";
 import { PracticeTests, StartPracticeTest, usePracticeTests } from "@/components/practice-tests";
 import { RequireUser } from "@/components/require-user";
 import { Button, Card, Notice, Spinner } from "@/components/ui";
@@ -61,6 +63,13 @@ function Home() {
   const [mockOpen, setMockOpen] = useState(false);
 
   const exams = catalog.data?.exams ?? [];
+  const access = catalog.data?.access;
+  const openExams = exams.filter((exam) => !exam.locked);
+  const canDrill = !!access?.features.drills && openExams.length > 0;
+  const canMock = !!access && (access.features.mocks || access.features.full_tests) && openExams.length > 0;
+  // A free account with anything kept for paid plans is told once, above the cards.
+  const limited =
+    !!access && !access.paid && (openExams.length < exams.length || Object.values(access.features).includes(false) || !!uploadedTests.data?.tests.some((test) => test.locked));
   const years = useMemo(() => [...new Set(exams.map(yearOf).filter((value): value is number => value !== null))].sort((a, b) => b - a), [exams]);
   const visible = exams.filter((exam) => (year === "all" || yearOf(exam) === year) && (season === "all" || seasonOf(exam) === season));
   // A full test in progress is shown as one card (its sections are not listed separately).
@@ -73,26 +82,42 @@ function Home() {
 
   return (
     <div className="flex flex-col gap-6">
+      {limited && (
+        <Notice tone="info">
+          You are on the free plan. Exams and tests marked <b>Paid</b> open with a paid plan.{" "}
+          <Link href="/pricing" className="font-bold text-brand-500 hover:underline">
+            See plans
+          </Link>
+        </Notice>
+      )}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0 flex-1">
             <h2 className={heading}>Adaptive Mock Exam</h2>
             <p className="mt-1 text-sm font-medium text-slate-600">
-              A full test (both sections, scored out of 1600) or one section in two modules. Do well in Module 1 and Module 2 gets harder, just like the real Digital SAT.
+              A full test (both sections, scored out of 1600) or one section in two modules. Do well in Module 1 and Module 2 gets harder
             </p>
           </div>
-          <Button disabled={exams.length === 0} onClick={() => setMockOpen(true)}>
-            Start Adaptive Mock
-          </Button>
+          {canMock || exams.length === 0 ? (
+            <Button disabled={exams.length === 0} onClick={() => setMockOpen(true)}>
+              Start Adaptive Mock
+            </Button>
+          ) : (
+            <UnlockButton />
+          )}
         </Card>
         <Card className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0 flex-1">
             <h2 className={heading}>Practice Drill</h2>
             <p className="mt-1 text-sm font-medium text-slate-600">Pick a section, topics, difficulty and length, then practise with instant answer checks.</p>
           </div>
-          <Button disabled={exams.length === 0} onClick={() => setDrillExam(null)}>
-            Create Practice Drill
-          </Button>
+          {canDrill || exams.length === 0 ? (
+            <Button disabled={exams.length === 0} onClick={() => setDrillExam(null)}>
+              Create Practice Drill
+            </Button>
+          ) : (
+            <UnlockButton />
+          )}
         </Card>
       </div>
 
@@ -126,6 +151,7 @@ function Home() {
             const math = exam.sections.math?.questionCount ?? 0;
             // An uploaded exam can also be taken whole, as a fixed adaptive test.
             const whole = exam.testUploadId ? uploadedTests.data?.tests.find((test) => test.id === exam.testUploadId) : undefined;
+            const canStart = !exam.locked && !!access?.features.drills;
             return (
               <div key={exam.examId} className="flex flex-col justify-between gap-4 rounded-[14px] border border-black bg-white p-4 text-black sm:p-5">
                 <div className="flex flex-col gap-3">
@@ -137,16 +163,25 @@ function Home() {
                     </span>
                   </div>
                   <h3 className="flex min-h-[44px] items-center text-[18px] font-bold leading-snug tracking-tight">{exam.name}</h3>
+                  {exam.locked && (
+                    <span>
+                      <PaidBadge />
+                    </span>
+                  )}
                 </div>
                 <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setDrillExam(exam.examId)}
-                    className="flex h-[42px] w-full cursor-pointer items-center justify-center rounded-[10px] bg-brand-500 text-[14px] font-bold text-white hover:opacity-90"
-                  >
-                    Start Exam
-                  </button>
-                  {whole && (
+                  {canStart ? (
+                    <button
+                      type="button"
+                      onClick={() => setDrillExam(exam.examId)}
+                      className="flex h-[42px] w-full cursor-pointer items-center justify-center rounded-[10px] bg-brand-500 text-[14px] font-bold text-white hover:opacity-90"
+                    >
+                      Start Exam
+                    </button>
+                  ) : (
+                    (exam.locked || !whole) && <UnlockButton label={exam.locked ? "Unlock with a paid plan" : "Drills need a paid plan"} className="w-full" />
+                  )}
+                  {whole && !whole.locked && (
                     <button
                       type="button"
                       onClick={() => setFullTestOf(whole)}

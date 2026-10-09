@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-09 (deployment; logo; faster test screen and session; light mode only).
+Last updated: 2026-10-09 (access by plan: free vs paid, Admin → Access; announcements).
 
 ---
 
@@ -35,9 +35,13 @@ Last updated: 2026-10-09 (deployment; logo; faster test screen and session; ligh
   random bytes, only its SHA-256 stored, 30 minutes, single use, same answer for unknown emails,
   a reset signs out every older session (`passwordChangedAt`). Without the key, development prints
   the link in the API console.
-- **Landing page** (`app/(site)/page.tsx`): hero with a drawn test-screen preview, format facts,
-  features, test format, how it works, pricing teaser, closing call to action. Only true, fixed
-  figures (98 questions, 2h 14m, 400–1600); no invented student numbers.
+- **Landing page** (`app/(landing)/page.tsx`, own layout since 2026-10-09; Claude Design's
+  "SAT Sharks — Landing page"): full-width blue hero with the nav on it (`<Nav tone="brand" />`),
+  announcements under the nav, an interactive test-screen laptop (`components/landing-test-demo.tsx`:
+  pick an answer, mark for review), a phone showing a drill (≥720px), floating tool callouts
+  (≥1260px); bank facts, six features (three illustrated), both ways to practise, how it works,
+  closing call to action. Font Plus Jakarta Sans on this page only (rest of the site: Roboto).
+  `HomeActions` buttons are styled for blue. Only true, fixed figures; no invented student numbers.
 - **Delete** drills, mocks and full tests from their cards (with confirmation).
 - **Pricing is editable** in Admin → Settings (plan names, PKR/USD prices, periods, saving badges,
   points, most popular, comparison rows, the lines under them and a **refund policy** line, default
@@ -109,6 +113,22 @@ Last updated: 2026-10-09 (deployment; logo; faster test screen and session; ligh
   GET (records the view and timing) still runs in the background, one at a time in order.
   **Remembered session:** the last signed-in account is kept in `localStorage` (`satsharks.me`) and
   shown at once while `/api/auth/me` re-checks; cleared on sign-out or a 401.
+- **Access by plan (2026-10-09):** Admin → Access (`/admin/access`, `papers:read` to view,
+  `papers:write` to save) sets each way of practising (drills, adaptive section mocks, pool-built
+  full tests) and each exam / uploaded test (practice tests and uploaded exams, key `upload:<id>`)
+  to **Free** or **Paid only**, plus the level for exams/tests published later. Setting `access`;
+  logic in `apps/api/src/services/access.service.ts`; enforced when something is started
+  (`practice.service`), never on attempts already begun. Paid = `effectivePlan` paid (plan set on
+  the Users page, not expired), staff and admins. A free account's "All exams" mock pool is the
+  exams open to it. Students see a "Paid" pill and "Unlock with a paid plan" (→ /pricing).
+  **Until an admin saves the page, everything is free** (no change for existing accounts).
+- **Announcements (2026-10-09):** Admin → Announcements (`/admin/announcements`; anyone with
+  admin access reads, `papers:write` writes): title, message, audience (all / free / paid, same
+  paid rule as access), style (info / important), on/off, optional "show until". Collection
+  `announcements`; `announcement.service.ts`; `GET /api/announcements` gives the signed-in
+  account its active ones (newest 5). Shown as banners at the top of every `(site)` page to
+  students (not admins/staff) by `components/announcements.tsx`; dismissed per browser
+  (`localStorage` `satsharks.dismissed`, keyed by id + updatedAt, so an edit shows it again).
 - Fonts Roboto (interface) and Noto Serif (question text) via `next/font`. Page container up to
   1700px wide, 16px/32px side padding — measured from the reference site's stylesheet.
 
@@ -116,7 +136,9 @@ Last updated: 2026-10-09 (deployment; logo; faster test screen and session; ligh
 
 - Conversion-table **values** (SAT Sharks to supply; the admin editor is ready). Per-paper tables
   wait for "build a paper" (mocks mix exams, so tables are per section and route for now).
-- Google sign-in, the plan half of the user types (free/paid), payments, free-plan limits.
+- Google sign-in, payments (plans are set by an admin on the Users page). Free-plan *access* is
+  built (Admin → Access); free-plan *quotas* (e.g. "20 drill questions a day") and the analysis
+  differences on the pricing comparison are not.
 - Refund page; landing page content; a legal contact address on Terms/Privacy.
 - AI extraction from free-form PDFs (proposal Checkpoint 1.2). Only the strict-format test upload
   exists. Building papers from approved bank questions.
@@ -189,6 +211,20 @@ Last updated: 2026-10-09 (deployment; logo; faster test screen and session; ligh
   `/me` answers, sign-out and expired sessions clear the remembered account and reach /login.
   Forced dark (Chrome `WebContentsForceDark`) leaves the pages light; nav alignment screenshot.
 
+- **Access by plan (2026-10-09):** typecheck clean; 49 unit tests; **15 e2e checks** (in-memory
+  MongoDB) incl. a new one: defaults open, admin GET/PUT (403 for students, duplicate keys 400),
+  locked catalog/tests for a free account, 403 on locked drill/mock/full test/uploaded test, free
+  "All exams" mock limited to the open exam (403 when none), paid account opens everything, an
+  expired paid plan counts as free, a full test begun while paid continues after expiry, admins
+  never locked. Headless Chrome (e2e `--serve 4100` + `.next-test` web on 3100): Admin → Access at
+  1440/390px, free dashboard at 1440/390px, mock and drill dialogs; no horizontal overflow. The
+  only console errors are the existing 401 session check and the nav hydration error (§8).
+
+- **Announcements (2026-10-09, quick test as Umair asked):** typecheck clean; **16th e2e check**:
+  free/paid/all audiences (incl. an expired plan = free), off and ended ones hidden, "show until"
+  in the future shown, edit, delete (404 the second time), 400 on bad input, 403 for students.
+  **Not checked in a browser** (admin page, banners, dismiss).
+
 ## 3. Git state
 
 - `main` (newest first): `41f2bef` user management in admin (Umair), `8354da1` Phase 2 (Umair),
@@ -201,6 +237,8 @@ Last updated: 2026-10-09 (deployment; logo; faster test screen and session; ligh
 - Next commit (2026-10-09, Claude): "Faster test screen and session, nav alignment, light mode
   only", pushed to both remotes (see `git log`).
   Ask before committing or pushing.
+- **Uncommitted (2026-10-09):** the access-by-plan work and announcements (see change log). Not
+  committed or pushed.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -276,6 +314,7 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-03 | Keep testing light unless asked: typecheck plus a few targeted checks |
 | 2026-10-07 | Port the other site's full-test PDF upload; Umair left the design to Claude ("do what is best for this web"). Chosen: two papers per test + fixed-module mode in the mock engine; Math in LaTeX `$…$` like the bank; CATEGORY = bank domain or skill; students take uploaded tests as full tests only; test against an in-memory MongoDB, never Atlas |
 | 2026-10-07 | The admin question editor must work like the other site's: image upload, symbol bar, visual equation editor, editable choices with Set/Correct, question type |
+| 2026-10-09 | Free accounts get limited access to papers and exams; admins choose in the admin portal what free and paid accounts can open. Built as Admin → Access (per way of practising and per exam/test, plus a default for new ones); everything stays free until saved |
 | 2026-10-08 | An upload asks where it goes: Practice tests or Exams. A real SAT (e.g. December) goes to Exams. Umair chose "exam card + full test": it behaves like the other exams (drill, random mocks) and can also be taken whole as a fixed adaptive test |
 
 ## 7. Facts about the source (verified)
@@ -379,6 +418,12 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   must be listed in `apps/web/package.json`. Check with a clean clone in the scratchpad:
   `npm install` inside `apps/web`, then `npm run build` (never build in the working copy while
   Umair's dev server uses `apps/web/.next`).
+- **Nav hydration error after sign-in (open, found 2026-10-09):** every page load in a browser
+  with a remembered account logs "Hydration failed" for the nav's button row (dev overlay shows
+  "1 Issue"). `providers.tsx` fills the "me" query from `localStorage` in an effect of the root,
+  which runs before the `(site)` layout's Suspense segment (with the nav) hydrates, so the nav's
+  first client render already has a user while the server HTML had none. React recovers by
+  re-rendering the nav on the client. Not fixed yet.
 - Testing in the app needs an account. Use temporary accounts `phase1-test-*@example.com`
   (create with `create:admin` or `/api/auth/register`) and delete them afterwards. Never use or
   change Umair's own accounts.
@@ -391,6 +436,11 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
    **Try the upload with the client's real PDFs** (Admin → Full tests). They must follow the format
    (`/full-test/format.html`). PDFs made for the other SAT Sharks site upload unchanged (its
    category names and plain-text Math are accepted). Word/Google Docs exports are untested.
+
+   **Set up Admin → Access** after deploying it: choose the free exams/tests (the proposal says
+   2 full papers for free), which ways of practising are free, and "added later" (Paid only fits
+   "every paper, plus each new one" for paid plans). Until saved, everything is free.
+   Fix the nav hydration error (§8).
 
 1. Umair to check the reference sheet and the floating calculator in the app (untested).
 2. Commit and push the uncommitted work when Umair says so.
@@ -535,3 +585,29 @@ Newest last. One entry per session or major step.
   (`?peek=1`), keeps loaded ones, and sends views in order; the session is remembered in
   `localStorage`. Nav bottom-aligned (logo SVG `block`, no inline gap). `color-scheme: only light`
   stops phone dark modes turning the blue purple. Tested as in §2 "Last verified".
+- **2026-10-09 — Access by plan (Umair: free users get limited papers and exams, editable by
+  admin).** Types `AccessSettings` / `AccessItem` / `PracticeAccess`, `locked` on `CatalogExam`
+  and `PracticeTestListing`; schema `accessSettingsSchema`; setting `access` (cached 30 s, cleared
+  on save); `access.service.ts` (`accessFor`, `requireFeature`, `requireContent`, `paidOnly`);
+  `practice.service` splits the cached catalog (`baseCatalog`) from per-account locks, checks
+  plan on drill/mock/full-test/uploaded-test start, limits a free "All exams" pool; `GET/PUT
+  /api/admin/settings/access`; `testUploadService.listPublished`. Web: `/admin/access` page
+  (sidebar "Access"), `plan-lock.tsx` (Paid pill, Unlock button), dashboard / drill / mock /
+  practice-test locks and a free-plan note. Umair's own wording edit on the Adaptive Mock card was
+  kept. Tested as in §2 "Last verified"; found the nav hydration error (§8, not fixed).
+- **2026-10-09 — Announcements (Umair: admin announcements for all, free or paid users).** Types
+  `Announcement` + audiences/tones; `AnnouncementModel`; `announcementSchema`; API
+  `GET /api/announcements`, admin `GET/POST /api/admin/announcements`, `PUT/DELETE …/:id`; web
+  admin page (sidebar "Announcements", form with live preview, list with edit / turn off / delete)
+  and student banners in the `(site)` layout. Umair asked for quick, important-only testing: type
+  check and one e2e check (§2 "Last verified").
+- **2026-10-09 — Landing page redesign (Umair, from Claude Design).** Page moved to
+  `app/(landing)/` with its own layout (full-bleed hero, Footer); `Nav` gained a `tone` prop
+  ("light" default, "brand" for the blue hero); `HomeActions` restyled for blue; new
+  `landing-test-demo.tsx`; landing animations in `globals.css` (off with prefers-reduced-motion).
+  Same content and behaviour as before (signed-in visitors get "Go to your dashboard" / "Open the
+  admin portal"; others "Create a free account" and "See plans"). Design's "NEW" pill became
+  "ADAPTIVE" (nothing here is new); the three features the design dropped (review, report,
+  extended time) are kept as compact cards. Checked: web type check (only stale
+  `apps/web/.next/types/app/(site)/page.ts` from the running dev server fails; it regenerates),
+  screenshots at 1440/820/390px with no horizontal overflow, answer pick and mark-for-review work.

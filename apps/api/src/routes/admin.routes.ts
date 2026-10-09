@@ -3,6 +3,7 @@ import { updateQuestionSchema } from "@satsharks/validation";
 import { getPaper, listPapers } from "../controllers/admin-paper.controller";
 import {
   deleteQuestion,
+  getAccess,
   getAdaptiveSettings,
   getConversionTables,
   getFacets,
@@ -16,6 +17,7 @@ import {
   listUsers,
   reopenReport,
   resolveReport,
+  setAccess,
   setAdaptiveSettings,
   setConversionTables,
   updateUser,
@@ -36,6 +38,7 @@ import {
   setTestUploadActive,
   updateTestUpload,
 } from "../controllers/test-upload.controller";
+import { createAnnouncement, deleteAnnouncement, listAnnouncements, updateAnnouncement } from "../controllers/announcement.controller";
 import { requireAuth, requirePermission } from "../middleware/auth";
 import { imageUpload, testPdfUpload } from "../middleware/upload";
 import { requireDb } from "../middleware/require-db";
@@ -53,6 +56,13 @@ adminRouter.get("/settings/scoring", getConversionTables);
 adminRouter.put("/settings/scoring", requirePermission("papers:write"), setConversionTables);
 adminRouter.get("/settings/pricing", getPricing);
 adminRouter.put("/settings/pricing", requirePermission("papers:write"), setPricing);
+adminRouter.get("/settings/access", requirePermission("papers:read"), getAccess);
+adminRouter.put("/settings/access", requirePermission("papers:write"), setAccess);
+
+adminRouter.get("/announcements", listAnnouncements);
+adminRouter.post("/announcements", requirePermission("papers:write"), createAnnouncement);
+adminRouter.put("/announcements/:id", requirePermission("papers:write"), updateAnnouncement);
+adminRouter.delete("/announcements/:id", requirePermission("papers:write"), deleteAnnouncement);
 
 adminRouter.get("/users", requirePermission("users:read"), listUsers);
 adminRouter.get("/users/:id", requirePermission("users:read"), getUser);
