@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-09 (access by plan: free vs paid, Admin → Access; announcements).
+Last updated: 2026-10-09 (log in / sign up redesign from Claude Design; pushed to both remotes).
 
 ---
 
@@ -42,6 +42,13 @@ Last updated: 2026-10-09 (access by plan: free vs paid, Admin → Access; announ
   (≥1260px); bank facts, six features (three illustrated), both ways to practise, how it works,
   closing call to action. Font Plus Jakarta Sans on this page only (rest of the site: Roboto).
   `HomeActions` buttons are styled for blue. Only true, fixed figures; no invented student numbers.
+- **Log in, sign up, forgot / reset password** (`app/(auth)/…`, own layout since 2026-10-09; Claude
+  Design's "SAT Sharks · Log in / Sign up"): from 1024px a blue brand pane (logo, headline, a small
+  test-screen card, three features) beside the form; below that a short blue bar with the logo and
+  Pricing / Log In / Sign Up (or "Dashboard" / "Admin portal" when signed in) above the form card.
+  Log in and sign up have a Log in | Sign up switch on the card. All in `components/auth-ui.tsx`
+  (`AuthShell` with `tab`, fields with `icon`, `authButton` / `authButtonOutline`); behaviour,
+  validation and redirects unchanged. Plus Jakarta Sans, like the landing page.
 - **Delete** drills, mocks and full tests from their cards (with confirmation).
 - **Pricing is editable** in Admin → Settings (plan names, PKR/USD prices, periods, saving badges,
   points, most popular, comparison rows, the lines under them and a **refund policy** line, default
@@ -237,8 +244,8 @@ Last updated: 2026-10-09 (access by plan: free vs paid, Admin → Access; announ
 - Next commit (2026-10-09, Claude): "Faster test screen and session, nav alignment, light mode
   only", pushed to both remotes (see `git log`).
   Ask before committing or pushing.
-- **Uncommitted (2026-10-09):** the access-by-plan work and announcements (see change log). Not
-  committed or pushed.
+- `4621469` (2026-10-09, Claude): access by plan, announcements, landing page redesign, pushed to
+  both remotes. Next commit (2026-10-09, Claude): log in / sign up redesign, pushed to both remotes.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -279,7 +286,7 @@ npm workspaces monorepo, TypeScript everywhere, run with `tsx` (no build step fo
 
 | Path | Contents |
 | --- | --- |
-| `apps/web` | Next.js 15 App Router, Tailwind 4, TanStack Query. `src/app/(site)/…` pages with the nav bar; `src/app/(test)/practice/[id]` full-screen test screen |
+| `apps/web` | Next.js 15 App Router, Tailwind 4, TanStack Query. `src/app/(site)/…` pages with the nav bar; `src/app/(landing)` home page and `src/app/(auth)` log in / sign up / password pages, each with its own layout; `src/app/(test)/practice/[id]` full-screen test screen |
 | `apps/web/src/components` | `question.tsx` (passage/prompt/choices/answer box), `viz.tsx` (tables/charts/triangles), `create-drill.tsx`, `create-mock.tsx`, `draggable-panel.tsx`, `reference-sheet.tsx`, `attempt-card.tsx` (+ full-test card), `nav.tsx`, `footer.tsx`, `ui.tsx`, `auth-ui.tsx` / `auth-form.tsx`, `admin-sidebar.tsx`, `question-editor.tsx`, `report-ui.tsx`, `legal-page.tsx` |
 | `apps/web/src/lib` | `api.ts` (fetch wrapper), `auth.ts` (session hooks), `rich-text.tsx` (markup + KaTeX) |
 | `apps/api/src` | Express 5: `routes/`, `controllers/`, `services/` (`practice.service.ts` drills + mocks, `mock-assembly.ts` module builder, `settings.service.ts`, `admin.service.ts`, `auth.service.ts`, `email.service.ts` (Resend), `scoring.ts` (all scaled scores), `report.service.ts`), `middleware/`, `utils/grading.ts` |
@@ -611,3 +618,12 @@ Newest last. One entry per session or major step.
   extended time) are kept as compact cards. Checked: web type check (only stale
   `apps/web/.next/types/app/(site)/page.ts` from the running dev server fails; it regenerates),
   screenshots at 1440/820/390px with no horizontal overflow, answer pick and mark-for-review work.
+- **2026-10-09 — Log in / sign up redesign (Umair, from Claude Design).** `/login`, `/register`,
+  `/forgot-password`, `/reset-password` moved from `(site)` to a new `app/(auth)/` group with its
+  own layout (Plus Jakarta Sans, Footer, no site nav). `components/auth-ui.tsx` rebuilt: brand pane
+  (≥1024px), compact blue bar with logo and links on smaller screens, form card with a Log in |
+  Sign up switch, fields with icons, larger buttons. Kept from before: all validation, the country
+  list and region hint, Terms/Privacy agreement line (the design's "Free to start · No card needed"
+  line was not added), forgot-password link, `?next=` and `?reset=1`. Checked: web type check;
+  screenshots of all four pages at 1440/820/390px with no horizontal overflow; register validation,
+  show-password toggle and country list (251 options) on a phone. Pushed to `origin` and `client`.

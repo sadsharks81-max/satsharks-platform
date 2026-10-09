@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AuthShell, FormAlert, PasswordField, SubmitButton, authLink } from "@/components/auth-ui";
+import { AuthShell, FormAlert, PasswordField, SubmitButton, authButton, authLink } from "@/components/auth-ui";
 import { Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useSwitchUser } from "@/lib/auth";
@@ -15,10 +15,7 @@ function ExpiredLink() {
   return (
     <div className="space-y-5">
       <FormAlert tone="error">This reset link is invalid or has expired. Links work once and last 30 minutes.</FormAlert>
-      <Link
-        href="/forgot-password"
-        className="flex h-12 w-full items-center justify-center rounded-lg bg-brand-500 text-[15px] font-bold text-white transition hover:bg-brand-600"
-      >
+      <Link href="/forgot-password" className={authButton}>
         Request a new link
       </Link>
     </div>
@@ -96,7 +93,7 @@ function ResetForm() {
       <SubmitButton loading={submitting} loadingLabel="Saving…">
         Set new password
       </SubmitButton>
-      <p className="text-center text-[13px] text-slate-500">You will be signed out everywhere and asked to log in with the new password.</p>
+      <p className="text-center text-[13px] text-[#4D5577]">You will be signed out everywhere and asked to log in with the new password.</p>
     </form>
   );
 }

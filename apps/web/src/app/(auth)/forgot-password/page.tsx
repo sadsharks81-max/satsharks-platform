@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import { AuthShell, FormAlert, SubmitButton, TextField, authLink } from "@/components/auth-ui";
+import { AuthShell, FormAlert, SubmitButton, TextField, authButtonOutline, authLink } from "@/components/auth-ui";
 import { api } from "@/lib/api";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,12 +50,8 @@ export default function ForgotPasswordPage() {
           <FormAlert tone="success">
             If an account exists for <b>{sentTo}</b>, a password reset link is on its way. The link works once and expires in 30 minutes.
           </FormAlert>
-          <p className="text-sm text-slate-600">No email after a few minutes? Check your spam folder, or make sure you typed the address you signed up with.</p>
-          <button
-            type="button"
-            onClick={() => setSentTo(null)}
-            className="h-12 w-full cursor-pointer rounded-lg border border-slate-900 bg-white text-[15px] font-bold transition hover:bg-slate-50"
-          >
+          <p className="text-sm text-[#4D5577]">No email after a few minutes? Check your spam folder, or make sure you typed the address you signed up with.</p>
+          <button type="button" onClick={() => setSentTo(null)} className={authButtonOutline}>
             Try another email
           </button>
         </div>
@@ -65,6 +61,7 @@ export default function ForgotPasswordPage() {
           <TextField
             label="Email address"
             name="email"
+            icon="mail"
             type="email"
             inputMode="email"
             autoComplete="email"

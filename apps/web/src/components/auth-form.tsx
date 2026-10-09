@@ -105,7 +105,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   if (opening) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
+      <div className="flex min-h-[50vh] flex-1 items-center justify-center">
         <Spinner label={opening} />
       </div>
     );
@@ -113,6 +113,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   return (
     <AuthShell
+      tab={mode}
       title={isRegister ? "Create your account" : "Welcome back"}
       subtitle={isRegister ? "Start practising with real Digital SAT papers. It's free." : "Log in to continue your practice."}
       footer={
@@ -141,6 +142,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           <TextField
             label="Full name"
             name="name"
+            icon="user"
             autoComplete="name"
             maxLength={80}
             placeholder="Your name"
@@ -153,6 +155,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         <TextField
           label="Email address"
           name="email"
+          icon="mail"
           type="email"
           inputMode="email"
           autoComplete="email"
@@ -176,7 +179,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           hint={isRegister ? "At least 8 characters." : undefined}
           action={
             isRegister ? undefined : (
-              <Link href="/forgot-password" className="text-[13px] font-bold text-brand-500 hover:underline">
+              <Link href="/forgot-password" className="text-sm font-bold text-brand-500 hover:text-brand-700 hover:underline">
                 Forgot password?
               </Link>
             )
@@ -186,6 +189,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           <SelectField
             label="Country"
             name="country"
+            icon="globe"
             autoComplete="country"
             value={values.country}
             onChange={(event) => change("country")(event.target.value)}
@@ -198,11 +202,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             </option>
             <option value={LOCAL_COUNTRY_CODE}>Pakistan</option>
             <option disabled>──────────</option>
-            {countries.filter((option) => option.code !== LOCAL_COUNTRY_CODE).map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.name}
-              </option>
-            ))}
+            {countries
+              .filter((option) => option.code !== LOCAL_COUNTRY_CODE)
+              .map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.name}
+                </option>
+              ))}
           </SelectField>
         )}
 
@@ -211,13 +217,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         </SubmitButton>
 
         {isRegister && (
-          <p className="text-center text-[13px] leading-relaxed text-slate-500">
+          <p className="text-center text-[13px] leading-relaxed text-[#4D5577]">
             By creating an account you agree to our{" "}
-            <Link href="/terms" target="_blank" className="font-medium text-slate-700 underline hover:text-black">
+            <Link href="/terms" target="_blank" className="font-semibold text-[#2E3557] underline hover:text-[#0F1535]">
               Terms of Service
             </Link>{" "}
             and{" "}
-            <Link href="/privacy" target="_blank" className="font-medium text-slate-700 underline hover:text-black">
+            <Link href="/privacy" target="_blank" className="font-semibold text-[#2E3557] underline hover:text-[#0F1535]">
               Privacy Policy
             </Link>
             .
