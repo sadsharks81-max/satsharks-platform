@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-08 (uploaded tests can go to Exams or Practice tests).
+Last updated: 2026-10-09 (deployment to the client's GitHub, Railway and Vercel).
 
 ---
 
@@ -17,7 +17,9 @@ Last updated: 2026-10-08 (uploaded tests can go to Exams or Practice tests).
 - **Reference site:** `bluecorn.org` (also branded "Bluebooky"; API host `ciao.bluebooky.org`).
   Umair wants SAT Sharks to work like it. Its screenshots are in `docs/references/screenshots/`.
   SAT Sharks keeps its own name and branding; layout, fonts and spacing follow the reference.
-- **Repository:** `https://github.com/satsharks20/bluesharks` (public), branch `main`.
+- **Repository:** `https://github.com/satsharks20/bluesharks` (public, remote `origin`), branch
+  `main`. **Client copy (deploys from here):** `https://github.com/sadsharks81-max/satsharks-platform`
+  (remote `client`). Push to both. The client account's other repo `satsharks` is the older site.
 - **Phase 1 brief:** `docs/prompts/phase1.txt`. Status report: `docs/phase-1-completion.md`
   (accurate up to the adaptive-mock work; see the change log for what came after).
 
@@ -106,7 +108,21 @@ Last updated: 2026-10-08 (uploaded tests can go to Exams or Practice tests).
   exists. Building papers from approved bank questions.
 - Highlighter/notes, line reader (Checkpoint 2.1). Re-grading old attempts after an answer key is fixed.
 - Favicon.
-- Deployment (Vercel + Railway). Nothing is deployed.
+
+### Deployment (in progress, 2026-10-09)
+
+- **Railway** (client account, project "carefree-imagination"): one service `@satsharks/api`,
+  repo root (no root directory), no build command, start `npm run start --workspace=@satsharks/api`,
+  watch paths `/apps/api/**`, `/packages/**`, `/package.json`, `/package-lock.json`. Domain
+  `https://satsharksapi-production.up.railway.app`. Variables: `NODE_ENV=production`,
+  `MONGODB_URI`, `JWT_SECRET` (new, production only), `CLIENT_URL` (= the Vercel URL), Resend.
+  The auto-created `web` and `worker` services were deleted (web is on Vercel; the worker needs
+  Redis and is not used live). Atlas Network Access must allow `0.0.0.0/0`.
+- **Vercel** (client account): project `satsharks-platform`, root directory `apps/web`, preset
+  Next.js, default commands, `API_URL=https://satsharksapi-production.up.railway.app` (with
+  `https://`, no trailing slash; read at build time, so redeploy after changing it).
+- First Vercel build failed (`Cannot find module 'typescript'`, §8); fixed locally, not yet pushed.
+  Not yet checked: `/api/health` on Railway, the live site end to end.
 
 ### Last verified
 
@@ -151,8 +167,10 @@ Last updated: 2026-10-08 (uploaded tests can go to Exams or Practice tests).
 - `main` (newest first): `41f2bef` user management in admin (Umair), `8354da1` Phase 2 (Umair),
   `40120f4` nav sign-in/out fix, `777eba9` login/port fix, fonts, adaptive mocks, reference sheet,
   calculator; below: `d61bff3`, `aff4a62` (Umair) and `73b574d` (Phase 1 commit by Claude).
-- **Uncommitted locally:** the DNS fix, the upload destination (Practice tests / Exams) work of
-  2026-10-08 and this file. Ask before committing or pushing.
+- Umair has since committed and pushed up to `02e41e2` ("chnaged button location"), which includes
+  the 2026-10-08 work, to both `origin` and `client`.
+- **Uncommitted locally (2026-10-09):** `typescript` and `@types/node` added to `apps/web`
+  devDependencies (+ lockfile) for the Vercel build, and this file. Ask before committing or pushing.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -317,6 +335,11 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   centre first.
 - Auto mode once blocked reading local web files right after a read-only Atlas query, labelling it
   "production reads". Avoid querying Atlas during a session; use the local cache in `data/`.
+- **Vercel installs only the root directory's workspace** (`apps/web`), not the repo root's
+  devDependencies. Anything `next build` needs (TypeScript for `next.config.ts`, `@types/node`)
+  must be listed in `apps/web/package.json`. Check with a clean clone in the scratchpad:
+  `npm install` inside `apps/web`, then `npm run build` (never build in the working copy while
+  Umair's dev server uses `apps/web/.next`).
 - Testing in the app needs an account. Use temporary accounts `phase1-test-*@example.com`
   (create with `create:admin` or `/api/auth/register`) and delete them afterwards. Never use or
   change Umair's own accounts.
@@ -451,3 +474,9 @@ Newest last. One entry per session or major step.
   exams add "Take Full Test"; Full-Length Practice Tests lists only practice tests. Catalog cache
   is cleared on activate/edit. Typecheck and unit tests pass; the e2e could not run (VC++ runtime
   missing, §8); not tested in the browser.
+- **2026-10-09 — Deployment to the client's accounts.** Code pushed to
+  `sadsharks81-max/satsharks-platform` (remote `client`); Railway API service and Vercel web
+  project set up as in §2 "Deployment". The first Vercel build failed: TypeScript was only a root
+  devDependency. Added `typescript` and `@types/node` to `apps/web` devDependencies; a clean-clone
+  `next build` (install inside `apps/web`, like Vercel) now passes, type check included, 27 routes.
+  First production build of the project.
