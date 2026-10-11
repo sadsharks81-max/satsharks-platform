@@ -626,5 +626,61 @@ async function run() {
     assert.equal((await save(admin, DEFAULT_SAT_DATES.dates)).status, 200);
   });
 
+  await check("a student is signed in on one device at a time; staff and admins are not limited", async () => {
+    const login = { email: "phase1-test-device@example.com", password: "password-123" };
+    const laptop = client();
+    assert.equal((await laptop.call("POST", "/api/auth/register", { name: "E2E Device", ...login, country: "PK" })).status, 201);
+    assert.equal((await laptop.call("GET", "/api/auth/me")).status, 200);
+
+    // Logging in on a phone signs the laptop out, with a reason the web app can show.
+    const phone = client();
+    assert.equal((await phone.call("POST", "/api/auth/login", login)).status, 200);
+    assert.equal((await phone.call("GET", "/api/auth/me")).status, 200);
+    const kicked = await laptop.call("GET", "/api/auth/me");
+    assert.equal(kicked.status, 401);
+    assert.equal(kicked.json.error?.code, "signed_in_elsewhere");
+    assert.equal((await laptop.call("GET", "/api/practice/attempts")).status, 401);
+
+    // Logging in again on the laptop takes the account back; now the phone is out.
+    assert.equal((await laptop.call("POST", "/api/auth/login", login)).status, 200);
+    assert.equal((await laptop.call("GET", "/api/auth/me")).status, 200);
+    assert.equal((await phone.call("GET", "/api/auth/me")).status, 401);
+
+    // Admins keep every session.
+    const adminPhone = client();
+    assert.equal((await adminPhone.call("POST", "/api/auth/login", { email: "phase1-test-admin@example.com", password: "password-123" })).status, 200);
+    assert.equal((await adminPhone.call("GET", "/api/auth/me")).status, 200);
+    assert.equal((await admin.call("GET", "/api/auth/me")).status, 200);
+    await UserModel.deleteOne({ email: login.email });
+  });
+
+  await check("hidden developer accounts are left out of the Users page, its counts and the stats", async () => {
+    const before = (await admin.call("GET", "/api/admin/users")).json.data;
+    const statsBefore = (await admin.call("GET", "/api/admin/stats")).json.data;
+    const dev = client();
+    const login = { email: "phase1-test-hidden@example.com", password: "password-123" };
+    await dev.call("POST", "/api/auth/register", { name: "E2E Hidden", ...login, country: "PK" });
+    const made = await UserModel.findOneAndUpdate({ email: login.email }, { $set: { hidden: true, plan: "paid", paidPlan: "till_test_day" } }, { new: true });
+    const id = String(made!._id);
+
+    const after = (await admin.call("GET", "/api/admin/users")).json.data;
+    assert.equal(after.total, before.total);
+    assert.deepEqual(after.counts, before.counts);
+    assert.ok(!after.users.some((user: { id: string }) => user.id === id));
+    assert.equal((await admin.call("GET", `/api/admin/users?search=${encodeURIComponent("phase1-test-hidden")}`)).json.data.total, 0);
+    assert.equal((await admin.call("GET", `/api/admin/users/${id}`)).status, 404);
+    assert.equal((await admin.call("PATCH", `/api/admin/users/${id}`, { status: "blocked" })).status, 404);
+    const statsAfter = (await admin.call("GET", "/api/admin/stats")).json.data;
+    assert.equal(statsAfter.users, statsBefore.users);
+    assert.deepEqual(statsAfter.usersByRegion, statsBefore.usersByRegion);
+    assert.equal(statsAfter.paidUsers, statsBefore.paidUsers);
+
+    // The account itself works normally, with its paid plan.
+    assert.equal((await dev.call("POST", "/api/auth/login", login)).status, 200);
+    const me = await dev.call("GET", "/api/auth/me");
+    assert.equal(me.json.data.user.plan, "paid");
+    await UserModel.deleteOne({ email: login.email });
+  });
+
   console.log(`\n${passed} end-to-end checks passed.`);
 }

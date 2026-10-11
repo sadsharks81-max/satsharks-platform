@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-11 (built-in estimated score tables so results show a score; FAQ, SAT dates, countdown, WhatsApp button; all pushed to both remotes).
+Last updated: 2026-10-12 (one device at a time for students; hidden developer accounts; pushed to both remotes).
 
 ---
 
@@ -29,6 +29,21 @@ Last updated: 2026-10-11 (built-in estimated score tables so results show a scor
 
 - Accounts: register, login, logout, session (`/api/auth/*`), roles `student` / `staff` / `admin`
   with permission checks. Admins are created with `npm run create:admin` (not by registration).
+- **One device at a time (2026-10-12):** each student login or sign-up stores a new random
+  `sessionId` on the user and in the token (`sid`); `requireAuth` rejects a student token whose
+  `sid` differs (401, code `signed_in_elsewhere`, `SIGNED_IN_ELSEWHERE` in packages/types). So a
+  new login signs out the student's other device; the login page then says why
+  (`takeSignedInElsewhere`, sessionStorage). Staff and admins are not limited. Older tokens
+  without `sid` keep working until the account's next login.
+- **Hidden developer accounts (2026-10-12):** user field `hidden`; such accounts are left out of
+  Admin → Users (list, search, counts), the user detail/edit endpoints (404) and the dashboard
+  stats (`visible()` in `user-admin.service.ts`); the "keep one active admin" rule ignores them.
+  Made with `create:admin --hidden` (`--role student --paid` for a paid student, plan
+  `till_test_day`, no end date, country PK). Live accounts: **`dev-admin@satsharks.invalid`**
+  (admin, same role as `admin2.0@gmail.com`) and **`dev-student@satsharks.invalid`** (paid
+  student). `.invalid` can never receive mail, so no one can take them over by password reset.
+  Passwords were given to Umair only; not stored anywhere in the repo. Reports filed by a hidden
+  student still show its name/email in the report queue.
 - **Country at sign-up** (required, ISO code): `PK` → `region: local`, anything else →
   `international`. Never from IP. Accounts made before this have `country`/`region` null.
 - **Forgot / reset password** through Resend (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`). Token: 32
@@ -284,7 +299,8 @@ Last updated: 2026-10-11 (built-in estimated score tables so results show a scor
   both remotes. Next commit (2026-10-09, Claude): log in / sign up redesign, pushed to both remotes.
 - Umair committed the FAQ / SAT dates / countdown / WhatsApp work and the hydration fix (up to
   `9fad05e` "few changes done"). Next commit (2026-10-11, Claude): "Show an estimated score
-  instead of Pending", pushed to both remotes.
+  instead of Pending", pushed to both remotes. Next (2026-10-12, Claude): "One device at a time
+  for students; hidden developer accounts", pushed to both remotes.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -311,7 +327,7 @@ Other commands:
 
 | Command | What it does |
 | --- | --- |
-| `npm run create:admin -- --email <e> --name "<n>" [--role admin\|staff]` | Create/promote an admin. Password from env `ADMIN_PASSWORD` |
+| `npm run create:admin -- --email <e> --name "<n>" [--role admin\|staff\|student] [--hidden] [--paid]` | Create/promote an admin. Password from env `ADMIN_PASSWORD`. `--hidden` = developer account kept out of Admin → Users and stats; `--role student` only with `--hidden`; `--paid` for students |
 | `npm run collect:bank -- --list` | List the source's exam sources and sizes (needs `SOURCE_ACCESS_TOKEN`) |
 | `npm run collect:bank -- --exam <id> --section math\|rw` | Collect one bank and import it as Draft |
 | `npm run collect:bank -- --all [--section math\|rw]` | Collect every bank; cached ones cost no requests |
@@ -364,6 +380,8 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-11 | FAQ text used **exactly as written** although parts are not true yet (explanations: none exist; "20 practice questions a day": no quota built; "Pro": the plans are Monthly / 3 Months / Till Test Day; "same time left": the clock keeps running while away; card payment / one-click cancel: no payments). Asked and confirmed |
 | 2026-10-11 | SAT dates editable in Admin (not fixed in code); dashboard countdown always to the next upcoming date |
 | 2026-10-11 | Students must always see a score after a full test / mock: use a built-in estimated conversion table until SAT Sharks enters real ones (replaces "no scores are invented") |
+| 2026-10-12 | Stop account sharing (client request): a student account is used on one device at a time. Umair chose "new login kicks out the old device" (not a hard lock to the first device, not "logout frees it"), for all students, free and paid; staff/admins exempt |
+| 2026-10-12 | Two hidden developer accounts (one admin with the same access as `admin2.0@gmail.com`, one paid student), not in the Users list or any count |
 | 2026-10-08 | An upload asks where it goes: Practice tests or Exams. A real SAT (e.g. December) goes to Exams. Umair chose "exam card + full test": it behaves like the other exams (drill, random mocks) and can also be taken whole as a fixed adaptive test |
 
 ## 7. Facts about the source (verified)
@@ -702,3 +720,16 @@ Newest last. One entry per session or major step.
   finished attempts and full tests get their score the next time they are opened (existing
   `withScore` / full-test re-total). Admin Settings and the results notices reworded. Checked: type
   check; 51 unit tests (2 new). Not checked in a browser. Committed and pushed to both remotes.
+- **2026-10-12 — One device at a time (client via Umair).** Students: a new login signs out the
+  other device (user `sessionId`, token `sid`, check in `middleware/auth.ts`, 401
+  `signed_in_elsewhere`); login page explains it. Checked: type check; 51 unit tests; **18 e2e
+  checks** (new: laptop signed out by a phone login with the right code, laptop takes it back,
+  admins keep both sessions). Login-page message not checked in a browser. Pushed to both remotes.
+- **2026-10-12 — Hidden developer accounts (Umair).** `hidden` user field, filtered out of every
+  admin user list/count/lookup and the stats; `create:admin` gained `--hidden`, `--role student`,
+  `--paid`. Created on Atlas: `dev-admin@satsharks.invalid` (admin) and
+  `dev-student@satsharks.invalid` (paid student). Checked: type check; 51 unit tests; **19 e2e
+  checks** (new: hidden account absent from list, search, counts and stats; 404 on view/edit; it
+  still logs in with its paid plan). **Until the API is redeployed, the live Users page still
+  lists both accounts.** Pushed to both remotes. Umair asked for simpler passwords; the change was
+  blocked by the session's safety check, so he was given the command to run himself.

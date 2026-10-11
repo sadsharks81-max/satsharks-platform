@@ -16,7 +16,7 @@ import {
 import type { QuestionListQuery, UpdateQuestionInput } from "@satsharks/validation";
 import { AppError } from "../utils/app-error";
 import { invalidateCatalog } from "./practice.service";
-import { userAdminService } from "./user-admin.service";
+import { userAdminService, visible } from "./user-admin.service";
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const ASSET_URL = /^\/api\/assets\/([a-f0-9]{32}\.(?:svg|png|jpg|webp))$/;
@@ -64,8 +64,9 @@ async function countBy<T extends string>(model: typeof PaperModel | typeof Quest
 export const adminService = {
   async stats(): Promise<AdminStats> {
     const [users, regions, papers, questions, questionsBySection, attempts, pendingReports, resolvedReports] = await Promise.all([
-      UserModel.estimatedDocumentCount(),
-      UserModel.aggregate<{ _id: UserRegion | null; n: number }>([{ $group: { _id: "$region", n: { $sum: 1 } } }]),
+      // Hidden developer accounts are not counted (see UserDoc.hidden).
+      UserModel.countDocuments(visible()),
+      UserModel.aggregate<{ _id: UserRegion | null; n: number }>([{ $match: { hidden: { $ne: true } } }, { $group: { _id: "$region", n: { $sum: 1 } } }]),
       countBy(PaperModel, "status", PAPER_STATUSES),
       countBy(QuestionModel, "status", PAPER_STATUSES),
       countBy(QuestionModel, "section", SECTIONS),

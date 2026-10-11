@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
-import type { PublicUser } from "@satsharks/types";
+import { SIGNED_IN_ELSEWHERE, type PublicUser } from "@satsharks/types";
 import { api, ApiError } from "./api";
 
 export const ME_QUERY_KEY = ["auth", "me"] as const;
@@ -13,8 +13,33 @@ async function fetchMe(): Promise<PublicUser | null> {
   try {
     return (await api<{ user: PublicUser }>("/api/auth/me")).user;
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) return null;
+    if (error instanceof ApiError && error.status === 401) {
+      if (error.code === SIGNED_IN_ELSEWHERE) markSignedInElsewhere();
+      return null;
+    }
     throw error;
+  }
+}
+
+// Set when this browser's session ended because the account logged in on another device, so the
+// login page can say why. Read once.
+const ELSEWHERE_KEY = "satsharks.signedInElsewhere";
+
+function markSignedInElsewhere(): void {
+  try {
+    sessionStorage.setItem(ELSEWHERE_KEY, "1");
+  } catch {
+    // Storage blocked: the login page just shows no reason.
+  }
+}
+
+export function takeSignedInElsewhere(): boolean {
+  try {
+    const found = sessionStorage.getItem(ELSEWHERE_KEY) === "1";
+    sessionStorage.removeItem(ELSEWHERE_KEY);
+    return found;
+  } catch {
+    return false;
   }
 }
 

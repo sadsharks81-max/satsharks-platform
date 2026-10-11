@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { roleHasPermission, type Permission } from "@satsharks/types";
+import { roleHasPermission, SIGNED_IN_ELSEWHERE, type Permission } from "@satsharks/types";
 import { AUTH_COOKIE_NAME } from "../config/env";
 import type { UserDoc } from "../models";
 import { userRepository } from "../repositories/user.repository";
@@ -24,6 +24,10 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   // A password reset signs out every session that existed before it (token times are whole seconds).
   if (user.passwordChangedAt && payload.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
     throw AppError.unauthorized("Your password was changed. Please log in again.");
+  }
+  // A student logged in on another device since this token was issued (see authService.startSession).
+  if (user.role === "student" && user.sessionId && payload.sid !== user.sessionId) {
+    throw new AppError(401, SIGNED_IN_ELSEWHERE, "You were signed out because this account was logged in on another device.");
   }
 
   req.user = user;

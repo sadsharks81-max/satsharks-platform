@@ -57,6 +57,15 @@ export const authService = {
     return user;
   },
 
+  // Called on every login and sign-up. A student gets a new session ID, which signs out the device
+  // that was logged in before (one student, one device at a time). Staff and admins are not limited.
+  async startSession(user: UserDoc): Promise<string | null> {
+    if (user.role !== "student") return null;
+    const sessionId = randomBytes(16).toString("base64url");
+    await UserModel.updateOne({ _id: user._id }, { $set: { sessionId } });
+    return sessionId;
+  },
+
   // Answers the same way whether or not the address has an account, and does not wait for the
   // email, so neither the response nor its timing tells an outsider which emails are registered.
   // A new request replaces any earlier link.

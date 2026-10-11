@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { USER_REGION_LABELS, regionForCountry, type PublicUser } from "@satsharks/types";
 import { api, ApiError } from "@/lib/api";
-import { isStaffUser, nextPathFor, useSwitchUser } from "@/lib/auth";
+import { isStaffUser, nextPathFor, takeSignedInElsewhere, useSwitchUser } from "@/lib/auth";
 import { countryOptions, LOCAL_COUNTRY_CODE } from "@/lib/countries";
 import { AuthShell, FormAlert, PasswordField, SelectField, SubmitButton, TextField, authLink } from "./auth-ui";
 import { Spinner } from "./ui";
@@ -53,6 +53,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const [countries, setCountries] = useState<{ code: string; name: string }[]>([]);
   useEffect(() => {
     if (isRegister) setCountries(countryOptions());
+  }, [isRegister]);
+  // Read after the page has loaded (sessionStorage does not exist on the server).
+  const [signedInElsewhere, setSignedInElsewhere] = useState(false);
+  useEffect(() => {
+    if (!isRegister) setSignedInElsewhere(takeSignedInElsewhere());
   }, [isRegister]);
   const notice = searchParams.get("reset") === "1" ? "Your password has been changed. Log in with your new password." : null;
 
@@ -136,6 +141,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     >
       <form onSubmit={onSubmit} noValidate className="space-y-5">
         {notice && <FormAlert tone="success">{notice}</FormAlert>}
+        {signedInElsewhere && (
+          <FormAlert tone="error">
+            You were signed out because your account was logged in on another device. An account can be used on one device at a time and is for one student only.
+          </FormAlert>
+        )}
         {formError && <FormAlert tone="error">{formError}</FormAlert>}
 
         {isRegister && (

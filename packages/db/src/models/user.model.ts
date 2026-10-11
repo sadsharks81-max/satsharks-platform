@@ -21,6 +21,13 @@ export interface UserDoc {
   planExpiresAt: Date | null;
   // Sessions signed before this moment are rejected (set when the password is reset).
   passwordChangedAt: Date | null;
+  // Students use one device at a time: each login stores a new random ID here and in the session
+  // token, and a token carrying another ID (the device signed in before) is rejected. null until
+  // the first login with this rule; staff and admins are not limited.
+  sessionId: string | null;
+  // Developer accounts made with `create:admin --hidden`: left out of the admin Users page, its
+  // counts and the dashboard stats, and cannot be opened or changed there by any admin.
+  hidden: boolean;
   // Password reset: SHA-256 of the emailed token (the token itself is never stored) and its expiry.
   // Cleared when the token is used, so a link works once.
   resetTokenHash: string | null;
@@ -43,6 +50,8 @@ const userSchema = new Schema<UserDoc>(
     paidPlan: { type: String, enum: [...PAID_PLANS, null], default: null },
     planExpiresAt: { type: Date, default: null },
     passwordChangedAt: { type: Date, default: null },
+    sessionId: { type: String, default: null },
+    hidden: { type: Boolean, default: false },
     resetTokenHash: { type: String, default: null, select: false },
     resetTokenExpiresAt: { type: Date, default: null, select: false },
   },

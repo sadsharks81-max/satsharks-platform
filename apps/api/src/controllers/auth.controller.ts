@@ -11,13 +11,13 @@ const logger = createLogger("auth");
 
 export async function register(req: Request, res: Response): Promise<void> {
   const user = await authService.register(req.body as RegisterInput);
-  res.cookie(AUTH_COOKIE_NAME, signAuthToken(String(user._id)), authCookieOptions());
+  res.cookie(AUTH_COOKIE_NAME, signAuthToken(String(user._id), await authService.startSession(user)), authCookieOptions());
   sendOk(res, { user: toPublicUser(user) }, 201);
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
   const user = await authService.login(req.body as LoginInput);
-  res.cookie(AUTH_COOKIE_NAME, signAuthToken(String(user._id)), authCookieOptions());
+  res.cookie(AUTH_COOKIE_NAME, signAuthToken(String(user._id), await authService.startSession(user)), authCookieOptions());
   sendOk(res, { user: toPublicUser(user) });
 }
 

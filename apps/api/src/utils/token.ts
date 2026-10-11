@@ -7,10 +7,13 @@ export interface AuthTokenPayload {
   sub: string;
   // Seconds since the epoch when the token was signed (set by jsonwebtoken).
   iat: number;
+  // The login this token belongs to (students only; see UserDoc.sessionId).
+  sid: string | null;
 }
 
-export function signAuthToken(userId: string): string {
-  return jwt.sign({ sub: userId } satisfies Omit<AuthTokenPayload, "iat">, getJwtSecret(), {
+export function signAuthToken(userId: string, sessionId: string | null = null): string {
+  const payload = sessionId ? { sub: userId, sid: sessionId } : { sub: userId };
+  return jwt.sign(payload, getJwtSecret(), {
     algorithm: "HS256",
     expiresIn: AUTH_TOKEN_TTL_SECONDS,
   });
@@ -20,7 +23,7 @@ export function verifyAuthToken(token: string): AuthTokenPayload | null {
   try {
     const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ["HS256"] });
     if (typeof decoded === "string" || typeof decoded.sub !== "string" || typeof decoded.iat !== "number") return null;
-    return { sub: decoded.sub, iat: decoded.iat };
+    return { sub: decoded.sub, iat: decoded.iat, sid: typeof decoded.sid === "string" ? decoded.sid : null };
   } catch {
     return null;
   }
