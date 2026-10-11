@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-11 (FAQ, SAT dates page + admin editor, dashboard countdown, WhatsApp button; fully tested; not committed).
+Last updated: 2026-10-11 (built-in estimated score tables so results show a score; FAQ, SAT dates, countdown, WhatsApp button; all pushed to both remotes).
 
 ---
 
@@ -76,7 +76,11 @@ Last updated: 2026-10-11 (FAQ, SAT dates page + admin editor, dashboard countdow
 - **Time tracking** on the server: per question (between question loads), per module and per
   attempt. **Scaled scores**: 200–800 per section from admin-entered conversion tables (one per
   section × Module 2 route), total 400–1600 = sum. Logic only in `apps/api/src/services/scoring.ts`.
-  **No tables are entered yet**, so students see "score pending".
+  **No tables are entered yet**, so the built-in estimate `DEFAULT_CONVERSION_TABLES`
+  (packages/types; harder route 200–800, easier route 200–650) is used for every route without an
+  entered table, shown pre-filled in Admin → Settings. A section whose question count differs from
+  27+27 / 22+22 (e.g. an uploaded test) is scored by its share correct. "Pending" now only shows
+  for a mock that ended before Module 2.
 - **Results page:** section/total score, correct/incorrect/skipped and time per module, time per
   question, report a problem from the review.
 - **Report a problem** on every question (test screen and review); admin queue with the question
@@ -162,7 +166,7 @@ Last updated: 2026-10-11 (FAQ, SAT dates page + admin editor, dashboard countdow
 
 ### Not built yet
 
-- Conversion-table **values** (SAT Sharks to supply; the admin editor is ready). Per-paper tables
+- Conversion-table **values** from SAT Sharks (the built-in estimate is used until then; the admin editor is ready). Per-paper tables
   wait for "build a paper" (mocks mix exams, so tables are per section and route for now).
 - Google sign-in, payments (plans are set by an admin on the Users page). Free-plan *access* is
   built (Admin → Access); free-plan *quotas* (e.g. "20 drill questions a day") and the analysis
@@ -278,6 +282,9 @@ Last updated: 2026-10-11 (FAQ, SAT dates page + admin editor, dashboard countdow
   Ask before committing or pushing.
 - `4621469` (2026-10-09, Claude): access by plan, announcements, landing page redesign, pushed to
   both remotes. Next commit (2026-10-09, Claude): log in / sign up redesign, pushed to both remotes.
+- Umair committed the FAQ / SAT dates / countdown / WhatsApp work and the hydration fix (up to
+  `9fad05e` "few changes done"). Next commit (2026-10-11, Claude): "Show an estimated score
+  instead of Pending", pushed to both remotes.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -356,6 +363,7 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-09 | Free accounts get limited access to papers and exams; admins choose in the admin portal what free and paid accounts can open. Built as Admin → Access (per way of practising and per exam/test, plus a default for new ones); everything stays free until saved |
 | 2026-10-11 | FAQ text used **exactly as written** although parts are not true yet (explanations: none exist; "20 practice questions a day": no quota built; "Pro": the plans are Monthly / 3 Months / Till Test Day; "same time left": the clock keeps running while away; card payment / one-click cancel: no payments). Asked and confirmed |
 | 2026-10-11 | SAT dates editable in Admin (not fixed in code); dashboard countdown always to the next upcoming date |
+| 2026-10-11 | Students must always see a score after a full test / mock: use a built-in estimated conversion table until SAT Sharks enters real ones (replaces "no scores are invented") |
 | 2026-10-08 | An upload asks where it goes: Practice tests or Exams. A real SAT (e.g. December) goes to Exams. Umair chose "exam card + full test": it behaves like the other exams (drill, random mocks) and can also be taken whole as a fixed adaptive test |
 
 ## 7. Facts about the source (verified)
@@ -488,7 +496,7 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 2. Commit and push the uncommitted work when Umair says so.
 3. Client decisions pending: use of the reference site's content; the embedded "[bluebooky.com]"
    strings; the adaptive threshold (65% is a placeholder); Math difficulty source.
-4. Scaled scores need SAT Sharks' conversion tables (enter in Admin → Settings), and Umair's
+4. Scaled scores use a built-in estimate until SAT Sharks enters real tables (Admin → Settings), and Umair's
    Resend values in `.env`. Terms/Privacy need legal review and a contact email
    (`LEGAL_CONTACT_EMAIL` in `apps/web/src/components/legal-page.tsx`). Pricing is set in Admin →
    Settings (defaults: the proposal's "starting suggestion", `DEFAULT_PRICING` in packages/types).
@@ -687,3 +695,10 @@ Newest last. One entry per session or major step.
   opens with a general help message typed in. Footer right padding reduced to match. Checked: type
   check; headless Chrome at 1440/820/390px: sizes, number and decoded message correct, no footer
   link covered. Not committed.
+- **2026-10-11 — Scores instead of "Pending" (Umair).** A finished full test showed "Pending"
+  because no conversion tables were entered. Added `DEFAULT_CONVERSION_TABLES` (estimated curves,
+  packages/types); `settingsService.getConversionTables` fills any route without an entered table
+  with it; `sectionScore` scales the raw count when a section has another question count. Old
+  finished attempts and full tests get their score the next time they are opened (existing
+  `withScore` / full-test re-total). Admin Settings and the results notices reworded. Checked: type
+  check; 51 unit tests (2 new). Not checked in a browser. Committed and pushed to both remotes.

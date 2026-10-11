@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { regionForCountry } from "@satsharks/types";
+import { DEFAULT_CONVERSION_TABLES, regionForCountry } from "@satsharks/types";
 import { conversionTablesSchema, registerSchema, resetPasswordSchema } from "@satsharks/validation";
 import { emptyConversionTables, sectionScore, totalScore } from "../src/services/scoring";
 
@@ -23,7 +23,21 @@ test("no table, an unfinished section or a short attempt gives no score", () => 
   assert.equal(sectionScore(tables(), "reading_writing", "m2_hard", 30, 54), null);
   assert.equal(sectionScore(tables(), "math", "m1", 10, 22), null);
   assert.equal(sectionScore(tables(), "math", null, 10, 44), null);
-  assert.equal(sectionScore(tables(), "math", "m2_easy", 10, 40), null);
+});
+
+test("a section of another length is scored by its share correct", () => {
+  assert.equal(sectionScore(tables(), "math", "m2_easy", 20, 22), 600);
+  assert.equal(sectionScore(tables(), "math", "m2_easy", 0, 0), null);
+});
+
+test("built-in tables give every route a valid score", () => {
+  assert.equal(conversionTablesSchema.safeParse(DEFAULT_CONVERSION_TABLES).success, true);
+  for (const section of ["math", "reading_writing"] as const) {
+    const full = section === "math" ? 44 : 54;
+    assert.equal(sectionScore(DEFAULT_CONVERSION_TABLES, section, "m2_hard", 0, full), 200);
+    assert.equal(sectionScore(DEFAULT_CONVERSION_TABLES, section, "m2_hard", full, full), 800);
+    assert.equal(sectionScore(DEFAULT_CONVERSION_TABLES, section, "m2_easy", full, full), 650);
+  }
 });
 
 test("raw counts outside the table are clamped to its ends", () => {

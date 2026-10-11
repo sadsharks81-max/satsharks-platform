@@ -174,6 +174,31 @@ export function sectionQuestionCount(section: Section): number {
   return MOCK_FORMAT[section].questionsPerModule * 2;
 }
 
+// Built-in estimate used for any route an admin has not entered a table for, so students always
+// get a score. Shaped like published Digital SAT practice curves: the harder Module 2 reaches 800,
+// the easier one tops out at 650. Points are (share of the section correct, section score).
+const ESTIMATE_CURVES: Record<ScoreRoute, ReadonlyArray<readonly [number, number]>> = {
+  m2_hard: [[0, 200], [0.25, 370], [0.4, 450], [0.5, 510], [0.6, 570], [0.7, 630], [0.8, 690], [0.9, 750], [1, 800]],
+  m2_easy: [[0, 200], [0.25, 330], [0.4, 400], [0.5, 450], [0.6, 500], [0.7, 545], [0.8, 590], [0.9, 625], [1, 650]],
+};
+
+function estimateTable(section: Section, route: ScoreRoute): number[] {
+  const questions = sectionQuestionCount(section);
+  const curve = ESTIMATE_CURVES[route];
+  return Array.from({ length: questions + 1 }, (_, correct) => {
+    const share = correct / questions;
+    const upper = curve.findIndex(([point]) => point >= share);
+    const [x1, y1] = curve[Math.max(upper, 1)]!;
+    const [x0, y0] = curve[Math.max(upper, 1) - 1]!;
+    return Math.round((y0 + ((share - x0) / (x1 - x0)) * (y1 - y0)) / 10) * 10;
+  });
+}
+
+export const DEFAULT_CONVERSION_TABLES: ConversionTables = {
+  reading_writing: { m2_easy: estimateTable("reading_writing", "m2_easy"), m2_hard: estimateTable("reading_writing", "m2_hard") },
+  math: { m2_easy: estimateTable("math", "m2_easy"), m2_hard: estimateTable("math", "m2_hard") },
+};
+
 export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 

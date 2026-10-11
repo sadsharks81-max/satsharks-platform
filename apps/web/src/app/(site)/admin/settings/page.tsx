@@ -151,7 +151,7 @@ function ConversionTablesCard({ canWrite }: { canWrite: boolean }) {
       <h2 className="font-bold">Score conversion tables</h2>
       <p className="mt-1 text-sm text-slate-600">
         Section scores (200–800) are read from these tables using the number of correct answers over both modules. The total score (400–1600) is the two section scores added together.
-        Enter one score per raw count, starting at 0 correct, separated by commas or spaces. Until a table is entered, students see &ldquo;score pending&rdquo; for that route.
+        Enter one score per raw count, starting at 0 correct, separated by commas or spaces. Until SAT Sharks enters its own, a built-in estimate (shown here) is used; edit and save to replace it. A table left empty goes back to the estimate.
       </p>
       {missing.length > 0 && (
         <div className="mt-3">
@@ -181,7 +181,7 @@ function ConversionTablesCard({ canWrite }: { canWrite: boolean }) {
                     0 correct → {result.scores[0]} · {Math.floor(count / 2)} correct → {result.scores[Math.floor(count / 2)]} · {count} correct → {result.scores[count]}
                   </span>
                 ) : (
-                  <span className="mt-1 block font-normal text-slate-500">No table: scores for this route stay pending.</span>
+                  <span className="mt-1 block font-normal text-slate-500">Empty: the built-in estimate is used for this route.</span>
                 )}
               </label>
             );

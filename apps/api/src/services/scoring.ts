@@ -4,7 +4,7 @@
 // Method (proposal, Checkpoint 2.2): section scores 200–800 are read from a raw-to-scaled
 // conversion table; the total 400–1600 is the sum of the two section scores. Because Module 2
 // adapts, there is one table per section for each route (after the easier or the harder Module 2).
-// No scores are invented: without a table the score stays null until an admin enters it.
+// Routes without an admin-entered table use the built-in estimate (DEFAULT_CONVERSION_TABLES).
 import {
   SECTION_SCORE_MAX,
   SECTION_SCORE_MIN,
@@ -22,7 +22,8 @@ export function emptyConversionTables(): ConversionTables {
 }
 
 // Section score for `rawCorrect` correct answers over both modules. null when the section was not
-// finished through Module 2, or no usable table exists for its route.
+// finished through Module 2, or no usable table exists for its route. A section with a different
+// number of questions (e.g. an uploaded test) is scored by its share correct.
 export function sectionScore(
   tables: ConversionTables,
   section: Section,
@@ -31,11 +32,12 @@ export function sectionScore(
   questionCount: number,
 ): number | null {
   if (route !== "m2_easy" && route !== "m2_hard") return null;
-  // A table is written for the full section; a shorter attempt cannot be scored with it.
-  if (questionCount !== sectionQuestionCount(section)) return null;
+  if (questionCount <= 0) return null;
+  const fullCount = sectionQuestionCount(section);
   const table = tables[section][route];
-  if (!table || table.length !== questionCount + 1) return null;
-  const score = table[Math.max(0, Math.min(rawCorrect, questionCount))];
+  if (!table || table.length !== fullCount + 1) return null;
+  const raw = questionCount === fullCount ? rawCorrect : Math.round((rawCorrect / questionCount) * fullCount);
+  const score = table[Math.max(0, Math.min(raw, fullCount))];
   if (score === undefined || score < SECTION_SCORE_MIN || score > SECTION_SCORE_MAX) return null;
   return score;
 }

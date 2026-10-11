@@ -187,7 +187,7 @@ function FullTestView({ id }: { id: string }) {
 
       {pendingScores && (
         <div className="mt-4">
-          <Notice tone="info">Scaled scores appear once SAT Sharks has entered the score conversion tables. Your answers and counts are already saved.</Notice>
+          <Notice tone="info">A scaled score could not be worked out for this test yet. Your answers and counts are saved.</Notice>
         </div>
       )}
 

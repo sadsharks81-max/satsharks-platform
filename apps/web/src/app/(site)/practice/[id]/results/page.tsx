@@ -97,7 +97,7 @@ function ScoreHero({ attempt }: { attempt: AttemptSummary }) {
               <div className="text-xs font-bold uppercase tracking-wide text-slate-500">{SECTION_LABELS[attempt.section]} score</div>
               <div className="mt-1 text-2xl font-bold text-slate-400">Pending</div>
               <div className="mt-1 text-xs text-slate-500">
-                {finishedModuleTwo ? "Shown once SAT Sharks has entered the score conversion table." : "Not scored: the mock ended before Module 2."}
+                {finishedModuleTwo ? "A scaled score could not be worked out for this mock yet." : "Not scored: the mock ended before Module 2."}
               </div>
             </>
           )

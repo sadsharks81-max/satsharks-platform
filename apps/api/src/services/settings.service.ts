@@ -1,6 +1,7 @@
 import { SettingModel } from "@satsharks/db";
 import {
   DEFAULT_ACCESS,
+  DEFAULT_CONVERSION_TABLES,
   DEFAULT_PRICING,
   DEFAULT_ROUTING_THRESHOLD_PERCENT,
   DEFAULT_SAT_DATES,
@@ -46,7 +47,18 @@ export const settingsService = {
     const stored = await SettingModel.findOne({ key: SCORING_KEY }).lean();
     // A stored value that no longer validates (e.g. the format changed) is treated as missing.
     const parsed = conversionTablesSchema.safeParse(stored?.value);
-    const value = parsed.success ? parsed.data : emptyConversionTables();
+    // A route without an entered table uses the built-in estimate, so every finished section is scored.
+    const entered = parsed.success ? parsed.data : emptyConversionTables();
+    const value: ConversionTables = {
+      reading_writing: {
+        m2_easy: entered.reading_writing.m2_easy ?? DEFAULT_CONVERSION_TABLES.reading_writing.m2_easy,
+        m2_hard: entered.reading_writing.m2_hard ?? DEFAULT_CONVERSION_TABLES.reading_writing.m2_hard,
+      },
+      math: {
+        m2_easy: entered.math.m2_easy ?? DEFAULT_CONVERSION_TABLES.math.m2_easy,
+        m2_hard: entered.math.m2_hard ?? DEFAULT_CONVERSION_TABLES.math.m2_hard,
+      },
+    };
     tablesCache = { value, expires: Date.now() + TABLES_TTL_MS };
     return value;
   },
