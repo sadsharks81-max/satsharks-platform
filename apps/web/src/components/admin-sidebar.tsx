@@ -26,6 +26,7 @@ const SECTIONS: Section[] = [
   { href: "/admin/questions", label: "Questions", permission: "questions:read", icon: <path d="M9.1 9a3 3 0 1 1 4.2 2.7c-.8.4-1.3 1.1-1.3 2v.3M12 17.5h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /> },
   { href: "/admin/reports", label: "Reports", permission: "reports:read", icon: <path d="M5 21V4m0 0h11l-2 4 2 4H5" />, badge: "pendingReports" },
   { href: "/admin/announcements", label: "Announcements", permission: "admin:access", icon: <path d="M3 11v3a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zm13-3a5 5 0 0 1 0 8m2.5-10.5a8.5 8.5 0 0 1 0 13" /> },
+  { href: "/admin/sat-dates", label: "SAT dates", permission: "admin:access", icon: <path d="M4 6h16v15H4V6zm0 5h16M8 3v4M16 3v4M8 15h2M14 15h2" /> },
   { href: "/admin/access", label: "Access", permission: "papers:read", icon: <path d="M6 11h12v10H6V11zm2 0V7a4 4 0 0 1 8 0v4M12 15v2" /> },
   { href: "/admin/settings", label: "Settings", permission: "admin:access", icon: <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2-1.2L14.5 3h-4l-.4 2.6a7.5 7.5 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7.5 7.5 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z" /> },
 ];

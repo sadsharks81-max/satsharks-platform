@@ -11,6 +11,7 @@ import {
   reopenReportSchema,
   reportListQuerySchema,
   resolveReportSchema,
+  satDatesContentSchema,
   updateUserSchema,
   userListQuerySchema,
   type UpdateQuestionInput,
@@ -94,6 +95,16 @@ export async function setPricing(req: Request, res: Response): Promise<void> {
   // The admin sees which field is wrong, not just "invalid request".
   if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? "Check the pricing fields");
   sendOk(res, await settingsService.setPricing(parsed.data as PricingContent, String(req.user!._id)));
+}
+
+export async function getSatDates(_req: Request, res: Response): Promise<void> {
+  sendOk(res, await settingsService.getSatDates());
+}
+
+export async function setSatDates(req: Request, res: Response): Promise<void> {
+  const parsed = satDatesContentSchema.safeParse(req.body);
+  if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? "Check the dates");
+  sendOk(res, await settingsService.setSatDates(parsed.data, String(req.user!._id)));
 }
 
 // Access by plan, and everything it can apply to: the catalog's exams (as students see them) and

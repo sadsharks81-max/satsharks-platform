@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Announcements } from "@/components/announcements";
 import { Footer } from "@/components/footer";
 import { Nav } from "@/components/nav";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 
 // Same content width and side padding as the navigation bar: up to 1700px, 16px sides on
 // phones and 32px from tablets up. The footer sits at the bottom even on short pages.
@@ -14,6 +15,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
         {children}
       </main>
       <Footer />
+      <WhatsAppButton />
     </div>
   );
 }

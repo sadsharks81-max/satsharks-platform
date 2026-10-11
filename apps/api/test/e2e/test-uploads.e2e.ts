@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { MongoMemoryServer } from "mongodb-memory-server";
+import { DEFAULT_SAT_DATES } from "@satsharks/types";
 
 const folder = process.argv[2];
 if (!folder) throw new Error("Pass the folder with the test PDFs");
@@ -589,6 +590,40 @@ async function run() {
     assert.equal((await admin.call("DELETE", `/api/admin/announcements/${ids["To all"]}`)).status, 404);
     assert.equal((await admin.call("GET", "/api/admin/announcements")).json.data.announcements.length, 5);
     assert.equal((await student.call("GET", "/api/admin/announcements")).status, 403);
+  });
+
+  await check("SAT dates are public, default to College Board's, and only admins change them", async () => {
+    const visitor = client();
+    const defaults = await visitor.call("GET", "/api/sat-dates");
+    assert.equal(defaults.status, 200);
+    assert.deepEqual(defaults.json.data, DEFAULT_SAT_DATES);
+    const entry = (date: string, registrationDeadline: string, lateDeadline: string | null = null, note = "") => ({ date, registrationDeadline, lateDeadline, note });
+    const save = (who: ReturnType<typeof client>, dates: unknown[]) => who.call("PUT", "/api/admin/settings/sat-dates", { dates });
+
+    assert.equal((await save(student, [entry("2027-08-21", "2027-08-06")])).status, 403);
+    assert.equal((await visitor.call("PUT", "/api/admin/settings/sat-dates", { dates: [] })).status, 401);
+    for (const bad of [
+      [entry("2027-8-21", "2027-08-06")],
+      [entry("2027-02-30", "2027-02-01")],
+      [entry("2027-08-21", "2027-08-22")],
+      [entry("2027-08-21", "2027-08-06", "2027-08-01")],
+      [entry("2027-08-21", "2027-08-06", "2027-08-21")],
+      [entry("2027-08-21", "2027-08-06"), entry("2027-08-21", "2027-08-07")],
+    ]) {
+      const refused = await save(admin, bad);
+      assert.equal(refused.status, 400, JSON.stringify(bad));
+      assert.ok(refused.json.error?.message, "a reason is given");
+    }
+    // Saved in date order; notes trimmed; the public endpoint follows at once.
+    const saved = await save(admin, [entry("2027-10-02", "2027-09-17", "2027-09-21", "  Scores out Oct 15 "), entry("2027-08-21", "2027-08-06")]);
+    assert.equal(saved.status, 200, JSON.stringify(saved.json.error));
+    assert.deepEqual(saved.json.data.dates.map((d: { date: string }) => d.date), ["2027-08-21", "2027-10-02"]);
+    assert.equal(saved.json.data.dates[1].note, "Scores out Oct 15");
+    assert.deepEqual((await visitor.call("GET", "/api/sat-dates")).json.data, saved.json.data);
+    assert.deepEqual((await admin.call("GET", "/api/admin/settings/sat-dates")).json.data, saved.json.data);
+    // An empty list is allowed (the page then says "not announced yet"); restore the defaults after.
+    assert.deepEqual((await save(admin, [])).json.data.dates, []);
+    assert.equal((await save(admin, DEFAULT_SAT_DATES.dates)).status, 200);
   });
 
   console.log(`\n${passed} end-to-end checks passed.`);

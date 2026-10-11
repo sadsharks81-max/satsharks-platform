@@ -10,6 +10,7 @@ import { CreateMock } from "@/components/create-mock";
 import { PaidBadge, UnlockButton } from "@/components/plan-lock";
 import { PracticeTests, StartPracticeTest, usePracticeTests } from "@/components/practice-tests";
 import { RequireUser } from "@/components/require-user";
+import { SatCountdown } from "@/components/sat-countdown";
 import { Button, Card, Notice, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 
@@ -82,6 +83,8 @@ function Home() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Countdown to the next SAT, then the two ways to start, then the exams. */}
+      <SatCountdown />
       {limited && (
         <Notice tone="info">
           You are on the free plan. Exams and tests marked <b>Paid</b> open with a paid plan.{" "}

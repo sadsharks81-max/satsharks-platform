@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-09 (nav hydration error fixed in `useMe`; pushed to both remotes).
+Last updated: 2026-10-11 (FAQ, SAT dates page + admin editor, dashboard countdown, WhatsApp button; fully tested; not committed).
 
 ---
 
@@ -136,6 +136,27 @@ Last updated: 2026-10-09 (nav hydration error fixed in `useMe`; pushed to both r
   account its active ones (newest 5). Shown as banners at the top of every `(site)` page to
   students (not admins/staff) by `components/announcements.tsx`; dismissed per browser
   (`localStorage` `satsharks.dismissed`, keyed by id + updatedAt, so an edit shows it again).
+- **FAQ (2026-10-11):** ten questions in Umair's own wording (`components/faq.tsx`, `FAQS`), as an
+  accordion on the landing page (`#faq`, before the closing call to action) and on `/faq`. **Used
+  exactly as written at Umair's request, although some answers are not true yet** (see §6, §9).
+- **SAT dates (2026-10-11):** public `/sat-dates` (upcoming dates table / phone cards with
+  registration status, a 5-step registration guide for Pakistan, College Board links), editable in
+  **Admin → SAT dates** (`/admin/sat-dates`; `admin:access` views, `papers:write` saves). Setting
+  `satDates` (`SatDatesContent`, `satDatesContentSchema`: YYYY-MM-DD, deadlines before the test day,
+  no duplicates, sorted on save); `GET /api/sat-dates` (public), `GET/PUT /api/admin/settings/sat-dates`.
+  Defaults = College Board's 2026-27 dates (Oct 3, Nov 7, Dec 5 2026; **Mar 6**, May 1, Jun 5 2027)
+  with score-release notes. Past dates hide themselves. Helpers in `lib/sat-dates.ts`.
+- **Dashboard countdown (2026-10-11):** `components/sat-countdown.tsx` at the top of `/dashboard`
+  (above the Adaptive Mock / Practice Drill cards, then Exams): next SAT date, days/hours/minutes/
+  seconds to midnight at the start of test day in the student's time zone, registration status and
+  a link to `/sat-dates`; moves to the next date after test day; hidden when none is set.
+- **WhatsApp button (2026-10-11):** `components/whatsapp-button.tsx`, fixed bottom right (48px on
+  phones, 56px from 640px; made smaller at Umair's request), opens `https://wa.me/923066595745`
+  (0306 6595745) with a typed-in message ("Hi SAT Sharks! I need some help. Here is my question or
+  issue: ", `WHATSAPP_MESSAGE`). In the `(site)`, `(landing)` and `(auth)` layouts, so
+  never on the `(test)` test screen; also hidden on `/admin/*` (staff pages with bottom save bars).
+  Footer links added: SAT Dates, FAQ; the footer has extra right padding from 640px up so the
+  button never covers a link.
 - Fonts Roboto (interface) and Noto Serif (question text) via `next/font`. Page container up to
   1700px wide, 16px/32px side padding — measured from the reference site's stylesheet.
 
@@ -227,6 +248,17 @@ Last updated: 2026-10-09 (nav hydration error fixed in `useMe`; pushed to both r
   1440/390px, free dashboard at 1440/390px, mock and drill dialogs; no horizontal overflow. The
   only console errors are the existing 401 session check and the nav hydration error (§8).
 
+- **FAQ / SAT dates / countdown / WhatsApp (2026-10-11):** type check; 49 unit tests; **17 e2e
+  checks** (new: public `GET /api/sat-dates` = defaults, 401/403 for visitor/student saves, six
+  invalid saves refused with a reason, sorted save, trimmed note, public endpoint follows, empty
+  list allowed, defaults restored). **11 browser checks** against the e2e `--serve 4100` API and a
+  `.next-test` web on 3100 with the seeded test accounts: landing FAQ (10 items, opens, Pricing
+  link), WhatsApp on landing/faq/sat-dates/pricing/login/register/dashboard/results and **not** on
+  a real drill's test screen or admin; `/sat-dates` hides past dates and marks Nov 7 next; dashboard
+  order countdown → cards → Exams, countdown ticks and its days match the calendar; admin editor
+  refuses a late deadline with the server's message, adds/removes/saves and the student's
+  dashboard and dates page follow at once; no sideways scroll at 390px; footer links clear of the
+  button at 1440/820/390px. Only console errors: the usual 401 session check and the deliberate 400.
 - **Announcements (2026-10-09, quick test as Umair asked):** typecheck clean; **16th e2e check**:
   free/paid/all audiences (incl. an expired plan = free), off and ended ones hidden, "show until"
   in the future shown, edit, delete (404 the second time), 400 on bad input, 403 for students.
@@ -322,6 +354,8 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-07 | Port the other site's full-test PDF upload; Umair left the design to Claude ("do what is best for this web"). Chosen: two papers per test + fixed-module mode in the mock engine; Math in LaTeX `$…$` like the bank; CATEGORY = bank domain or skill; students take uploaded tests as full tests only; test against an in-memory MongoDB, never Atlas |
 | 2026-10-07 | The admin question editor must work like the other site's: image upload, symbol bar, visual equation editor, editable choices with Set/Correct, question type |
 | 2026-10-09 | Free accounts get limited access to papers and exams; admins choose in the admin portal what free and paid accounts can open. Built as Admin → Access (per way of practising and per exam/test, plus a default for new ones); everything stays free until saved |
+| 2026-10-11 | FAQ text used **exactly as written** although parts are not true yet (explanations: none exist; "20 practice questions a day": no quota built; "Pro": the plans are Monthly / 3 Months / Till Test Day; "same time left": the clock keeps running while away; card payment / one-click cancel: no payments). Asked and confirmed |
+| 2026-10-11 | SAT dates editable in Admin (not fixed in code); dashboard countdown always to the next upcoming date |
 | 2026-10-08 | An upload asks where it goes: Practice tests or Exams. A real SAT (e.g. December) goes to Exams. Umair chose "exam card + full test": it behaves like the other exams (drill, random mocks) and can also be taken whole as a fixed adaptive test |
 
 ## 7. Facts about the source (verified)
@@ -401,7 +435,8 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   wrong question (`recordView` only writes if nobody moved the view first). The test screen sends
   views one at a time (`views` promise chain); keep it that way.
 - **In-memory `mongod` exits with code 3221225781 (0xC0000135, DLL not found)** (2026-10-08, fixed
-  2026-10-09 once the runtime was reinstalled):
+  2026-10-09 once the runtime was reinstalled, **missing again on 2026-10-11** and reinstalled the same day with Umair's permission:
+  `winget install --id Microsoft.VCRedist.2015+.x64 --exact --silent`):
   `vcruntime140.dll` / `msvcp140.dll` are missing from System32 (the VC++ Redistributable x64 is
   not installed any more). Install it from Microsoft (`aka.ms/vs/17/release/vc_redist.x64.exe`)
   before running the e2e; it is a system install, so ask Umair first.
@@ -459,6 +494,9 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
    Settings (defaults: the proposal's "starting suggestion", `DEFAULT_PRICING` in packages/types).
    The Terms page still says refund terms "will be published"; it should match the no-refund line.
 5. Remaining proposal items (§2 "Not built yet"), then deployment.
+6. **FAQ answers that are not true yet** (§6, 2026-10-11): update `components/faq.tsx` once
+   explanations, the daily drill quota, payments/cancel, and a paused clock exist, or reword them.
+   Also re-check the SAT dates each year in Admin → SAT dates (College Board publishes them).
 
 ## 10. Change log
 
@@ -633,3 +671,19 @@ Newest last. One entry per session or major step.
   `/pricing`, `/dashboard` logged "Hydration failed" once each before the fix and none after; with
   the session check delayed 4 s the nav shows the remembered account at 1.5 s, then follows the
   server's answer. Pushed to `origin` and `client`.
+- **2026-10-11 — FAQ, SAT dates, countdown, WhatsApp (Umair).** Added as in §2 (FAQ, SAT dates,
+  Dashboard countdown, WhatsApp button). Dates and fees checked on College Board's site the same
+  day (fees "through June 2027": $68, late +$38; Pakistan ID: original passport or national ID
+  card). Checked: type check (all workspaces); 13 logic checks on the dates schema and the
+  next-date / registration-status helpers; headless Chrome screenshots of `/dashboard`,
+  `/sat-dates`, `/faq`, `/admin/sat-dates` at 1440/390px, the landing FAQ and `/login`: no
+  horizontal overflow, WhatsApp shown except on admin, admin add-and-save works. The in-memory
+  e2e API could not start at first (VC++ runtime missing again, §8), so the first screenshots
+  used a throwaway stub API. Umair then allowed installing what testing needs: VC++ runtime
+  reinstalled with winget; new e2e check (17 pass) and 11 browser checks against the real test API
+  (§2 "Last verified"). The browser run found the WhatsApp button covering the footer's last link
+  on wide screens; fixed with footer right padding. Not committed.
+- **2026-10-11 — WhatsApp button smaller, with a message (Umair).** 56/64px → 48/56px; the chat
+  opens with a general help message typed in. Footer right padding reduced to match. Checked: type
+  check; headless Chrome at 1440/820/390px: sizes, number and decoded message correct, no footer
+  link covered. Not committed.

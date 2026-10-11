@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Announcements } from "@/components/announcements";
+import { FaqList } from "@/components/faq";
 import { HomeActions } from "@/components/home-actions";
 import { LandingTestDemo } from "@/components/landing-test-demo";
 import { Nav } from "@/components/nav";
@@ -617,6 +618,17 @@ function HowItWorks() {
   );
 }
 
+function Faq() {
+  return (
+    <section id="faq" className={`${container} flex scroll-mt-6 flex-col gap-12 pt-24 sm:pt-[150px]`}>
+      <SectionHeading eyebrow="FAQ" title="Questions students ask" />
+      <div className="mx-auto w-full max-w-[880px]">
+        <FaqList tone="landing" />
+      </div>
+    </section>
+  );
+}
+
 function ClosingCall() {
   return (
     <section className={`${container} pb-20 pt-24 sm:pb-[120px] sm:pt-[150px]`}>
@@ -648,6 +660,7 @@ export default function HomePage() {
       <Why />
       <TwoWays />
       <HowItWorks />
+      <Faq />
       <ClosingCall />
     </>
   );

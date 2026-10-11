@@ -360,6 +360,34 @@ export const pricingContentSchema = z.object({
   refundPolicy: z.string().trim().max(200),
 });
 
+// ---------- admin: SAT test dates ----------
+
+const calendarDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter dates as YYYY-MM-DD")
+  .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value), "That date does not exist");
+
+// Saved in date order, one entry per test day, each deadline before its test day.
+export const satDatesContentSchema = z.object({
+  dates: z
+    .array(
+      z
+        .object({
+          date: calendarDay,
+          registrationDeadline: calendarDay,
+          lateDeadline: calendarDay.nullable(),
+          note: z.string().trim().max(160),
+        })
+        .refine((entry) => entry.registrationDeadline < entry.date, { message: "The registration deadline must be before the test day" })
+        .refine((entry) => entry.lateDeadline === null || (entry.lateDeadline >= entry.registrationDeadline && entry.lateDeadline < entry.date), {
+          message: "The late deadline must be between the registration deadline and the test day",
+        }),
+    )
+    .max(40)
+    .refine((dates) => new Set(dates.map((entry) => entry.date)).size === dates.length, "Each test day can be listed only once")
+    .transform((dates) => [...dates].sort((a, b) => a.date.localeCompare(b.date))),
+});
+
 // ---------- admin: access by plan ----------
 
 const accessLevelSchema = z.enum(ACCESS_LEVELS);

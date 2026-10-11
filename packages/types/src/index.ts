@@ -712,6 +712,35 @@ export const DEFAULT_PRICING: PricingContent = {
   refundPolicy: "All payments are final: SAT Sharks does not offer refunds.",
 };
 
+// ---------- SAT test dates (edited in Admin → SAT dates, shown on /sat-dates and the dashboard) ----------
+
+// Days are calendar dates ("YYYY-MM-DD") with no time zone: a test day is the same date everywhere.
+export interface SatTestDate {
+  date: string;
+  registrationDeadline: string;
+  // Last day for late registration, changes and regular cancellation. null = not announced.
+  lateDeadline: string | null;
+  // Optional short note shown with the date, e.g. "Scores out about two weeks later". "" = none.
+  note: string;
+}
+
+export interface SatDatesContent {
+  dates: SatTestDate[];
+}
+
+// College Board's published 2026-27 SAT weekend dates (satsuite.collegeboard.org/sat/dates-deadlines)
+// and score release days (satsuite.collegeboard.org/scores/score-release-dates), checked 2026-10-11, used until an admin saves their own. The same dates apply in Pakistan.
+export const DEFAULT_SAT_DATES: SatDatesContent = {
+  dates: [
+    { date: "2026-10-03", registrationDeadline: "2026-09-18", lateDeadline: "2026-09-22", note: "Scores out Oct 16" },
+    { date: "2026-11-07", registrationDeadline: "2026-10-23", lateDeadline: "2026-10-27", note: "Scores out Nov 20" },
+    { date: "2026-12-05", registrationDeadline: "2026-11-20", lateDeadline: "2026-11-24", note: "Scores out Dec 18" },
+    { date: "2027-03-06", registrationDeadline: "2027-02-19", lateDeadline: "2027-02-23", note: "" },
+    { date: "2027-05-01", registrationDeadline: "2027-04-16", lateDeadline: "2027-04-20", note: "" },
+    { date: "2027-06-05", registrationDeadline: "2027-05-21", lateDeadline: "2027-05-25", note: "" },
+  ],
+};
+
 // ---------- access by plan (edited in Admin → Access) ----------
 
 // "free": every account. "paid": accounts with an active paid plan (and staff/admins).

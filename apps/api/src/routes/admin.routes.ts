@@ -24,6 +24,8 @@ import {
   setPapersStatus,
   setPaperStatus,
   setPricing,
+  setSatDates,
+  getSatDates,
   updateQuestion,
   uploadImage,
 } from "../controllers/admin.controller";
@@ -56,6 +58,8 @@ adminRouter.get("/settings/scoring", getConversionTables);
 adminRouter.put("/settings/scoring", requirePermission("papers:write"), setConversionTables);
 adminRouter.get("/settings/pricing", getPricing);
 adminRouter.put("/settings/pricing", requirePermission("papers:write"), setPricing);
+adminRouter.get("/settings/sat-dates", getSatDates);
+adminRouter.put("/settings/sat-dates", requirePermission("papers:write"), setSatDates);
 adminRouter.get("/settings/access", requirePermission("papers:read"), getAccess);
 adminRouter.put("/settings/access", requirePermission("papers:write"), setAccess);
 

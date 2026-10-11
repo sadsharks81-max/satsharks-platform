@@ -3,18 +3,21 @@ import {
   DEFAULT_ACCESS,
   DEFAULT_PRICING,
   DEFAULT_ROUTING_THRESHOLD_PERCENT,
+  DEFAULT_SAT_DATES,
   type AccessSettings,
   type AdaptiveSettings,
   type ConversionTables,
   type PricingContent,
+  type SatDatesContent,
 } from "@satsharks/types";
-import { accessSettingsSchema, conversionTablesSchema, pricingContentSchema } from "@satsharks/validation";
+import { accessSettingsSchema, conversionTablesSchema, pricingContentSchema, satDatesContentSchema } from "@satsharks/validation";
 import { emptyConversionTables } from "./scoring";
 
 const ADAPTIVE_KEY = "adaptive";
 const SCORING_KEY = "scoring.conversionTables";
 const PRICING_KEY = "pricing";
 const ACCESS_KEY = "access";
+const SAT_DATES_KEY = "satDates";
 
 // Scores are read for every attempt in a list, so the tables are kept in memory briefly. Saving
 // clears the copy at once on this instance.
@@ -66,6 +69,19 @@ export const settingsService = {
   async setPricing(pricing: PricingContent, userId: string): Promise<PricingContent> {
     await SettingModel.updateOne({ key: PRICING_KEY }, { $set: { value: pricing, updatedBy: userId } }, { upsert: true });
     return this.getPricing();
+  },
+
+  // Shown on the public SAT dates page and the dashboard countdown. Until an admin saves their own,
+  // College Board's published dates.
+  async getSatDates(): Promise<SatDatesContent> {
+    const stored = await SettingModel.findOne({ key: SAT_DATES_KEY }).lean();
+    const parsed = satDatesContentSchema.safeParse(stored?.value);
+    return parsed.success ? parsed.data : DEFAULT_SAT_DATES;
+  },
+
+  async setSatDates(content: SatDatesContent, userId: string): Promise<SatDatesContent> {
+    await SettingModel.updateOne({ key: SAT_DATES_KEY }, { $set: { value: content, updatedBy: userId } }, { upsert: true });
+    return this.getSatDates();
   },
 
   // Read on every catalog load and every start, so kept in memory briefly like the tables.
