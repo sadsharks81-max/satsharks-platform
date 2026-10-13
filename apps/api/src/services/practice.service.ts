@@ -34,6 +34,7 @@ import {
   MOCK_FORMAT,
   MOCK_MODULE_LABELS,
   SECTION_LABELS,
+  SECTION_PACE_SECONDS,
   SECTIONS,
   type AttemptNavItem,
   type AttemptQuestion,
@@ -51,11 +52,13 @@ import {
   TEST_UPLOAD_SOURCE,
   uploadAccessKey,
 } from "@satsharks/types";
-import type { CreateAttemptInput, CreateFullTestInput, CreateMockInput, SaveAnswerInput } from "@satsharks/validation";
+import type { BankDrillInput, CreateAttemptInput, CreateFullTestInput, CreateMockInput, RetryDrillInput, SaveAnswerInput } from "@satsharks/validation";
 import mongoose from "mongoose";
 import { AppError } from "../utils/app-error";
 import { gradeAnswer } from "../utils/grading";
 import { paidOnly, requireContent, requireFeature, type UserAccess } from "./access.service";
+import { activityService } from "./activity.service";
+import { historyService } from "./history.service";
 import { orderModule, pickModule, requiredForHard, type Candidate } from "./mock-assembly";
 import { sectionScore, totalScore } from "./scoring";
 import { settingsService } from "./settings.service";
@@ -242,6 +245,8 @@ async function attemptTitle(attempt: AttemptDoc): Promise<string> {
     const first = papers[0]?.title.split(" — ")[0] ?? "Selected exams";
     return papers.length > 1 ? `${first} + ${papers.length - 1} more` : first;
   }
+  if (attempt.origin === "retry") return "Mistake bank";
+  if (attempt.origin === "bank") return "All exams";
   const paper = attempt.paperId ? await PaperModel.findById(attempt.paperId).select("title").lean<PaperDoc>() : null;
   return paper?.title ?? "";
 }
@@ -276,6 +281,8 @@ async function withScore(attempt: AttemptDoc): Promise<AttemptDoc> {
 async function finalize(attempt: AttemptDoc): Promise<AttemptDoc> {
   if (attempt.status === "done") return attempt;
   const now = Date.now();
+  // Closed by the clock (not by the student): blanks left now count as "ran out of time".
+  const timedOut = attempt.timed && attempt.timeLimitSeconds !== null && now >= deadline(attempt);
   const items = await gradeItems(itemsWithOpenView(attempt, attempt.items, now));
   const correct = items.filter((item) => item.correct === true).length;
   const unanswered = items.filter((item) => item.answer === null).length;
@@ -289,6 +296,7 @@ async function finalize(attempt: AttemptDoc): Promise<AttemptDoc> {
     completedAt: new Date(now),
     viewPosition: null,
     viewStartedAt: null,
+    timedOut,
   };
   if (attempt.kind === "mock") {
     set.m1Correct = items.filter((item) => item.module === "m1" && item.correct === true).length;
@@ -303,6 +311,9 @@ async function finalize(attempt: AttemptDoc): Promise<AttemptDoc> {
     set.timeUsedSeconds = closingTime;
   }
   const updated = await AttemptModel.findOneAndUpdate({ _id: attempt._id, status: "active" }, { $set: set }, { new: true }).lean<AttemptDoc>();
+  // Every question goes into the permanent history (points, streak, mistake bank). Only the request
+  // that closed the attempt does this; logging is idempotent anyway.
+  if (updated) await activityService.recordAttempt(updated, updated.items);
   // Another request finished it first: return that result.
   return updated ?? (await AttemptModel.findById(attempt._id).lean<AttemptDoc>())!;
 }
@@ -381,6 +392,7 @@ async function startMock(
   const attempt = await AttemptModel.create({
     userId,
     kind: "mock",
+    origin: "mock",
     name: options.name,
     section: options.section,
     paperId: "fixed" in source ? source.fixed.paperId : null,
@@ -432,6 +444,7 @@ async function submitModuleOne(attempt: AttemptDoc): Promise<AttemptDoc> {
         m2Type,
         m1Correct,
         m1TimeUsedSeconds: moduleTimeUsed(attempt, graded, now),
+        m1TimedOut: attempt.timed && attempt.timeLimitSeconds !== null && now >= deadline(attempt),
         routingThresholdPercent,
         routingRequiredCorrect: required,
         startedAt: new Date(now),
@@ -618,6 +631,7 @@ export const practiceService = {
     const attempt = await AttemptModel.create({
       userId,
       kind: "drill",
+      origin: "exam",
       name: input.name || `${paper.title.split(" — ")[0]} practice`,
       section,
       paperId: paper._id,
@@ -626,6 +640,69 @@ export const practiceService = {
       items: picked.map((row) => ({ questionId: row._id })),
     });
     return toSummary(attempt.toObject(), paper.title);
+  },
+
+  // Drill mode across the whole bank (every exam the account can open), by topic, skill and
+  // difficulty, with instant feedback. Also what the analytics "practise it" buttons start.
+  async createBankDrill(userId: string, input: BankDrillInput, access: UserAccess): Promise<AttemptSummary> {
+    requireFeature(access, "drills");
+    const catalog = await this.catalog(access);
+    const paperIds = catalog.exams
+      .filter((exam) => !exam.locked)
+      .map((exam) => exam.sections[input.section]?.paperId)
+      .filter((id): id is string => !!id)
+      .map((id) => new mongoose.Types.ObjectId(id));
+    if (paperIds.length === 0) throw AppError.badRequest(`No ${SECTION_LABELS[input.section]} exams are open to your account`);
+
+    // Aggregation pipelines are not sanitized: every value is validated input or from the database.
+    const match: Record<string, unknown> = { paperId: { $in: paperIds }, section: input.section, status: "published", tags: { $ne: FULL_TEST_QUESTION_TAG } };
+    if (input.topics.length > 0) match.topic = { $in: input.topics };
+    if (input.skills.length > 0) match.skill = { $in: input.skills };
+    if (input.difficulty) match.difficulty = input.difficulty;
+    if (input.excludeAnswered) {
+      const answered = await AttemptModel.aggregate<{ _id: mongoose.Types.ObjectId }>([
+        { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+        { $unwind: "$items" },
+        { $match: { "items.answer": { $ne: null } } },
+        { $group: { _id: "$items.questionId" } },
+      ]);
+      if (answered.length > 0) match._id = { $nin: answered.map((row) => row._id) };
+    }
+    const picked = await QuestionModel.aggregate<{ _id: mongoose.Types.ObjectId }>([{ $match: match }, { $sample: { size: input.count } }, { $project: { _id: 1 } }]);
+    if (picked.length === 0) throw AppError.badRequest("No questions match those filters");
+
+    const label = input.skills.length === 1 ? input.skills[0]! : input.topics.length === 1 ? input.topics[0]! : SECTION_LABELS[input.section];
+    // Timed without a length: the official pace for this many questions.
+    const minutes = input.timeMinutes ?? Math.max(1, Math.ceil((picked.length * SECTION_PACE_SECONDS[input.section]) / 60));
+    const attempt = await AttemptModel.create({
+      userId,
+      kind: "drill",
+      origin: "bank",
+      name: input.name || `${label} drill`,
+      section: input.section,
+      paperId: null,
+      timed: input.timed,
+      timeLimitSeconds: input.timed ? minutes * 60 : null,
+      items: picked.map((row) => ({ questionId: row._id })),
+    });
+    return toSummary(attempt.toObject(), "All exams");
+  },
+
+  // The retry queue: the section's mistakes that are due today, as a drill with instant feedback.
+  async createRetryDrill(userId: string, input: RetryDrillInput, access: UserAccess): Promise<AttemptSummary> {
+    const ids = await historyService.dueQuestionIds(userId, input.section, input.count, access.feature("analytics"));
+    if (ids.length === 0) throw AppError.badRequest("No mistakes are due in this section right now");
+    const attempt = await AttemptModel.create({
+      userId,
+      kind: "drill",
+      origin: "retry",
+      name: `Mistake retry: ${SECTION_LABELS[input.section]}`,
+      section: input.section,
+      paperId: null,
+      timed: false,
+      items: ids.map((questionId) => ({ questionId })),
+    });
+    return toSummary(attempt.toObject(), "Mistake bank");
   },
 
   // Starts an adaptive mock: builds Module 1 now. Module 2 is built when Module 1 is submitted.
@@ -745,7 +822,7 @@ export const practiceService = {
   },
 
   async listFullTests(userId: string): Promise<FullTestSummary[]> {
-    const fullTests = await FullTestModel.find({ userId }).sort({ createdAt: -1 }).limit(50).lean<FullTestDoc[]>();
+    const fullTests = await FullTestModel.find({ userId, removedAt: null }).sort({ createdAt: -1 }).limit(50).lean<FullTestDoc[]>();
     return Promise.all(fullTests.map((fullTest) => fullTestSummary(userId, fullTest)));
   },
 
@@ -755,17 +832,19 @@ export const practiceService = {
     const attempt = await AttemptModel.findOne({ _id: attemptId, userId }).select("fullTestId").lean<AttemptDoc>();
     if (!attempt) throw AppError.notFound("Attempt not found");
     if (attempt.fullTestId) throw AppError.conflict("This section belongs to a full test. Delete the full test instead.");
-    await AttemptModel.deleteOne({ _id: attempt._id, userId });
+    // Removed from the student's lists only: history and analytics keep every attempt (proposal 3.1).
+    await AttemptModel.updateOne({ _id: attempt._id, userId }, { $set: { removedAt: new Date() } });
   },
 
   async deleteFullTest(userId: string, fullTestId: string): Promise<void> {
     const fullTest = await loadFullTest(userId, fullTestId);
-    await AttemptModel.deleteMany({ fullTestId: fullTest._id, userId });
-    await FullTestModel.deleteOne({ _id: fullTest._id, userId });
+    const removedAt = new Date();
+    await AttemptModel.updateMany({ fullTestId: fullTest._id, userId }, { $set: { removedAt } });
+    await FullTestModel.updateOne({ _id: fullTest._id, userId }, { $set: { removedAt } });
   },
 
   async listAttempts(userId: string): Promise<AttemptSummary[]> {
-    const attempts = await AttemptModel.find({ userId }).sort({ createdAt: -1 }).limit(100).lean<AttemptDoc[]>();
+    const attempts = await AttemptModel.find({ userId, removedAt: null }).sort({ createdAt: -1 }).limit(100).lean<AttemptDoc[]>();
     return Promise.all(attempts.map(async (attempt) => summary(await withScore(attempt))));
   },
 
@@ -804,13 +883,16 @@ export const practiceService = {
 
     const index = position - 1;
     const set: Record<string, unknown> = { lastPosition: position };
+    const update: Record<string, unknown> = { $set: set };
     if (input.answer !== undefined) set[`items.${index}.answer`] = input.answer === "" ? null : input.answer;
     if (input.flagged !== undefined) set[`items.${index}.flagged`] = input.flagged;
+    // Each different answer is remembered (last 10), to spot a right answer changed to a wrong one.
+    if (input.answer && input.answer !== item.answer) update.$push = { [`items.${index}.answers`]: { $each: [input.answer], $slice: -10 } };
     // The module guard repeats the check in the write itself, so a save racing a module
     // submission cannot land in a closed module.
     const filter: Record<string, unknown> = { _id: attempt._id, status: "active" };
     if (attempt.kind === "mock") filter.currentModule = attempt.currentModule;
-    const result = await AttemptModel.updateOne(filter, { $set: set });
+    const result = await AttemptModel.updateOne(filter, update);
     if (result.matchedCount === 0) throw AppError.conflict("This module has already been submitted");
 
     const answer = input.answer !== undefined ? (input.answer === "" ? null : input.answer) : item.answer;
@@ -833,6 +915,11 @@ export const practiceService = {
       { _id: attempt._id, status: "active" },
       { $set: { [`items.${index}.checked`]: true, [`items.${index}.correct`]: correct } },
     );
+    // Into the history now (with the time it has been open), without delaying the answer.
+    const open = openViewSeconds(attempt, Date.now());
+    const seconds = (item.timeSpentSeconds ?? 0) + (open && open.index === index ? open.seconds : 0);
+    const items = attempt.items.map((entry, i) => (i === index ? { ...entry, checked: true, correct, timeSpentSeconds: seconds } : entry));
+    void activityService.recordAttempt(attempt, items, [position]);
     return toQuestionView(question, { ...item, checked: true, correct }, position, true);
   },
 

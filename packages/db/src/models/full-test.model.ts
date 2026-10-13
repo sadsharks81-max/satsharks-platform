@@ -21,6 +21,8 @@ export interface FullTestDoc {
   // 400–1600: the two section scores added together, once both exist.
   totalScore: number | null;
   completedAt: Date | null;
+  // The student deleted it from their lists. Kept for history and analytics.
+  removedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +42,7 @@ const fullTestSchema = new Schema<FullTestDoc>(
     mathAttemptId: { type: Schema.Types.ObjectId, ref: "Attempt", default: null },
     totalScore: { type: Number, default: null },
     completedAt: { type: Date, default: null },
+    removedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

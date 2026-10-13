@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MOCK_MODULE_LABELS, SECTION_LABELS, type AttemptSummary, type ModuleResult, type ReviewQuestion } from "@satsharks/types";
 import { Choices, Passage, Prompt, ResponseInput } from "@/components/question";
@@ -136,6 +136,13 @@ function Results({ attemptId }: { attemptId: string }) {
   const [moduleFilter, setModuleFilter] = useState<"all" | "m1" | "m2">("all");
   const [openPosition, setOpenPosition] = useState<number | null>(null);
   const [reporting, setReporting] = useState(false);
+
+  // ?q=<position> opens that question (links from History and the mistake bank). Read after mount:
+  // the server render never knows the query string here.
+  useEffect(() => {
+    const position = parseInt(new URLSearchParams(window.location.search).get("q") ?? "", 10);
+    if (position > 0) setOpenPosition(position);
+  }, []);
 
   if (isLoading) return <Spinner label="Loading results" />;
   if (error) {

@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-12 (one device at a time for students; hidden developer accounts; pushed to both remotes).
+Last updated: 2026-10-14 (Week 3 of the proposal: history, mistake bank, analytics, goals, streaks, leaderboard; student panel. Not committed).
 
 ---
 
@@ -13,7 +13,14 @@ Last updated: 2026-10-12 (one device at a time for students; hidden developer ac
 - **Client:** SAT Sharks. **Developer contact:** Umair (works in this repository).
 - **What it is:** a Digital SAT practice platform. Full scope and 4-week plan: the client proposal,
   kept locally at `docs/purposal/SAT_Sharks_Proposal_v4_4Weeks.pdf` (git-ignored: it is marked
-  Confidential and the repository is public).
+  Confidential and the repository is public). **On 2026-10-14 that file was no longer on disk**;
+  Umair attached it in the chat instead. Ask him to put it back. Do **not** use
+  `D:\PROJECTS\SAT Sharks\SAT Sharks Proposal v2.pdf` (an older, phase-based proposal with
+  counseling/essays) or the other site's "Phase4 Proposal.docx": wrong documents for this project.
+- **Proposal v4 weeks:** 1 foundation & question bank (1.1, 1.2) · 2 test engine (2.1, 2.2) ·
+  **3 analytics, history & engagement (3.1 history/mistake bank/drills, 3.2 performance analytics,
+  3.3 goals/streaks/leaderboard; built 2026-10-14)** · 4 money, admin, SEO & launch (4.1 plans,
+  payments & conversion, 4.2 admin portal & paper control, 4.3 SEO & GEO, 4.4 testing & launch).
 - **Reference site:** `bluecorn.org` (also branded "Bluebooky"; API host `ciao.bluebooky.org`).
   Umair wants SAT Sharks to work like it. Its screenshots are in `docs/references/screenshots/`.
   SAT Sharks keeps its own name and branding; layout, fonts and spacing follow the reference.
@@ -179,6 +186,54 @@ Last updated: 2026-10-12 (one device at a time for students; hidden developer ac
 - Fonts Roboto (interface) and Noto Serif (question text) via `next/font`. Page container up to
   1700px wide, 16px/32px side padding — measured from the reference site's stylesheet.
 
+- **Student panel (2026-10-14, reshaped the same day at Umair's request):** the student **home
+  `/dashboard` is unchanged** (countdown, start cards, exams; no sidebar). The nav has **Home ·
+  Dashboard · Review** for students; **Dashboard opens `/portal`**, the panel's own page ("today"
+  strip `components/today-strip.tsx`: goal, streak, mistakes due, predicted score vs target; then a
+  card per section). Panel pages sit in `app/(site)/(student)/` (URLs unchanged) beside
+  `components/student-sidebar.tsx` ("Student portal": Dashboard (/portal), My tests (/practice),
+  History, Mistake bank (red due count), Analytics, Goals & streaks, Leaderboard; streak, Home,
+  SAT dates, FAQ, Upgrade at the bottom; a tab strip on phones). Results and full-test pages are in
+  the panel too. The nav saves the browser's time zone for students (`useTimeZoneSync`;
+  `PublicUser.timeZone`).
+- **Week 3 (proposal 3.1–3.3, 2026-10-14).** Everything reads from a **permanent question log**
+  (`questionlogs`, `QuestionLogModel`): one entry per question per attempt, written by
+  `activity.service.ts` when a drill question is checked (in the background) and when an attempt
+  ends (`finalize`); drill blanks are not logged, test blanks are. It also gives points, day totals
+  (`dailystats`), the streak (user `streak`) and the mistake bank (`mistakes`). Pure rules in
+  `services/engagement-rules.ts` (unit-tested).
+  - **3.1** Deleting a drill/mock/full test now only sets `removedAt` (hidden from My tests, kept in
+    history and analytics). History page: tests with score, change since the previous one of its
+    kind, score-over-time chart; questions with filters (result, section, topic, difficulty, dates),
+    each opening its review (`/practice/<id>/results?q=<n>`). Mistake bank: every wrong answer;
+    **retry queue** 1, 3, 7, 16 days (wrong again → next wait, stays at 16; right → fixed; wrong
+    later → reopens). "Retry" starts a drill of due mistakes (`POST /api/practice/drills/retry`).
+    **Drill mode across the bank**: "All exams (by topic and skill)" in the drill dialog
+    (`POST /api/practice/drills/bank`, open exams only, origin `bank`).
+  - **3.2** `analytics.service.ts`, page /analytics: predicted score = weighted average of each
+    section's last 5 scores, total moves **at most 50 points per scored section**, range ±30–100
+    narrowing with data, trend chart; skills sorted by estimated points to gain
+    ((1 − accuracy) × skill's share of the bank × 600); error patterns (changed a right answer —
+    answers are now remembered per item, `items.answers`; ran out of time — blanks when the clock
+    closed a module, `m1TimedOut`/`timedOut`; trap — the wrong choice ≥40% of ≥5 students' wrong
+    answers picked; topic not known — skill accuracy < 60%; otherwise careless); timing (average vs
+    official pace 71 s / 95 s, pace chart of the latest timed test, slowest questions). Each part
+    ends with a next step and a button that starts the matching drill.
+  - **3.3** Daily goal (questions or minutes; suggested 20 + 10 × points-per-day still needed,
+    15–80) from target score, predicted score and test date (own or next SAT date). Streak = days the
+    goal was met, in the student's time zone; freezes used by themselves (free 1, paid 3 a month);
+    badges at 7/30/100. Points: 10 right (+5 hard), 2 for a real wrong try, nothing under 10 s (R&W) /
+    8 s (Math), nothing for a set that is mostly that fast, 300 a day at most. Leaderboards global /
+    country / friends (friend codes, both ways), week (ISO, Monday) / all time; first name + initial;
+    opt-out. Share card (canvas, 1080×1350, real first/best full-test totals and streak; share sheet,
+    download, WhatsApp). **Emails** `jobs/engagement-emails.ts` in the API every 15 min: streak at risk
+    (7–10 pm local) and weekly progress (Monday 9–12 local), claimed in the DB so never sent twice;
+    off without Resend or with `ENGAGEMENT_EMAILS=off`. Settings on Goals & streaks.
+  - **Free vs paid** (proposal p.10): new Access feature **"Full analytics & mistake bank"**
+    (`analytics`). Locked: score only (no range/trend), top 3 weak areas, no error/timing analysis,
+    last 20 mistakes. **Free until an admin saves Admin → Access**, like the others; a setting saved
+    before this feature existed keeps its choices and reads analytics as free.
+
 ### Not built yet
 
 - Conversion-table **values** from SAT Sharks (the built-in estimate is used until then; the admin editor is ready). Per-paper tables
@@ -190,6 +245,9 @@ Last updated: 2026-10-12 (one device at a time for students; hidden developer ac
 - AI extraction from free-form PDFs (proposal Checkpoint 1.2). Only the strict-format test upload
   exists. Building papers from approved bank questions.
 - Highlighter/notes, line reader (Checkpoint 2.1). Re-grading old attempts after an answer key is fixed.
+- Week 3 gaps: history starts on 2026-10-14 for questions (older attempts were never logged; their
+  test scores do appear in test history and the prediction). Points/streak reminders are emails only
+  (no in-app notifications). Free "20 drill questions a day" quota (4.1) not built.
 
 ### Deployment (in progress, 2026-10-09)
 
@@ -301,6 +359,9 @@ Last updated: 2026-10-12 (one device at a time for students; hidden developer ac
   `9fad05e` "few changes done"). Next commit (2026-10-11, Claude): "Show an estimated score
   instead of Pending", pushed to both remotes. Next (2026-10-12, Claude): "One device at a time
   for students; hidden developer accounts", pushed to both remotes.
+- **Uncommitted (2026-10-14):** Week 3 + student panel (student pages moved with `git mv` into
+  `app/(site)/(student)/`). Ask Umair before committing or pushing. Deploying it needs the API and
+  web redeployed together (new `/api/student/*` routes).
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -351,6 +412,7 @@ npm workspaces monorepo, TypeScript everywhere, run with `tsx` (no build step fo
 | `packages/db` | Mongoose models: User, Paper, Question, Asset, Attempt, Setting; `connectMongo`, `trusted` |
 | `packages/config`, `packages/utils` | Env loading; logger and helpers |
 | Uploaded tests | `apps/api/src/services/test-upload.service.ts`, `test-upload-parser.ts`, `pdf-text.ts`; `packages/db/.../test-upload.model.ts`; web `app/(site)/admin/tests/**`, `components/question-form.tsx`, `math-input.tsx`, `practice-tests.tsx`, `test-upload-ui.tsx`; `public/full-test/` (format guide, builder, samples); `public/mathlive/fonts` |
+| Week 3 | API: `services/activity.service.ts` (logging, points, mistakes, streak), `engagement-rules.ts` (pure rules), `history.service.ts`, `analytics.service.ts`, `engagement.service.ts`, `jobs/engagement-emails.ts`, `controllers/student.controller.ts`, `routes/student.routes.ts` (`/api/student/*`); db `question-log`, `mistake`, `daily-stat` models; web `app/(site)/(student)/{history,mistakes,analytics,goals,leaderboard}`, `components/{student-sidebar,charts,share-card,today-strip}.tsx`, `lib/engagement.ts` |
 | `docs/` | `full-test-upload.md`, `architecture.md`, `database.md`, `api.md`, `scraping.md`, `adaptive-testing.md`, `security.md`, `performance.md`, `phase-1-completion.md`, this file |
 
 Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
@@ -493,6 +555,15 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   `lib/auth.ts` reports "loading, no user" while its component hydrates (`useHydrated()`,
   `useSyncExternalStore` with a `false` server snapshot), then the remembered account on the next
   render. Anything user-dependent must read the account through `useMe()`, not the query directly.
+- **The Bash tool fails on heredocs containing backticks** ("unexpected EOF while looking for
+  matching"). Write the script with the Write tool into the scratchpad and run it.
+- **The e2e makes > 300 requests a minute from one address** (`apiRateLimit`): a long check resets
+  the limiter first (`apiRateLimit.resetKey`). Bank drills in the e2e also draw the uploaded exam's
+  questions (keys are not all "A"): answer from each question's real key.
+- **Grid items keep their content's min width:** a wide table inside `grid gap-4` widened the page
+  on phones. Use `grid grid-cols-1` (or `minmax(0,1fr)`).
+- **Users are read with `lean()`**, so fields added later (`engagement`, `streak`, `totalPoints`,
+  `friends`) are missing on older accounts: read them through `engagementOf` / `streakOf`.
 - Testing in the app needs an account. Use temporary accounts `phase1-test-*@example.com`
   (create with `create:admin` or `/api/auth/register`) and delete them afterwards. Never use or
   change Umair's own accounts.
@@ -523,6 +594,13 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 6. **FAQ answers that are not true yet** (§6, 2026-10-11): update `components/faq.tsx` once
    explanations, the daily drill quota, payments/cancel, and a paused clock exist, or reword them.
    Also re-check the SAT dates each year in Admin → SAT dates (College Board publishes them).
+
+7. **Week 3 decisions made by Claude (2026-10-14), open for Umair/client:** analytics/mistake-bank
+   limits as an Access switch (free until saved); points 10/+5/2, minimum seconds 10/8, cap 300;
+   goal suggestion formula; streak = daily goal met; deleting only hides; streak/weekly emails on
+   by default when Resend is set up (students can turn them off). Week 3 sign-off "every number on
+   screen must be true": the card and dashboard only show the student's own numbers.
+8. **Proposal PDF**: put `SAT_Sharks_Proposal_v4_4Weeks.pdf` back in `docs/purposal/`.
 
 ## 10. Change log
 
@@ -733,3 +811,25 @@ Newest last. One entry per session or major step.
   still logs in with its paid plan). **Until the API is redeployed, the live Users page still
   lists both accounts.** Pushed to both remotes. Umair asked for simpler passwords; the change was
   blocked by the session's safety check, so he was given the command to run himself.
+- **2026-10-14 — Week 3 of the proposal + student panel (Umair).** Started from the wrong proposal
+  (v2, counseling/essays/payments: the v4 PDF was missing); Umair stopped it, the only change
+  (types) was reverted, and he attached the v4 PDF. Built 3.1–3.3 and the student panel as in §2.
+  New collections `questionlogs`, `mistakes`, `dailystats`; new fields on users (`engagement`,
+  `streak`, `totalPoints`, `friendCode`, `friends`, `lastStreakReminderDay`, `lastWeeklyEmailWeek`),
+  attempts (`origin`, `removedAt`, `m1TimedOut`, `timedOut`, `items.answers`) and full tests
+  (`removedAt`); env `ENGAGEMENT_EMAILS`. Checked: type check (only stale `apps/web/.next/types` of
+  the moved pages fail; they regenerate); **62 unit tests** (11 new for the rules); **20 e2e checks**
+  (new: drill by skill, check-time and end-time logging, changed answer, points and day totals,
+  mistake bank and retry waits 1→3 days, fixed on a right answer, nothing for random clicking,
+  removed drill kept in history, history filters, prediction capped at +50, test history changes,
+  goal → streak, bad settings refused, leaderboards and friends, opt-out, locked free view, share
+  card). Headless Chrome against the e2e `--serve 4100` API and a `.next-test` web on 3100 with
+  seeded activity: dashboard, history, mistakes, analytics, goals, leaderboard, my tests at
+  1440/390px, no console errors; History and Leaderboard scrolled sideways on phones (fixed, re-checked);
+  empty pace chart from a test with no questions (query fixed). **Not tested:** real emails (no
+  Resend here), `next build`. Not committed.
+- **2026-10-14 — Student home back as it was (Umair).** The panel made the home page crowded.
+  `/dashboard` restored to the committed version (outside the panel, no strip); new `/portal`
+  page (sidebar row "Dashboard") holds the strip and links; nav button "Dashboard" opens it; time
+  zone sync moved to the nav (`timeZone` added to `/api/auth/me`). Checked: type check; headless
+  Chrome of `/dashboard` and `/portal` at 1440/390px, no overflow, no console errors. Not committed.

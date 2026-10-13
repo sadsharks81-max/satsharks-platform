@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 import {
   ATTEMPT_KINDS,
+  ATTEMPT_ORIGINS,
   ATTEMPT_STATUSES,
   SECTIONS,
   type AttemptKind,
+  type AttemptOrigin,
   type AttemptStatus,
   TIME_MULTIPLIERS,
   type MockModule,
@@ -26,12 +28,17 @@ export interface AttemptItem {
   correct: boolean | null;
   // Seconds the question was on screen, added up by the server each time the student moves on.
   timeSpentSeconds: number;
+  // Every different answer the student gave, oldest first (last 10), to spot a right answer
+  // changed to a wrong one. Empty for attempts made before it was recorded.
+  answers: string[];
 }
 
 export interface AttemptDoc {
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   kind: AttemptKind;
+  // Where the questions came from (see AttemptOrigin). Older attempts: derived from kind.
+  origin: AttemptOrigin | null;
   name: string;
   section: Section;
   // Drill: the one paper it was drawn from. Mock: null when drawn from every exam.
@@ -71,6 +78,12 @@ export interface AttemptDoc {
   m2TimeUsedSeconds: number | null;
   // 200–800 from the conversion table for the route taken. null until the table exists.
   sectionScore: number | null;
+  // Module 1 was closed by its clock running out (blanks there count as "ran out of time").
+  m1TimedOut: boolean;
+  // The whole attempt (or its last module) ended because the time ran out.
+  timedOut: boolean;
+  // The student deleted it from their lists. Kept for history and analytics (saved permanently).
+  removedAt: Date | null;
 
   correct: number;
   incorrect: number;
@@ -91,6 +104,7 @@ const itemSchema = new Schema<AttemptItem>(
     checked: { type: Boolean, default: false },
     correct: { type: Boolean, default: null },
     timeSpentSeconds: { type: Number, default: 0 },
+    answers: { type: [String], default: [] },
   },
   { _id: false },
 );
@@ -99,6 +113,7 @@ const attemptSchema = new Schema<AttemptDoc>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     kind: { type: String, enum: ATTEMPT_KINDS, default: "drill" },
+    origin: { type: String, enum: [...ATTEMPT_ORIGINS, null], default: null },
     name: { type: String, required: true, trim: true, maxlength: 80 },
     section: { type: String, enum: SECTIONS, required: true },
     paperId: { type: Schema.Types.ObjectId, ref: "Paper", default: null },
@@ -123,6 +138,9 @@ const attemptSchema = new Schema<AttemptDoc>(
     m1TimeUsedSeconds: { type: Number, default: null },
     m2TimeUsedSeconds: { type: Number, default: null },
     sectionScore: { type: Number, default: null },
+    m1TimedOut: { type: Boolean, default: false },
+    timedOut: { type: Boolean, default: false },
+    removedAt: { type: Date, default: null },
     correct: { type: Number, default: 0 },
     incorrect: { type: Number, default: 0 },
     unanswered: { type: Number, default: 0 },

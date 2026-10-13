@@ -1,5 +1,5 @@
 export { connectMongo, disconnectMongo, isMongoConnected } from "./connection";
-export { effectivePlan, UserModel, type UserDoc } from "./models/user.model";
+export { effectivePlan, UserModel, type UserDoc, type UserEngagement, type UserStreak } from "./models/user.model";
 export { PaperModel, type PaperDoc } from "./models/paper.model";
 export { QuestionModel, type QuestionDoc } from "./models/question.model";
 export { AssetModel, type AssetDoc } from "./models/asset.model";
@@ -9,4 +9,7 @@ export { FullTestModel, type FullTestDoc } from "./models/full-test.model";
 export { ProblemReportModel, type ProblemReportDoc, type ReportEvent } from "./models/problem-report.model";
 export { TestUploadModel, type TestUploadDoc, type TestUploadSectionDoc } from "./models/test-upload.model";
 export { AnnouncementModel, type AnnouncementDoc } from "./models/announcement.model";
+export { QuestionLogModel, type QuestionLogDoc } from "./models/question-log.model";
+export { MistakeModel, type MistakeDoc } from "./models/mistake.model";
+export { DailyStatModel, type DailyStatDoc } from "./models/daily-stat.model";
 export { trusted } from "./connection";

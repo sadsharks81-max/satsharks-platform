@@ -19,7 +19,8 @@ function progress(attempt: AttemptSummary): string {
 
 const primaryLink = "flex-1 rounded-lg bg-brand-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-brand-600";
 
-// Deleting is permanent, so it is confirmed in a dialog first.
+// Deleting removes it from the student's lists, confirmed in a dialog first. History and analytics
+// keep it (every question attempted is saved permanently).
 function DeleteButton({ path, what, name }: { path: string; what: string; name: string }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -55,7 +56,7 @@ function DeleteButton({ path, what, name }: { path: string; what: string; name: 
       {open && (
         <Modal title={`Delete this ${what}?`} onClose={() => !busy && setOpen(false)}>
           <p className="text-sm text-slate-700">
-            <b>{name}</b> and all its answers{what === "full test" ? " in both sections" : ""} will be deleted. This cannot be undone.
+            <b>{name}</b> will be removed from your lists. Your answers stay in your History, mistake bank and analytics.
           </p>
           {error && (
             <div className="mt-3">

@@ -28,6 +28,7 @@ export function toPublicUser(user: UserDoc): PublicUser {
     country: user.country ?? null,
     region: user.region ?? null,
     plan: effectivePlan(user),
+    timeZone: user.engagement?.timeZone ?? null,
   };
 }
 

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useMe, useSwitchUser } from "@/lib/auth";
+import { useTimeZoneSync } from "@/lib/engagement";
 import { Logo } from "./logo";
 
 const button = "whitespace-nowrap rounded-[6px] bg-brand-500 px-5 py-2 text-[14px] font-bold tracking-tight text-white transition hover:opacity-90";
@@ -40,6 +41,7 @@ export function Nav({ tone = "light" }: { tone?: keyof typeof TONES }) {
   const switchUser = useSwitchUser();
   const { data: user, isLoading } = useMe();
   const [menuOpen, setMenuOpen] = useState(false);
+  useTimeZoneSync(user);
   // Admin links are shown only when the signed-in account has admin access. The pages and the
   // API check this again; hiding the link is for clarity, not security.
   const isAdmin = user?.permissions.includes("admin:access") ?? false;
@@ -60,6 +62,8 @@ export function Nav({ tone = "light" }: { tone?: keyof typeof TONES }) {
       ? [{ href: "/admin", label: "Admin Portal" }]
       : [
           { href: "/dashboard", label: "Home" },
+          // The student panel: progress, history, mistakes, analytics, goals, leaderboard.
+          { href: "/portal", label: "Dashboard" },
           { href: "/practice", label: "Review" },
         ]
     : [{ href: "/pricing", label: "Pricing" }];

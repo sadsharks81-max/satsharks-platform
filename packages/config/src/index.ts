@@ -30,6 +30,9 @@ const envSchema = z.object({
   RESEND_API_KEY: optionalString,
   // A sender on a domain verified in Resend, e.g. "SAT Sharks <no-reply@satsharks.com>".
   RESEND_FROM_EMAIL: optionalString,
+  // Streak reminders and the weekly progress email, sent by the API every 15 minutes when email is
+  // configured. "off" stops them (e.g. on a second API instance or a test copy of the database).
+  ENGAGEMENT_EMAILS: z.preprocess(emptyToUndefined, z.enum(["on", "off"]).default("on")),
 });
 
 export type Env = z.infer<typeof envSchema>;

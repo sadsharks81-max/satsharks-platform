@@ -219,6 +219,8 @@ export interface PublicUser {
   region: UserRegion | null;
   // Effective plan: a paid plan whose end date has passed counts as free.
   plan: UserPlan;
+  // The time zone days and streaks follow (saved from the browser); null until first saved.
+  timeZone: string | null;
 }
 
 // ---------- admin: users ----------
@@ -778,13 +780,17 @@ export type AccessLevel = (typeof ACCESS_LEVELS)[number];
 
 // Ways of practising that can be kept for paid accounts. Fixed tests (uploaded practice tests and
 // uploaded exams taken whole) are set one by one instead, like exams.
-export const ACCESS_FEATURES = ["drills", "mocks", "full_tests"] as const;
+export const ACCESS_FEATURES = ["drills", "mocks", "full_tests", "analytics"] as const;
 export type AccessFeature = (typeof ACCESS_FEATURES)[number];
 
 export const ACCESS_FEATURE_LABELS: Record<AccessFeature, { label: string; description: string }> = {
   drills: { label: "Practice drills", description: "Question sets from one exam, with answer checks" },
   mocks: { label: "Adaptive section mocks", description: "One section in two modules, drawn from the exam pool" },
   full_tests: { label: "Adaptive full tests", description: "Both sections and a break, drawn from the exam pool" },
+  analytics: {
+    label: "Full analytics & mistake bank",
+    description: "Score range and trend, every skill, error and timing analysis, every mistake. Locked: score only, top 3 weak areas, last 20 mistakes",
+  },
 };
 
 // An exam or uploaded test in the access rules is known by its catalog exam id. Everything uploaded
@@ -806,7 +812,7 @@ export interface AccessSettings {
 
 // Everything open until an admin saves their own, so existing accounts lose nothing on release.
 export const DEFAULT_ACCESS: AccessSettings = {
-  features: { drills: "free", mocks: "free", full_tests: "free" },
+  features: { drills: "free", mocks: "free", full_tests: "free", analytics: "free" },
   content: [],
   newContent: "free",
 };
@@ -942,4 +948,274 @@ export interface AdminStats {
   questions: Record<PaperStatus, number>;
   questionsBySection: Record<Section, number>;
   attempts: number;
+}
+
+// ---------- Week 3: history, mistake bank, analytics, goals, streaks, leaderboard ----------
+
+// Official pace: seconds per question (module minutes ÷ questions).
+export const SECTION_PACE_SECONDS: Record<Section, number> = {
+  reading_writing: Math.round((MOCK_FORMAT.reading_writing.minutesPerModule * 60) / MOCK_FORMAT.reading_writing.questionsPerModule),
+  math: Math.round((MOCK_FORMAT.math.minutesPerModule * 60) / MOCK_FORMAT.math.questionsPerModule),
+};
+
+// Retry queue: a wrong question comes back after these many days, until it is answered correctly.
+export const RETRY_INTERVAL_DAYS = [1, 3, 7, 16] as const;
+
+// Practice points (leaderboards). An answer given faster than this earns nothing (random clicking).
+export const MIN_SECONDS_FOR_POINTS: Record<Section, number> = { reading_writing: 10, math: 8 };
+export const POINTS = { correct: 10, hardBonus: 5, wrongWithEffort: 2, dailyCap: 300 } as const;
+
+// Streak freezes per calendar month (proposal: free 1, paid 3).
+export const STREAK_FREEZES_PER_MONTH = { free: 1, paid: 3 } as const;
+export const STREAK_MILESTONES = [7, 30, 100] as const;
+
+// Free accounts with analytics kept for paid plans (Admin → Access) see this much (proposal p.10).
+export const FREE_ANALYTICS = { weakAreas: 3, mistakes: 20 } as const;
+
+export type QuestionResultKind = "correct" | "wrong" | "skipped";
+
+// One question a student has answered (or left blank in a test), kept for good.
+export interface QuestionHistoryItem {
+  id: string;
+  attemptId: string;
+  position: number;
+  attemptName: string;
+  origin: AttemptOrigin;
+  section: Section;
+  topic: string | null;
+  skill: string | null;
+  difficulty: Difficulty | null;
+  // Plain text, shortened.
+  preview: string;
+  result: QuestionResultKind;
+  timeSpentSeconds: number;
+  answeredAt: string;
+}
+
+export const ATTEMPT_ORIGINS = ["exam", "mock", "retry", "bank"] as const;
+// exam: a drill from one exam. mock: an adaptive mock or full-test section. retry: the mistake
+// retry queue. bank: a drill drawn from every exam by topic/skill.
+export type AttemptOrigin = (typeof ATTEMPT_ORIGINS)[number];
+
+export interface QuestionHistoryPage {
+  items: QuestionHistoryItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface TestHistoryEntry {
+  kind: "full_test" | "section";
+  id: string;
+  // Results page: a full test's page or the section's results.
+  href: string;
+  name: string;
+  section: Section | null;
+  score: number | null;
+  // Against the previous test of the same kind (full test, or the same section).
+  change: number | null;
+  correct: number;
+  total: number;
+  completedAt: string;
+  // Removed from the student's lists, kept in history.
+  removed: boolean;
+}
+
+export type MistakeStatus = "due" | "waiting" | "fixed";
+
+export interface MistakeItem {
+  id: string;
+  section: Section;
+  topic: string | null;
+  skill: string | null;
+  difficulty: Difficulty | null;
+  preview: string;
+  wrongCount: number;
+  lastWrongAt: string;
+  status: MistakeStatus;
+  // Next time it comes back (null when fixed).
+  dueAt: string | null;
+  // 1–4: which of the retry intervals it is on.
+  step: number;
+  fixedAt: string | null;
+  // Where it was last answered, to open the review.
+  attemptId: string;
+  position: number;
+}
+
+export interface MistakeBank {
+  items: MistakeItem[];
+  counts: { open: number; due: number; fixed: number; dueBySection: Record<Section, number> };
+  // Free accounts with analytics locked see only the newest mistakes.
+  limited: boolean;
+  limit: number | null;
+}
+
+// A drill an insight recommends; started with POST /api/practice/drills/bank.
+export interface DrillSuggestion {
+  section: Section;
+  skills: string[];
+  difficulty: Difficulty | null;
+  count: number;
+  timed: boolean;
+  label: string;
+}
+
+export interface NextStep {
+  text: string;
+  drill: DrillSuggestion | null;
+}
+
+export interface ScorePrediction {
+  // null until at least one Reading & Writing and one Math section are scored.
+  total: number | null;
+  low: number | null;
+  high: number | null;
+  sections: Record<Section, number | null>;
+  // Total after each scored section (only when both sections are known).
+  trend: { date: string; score: number }[];
+  // Scored sections used.
+  basedOn: number;
+}
+
+export interface SkillStat {
+  section: Section;
+  topic: string;
+  skill: string;
+  answered: number;
+  correct: number;
+  accuracy: number;
+  // Estimated scaled points a student would gain by getting this skill right on a real test.
+  pointsToGain: number;
+}
+
+export const ERROR_PATTERNS = ["careless", "out_of_time", "not_known", "changed_answer", "trap"] as const;
+export type ErrorPattern = (typeof ERROR_PATTERNS)[number];
+
+export const ERROR_PATTERN_LABELS: Record<ErrorPattern, { label: string; description: string }> = {
+  careless: { label: "Careless mistakes", description: "Wrong on a skill you usually get right" },
+  out_of_time: { label: "Ran out of time", description: "Left blank when a timed module ended" },
+  not_known: { label: "Topic not known yet", description: "Wrong on a skill you get right less than 60% of the time" },
+  changed_answer: { label: "Changed a right answer", description: "You had the right answer, then changed it" },
+  trap: { label: "Fell for a trap answer", description: "Picked the wrong answer most students pick" },
+};
+
+export interface ErrorPatternStat {
+  pattern: ErrorPattern;
+  count: number;
+  share: number;
+  // The skill this pattern hits most.
+  topSkill: { section: Section; skill: string } | null;
+}
+
+export interface TimingStat {
+  section: Section;
+  paceSeconds: number;
+  averageSeconds: number | null;
+  answered: number;
+}
+
+export interface SlowQuestion {
+  attemptId: string;
+  position: number;
+  section: Section;
+  skill: string | null;
+  seconds: number;
+  overPace: number;
+  correct: boolean | null;
+}
+
+export interface Analytics {
+  // Paid plan, or analytics open to free accounts (Admin → Access).
+  full: boolean;
+  completedPapers: number;
+  prediction: ScorePrediction;
+  predictionStep: NextStep;
+  skills: SkillStat[];
+  skillsStep: NextStep;
+  // null when kept for paid plans.
+  errors: { total: number; patterns: ErrorPatternStat[]; step: NextStep } | null;
+  timing: {
+    sections: TimingStat[];
+    // The latest timed test: seconds per question in order.
+    pace: { name: string; section: Section; paceSeconds: number; seconds: number[] } | null;
+    slowest: SlowQuestion[];
+    step: NextStep;
+  } | null;
+}
+
+export const GOAL_TYPES = ["questions", "minutes"] as const;
+export type GoalType = (typeof GOAL_TYPES)[number];
+
+export interface EngagementSettings {
+  targetScore: number | null;
+  // YYYY-MM-DD; null = the next SAT date from Admin → SAT dates.
+  testDate: string | null;
+  goalType: GoalType;
+  // null = use the suggestion.
+  goalAmount: number | null;
+  timeZone: string;
+  showOnLeaderboard: boolean;
+  streakReminders: boolean;
+  weeklyEmail: boolean;
+}
+
+export interface StreakView {
+  current: number;
+  longest: number;
+  // Today's goal already met.
+  today: boolean;
+  // Today not met yet and the streak would be lost at midnight (no freeze left).
+  atRisk: boolean;
+  freezesLeft: number;
+  freezesPerMonth: number;
+  // Days covered by a freeze this month.
+  frozenDays: string[];
+  badges: { days: number; earnedAt: string | null }[];
+}
+
+export interface EngagementSummary {
+  settings: EngagementSettings;
+  goal: { type: GoalType; amount: number; suggested: number; progress: number; met: boolean; reason: string };
+  streak: StreakView;
+  points: { today: number; week: number; total: number; dailyCap: number };
+  // Last 14 days, oldest first.
+  days: { day: string; questions: number; minutes: number; points: number; met: boolean }[];
+  test: { date: string | null; daysLeft: number | null; fromSettings: boolean };
+  predicted: number | null;
+  friendCode: string;
+  // Mistakes due for a retry now (sidebar badge).
+  mistakesDue: number;
+}
+
+export const LEADERBOARD_SCOPES = ["global", "country", "friends"] as const;
+export type LeaderboardScope = (typeof LEADERBOARD_SCOPES)[number];
+export const LEADERBOARD_PERIODS = ["week", "all"] as const;
+export type LeaderboardPeriod = (typeof LEADERBOARD_PERIODS)[number];
+
+export interface LeaderboardRow {
+  rank: number;
+  name: string;
+  country: string | null;
+  points: number;
+  streak: number;
+  me: boolean;
+}
+
+export interface Leaderboard {
+  scope: LeaderboardScope;
+  period: LeaderboardPeriod;
+  rows: LeaderboardRow[];
+  // The student's own row when outside the list (null when hidden or without points).
+  me: LeaderboardRow | null;
+  friends: { id: string; name: string }[];
+}
+
+// Score-improvement card for Instagram / WhatsApp: first and best full-test totals.
+export interface ShareCard {
+  name: string;
+  first: number | null;
+  best: number | null;
+  tests: number;
+  streak: number;
 }

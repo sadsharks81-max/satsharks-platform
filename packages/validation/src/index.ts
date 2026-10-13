@@ -5,7 +5,10 @@ import {
   ANNOUNCEMENT_AUDIENCES,
   ANNOUNCEMENT_TONES,
   DIFFICULTIES,
+  GOAL_TYPES,
   isCountryCode,
+  LEADERBOARD_PERIODS,
+  LEADERBOARD_SCOPES,
   MODULE_TYPES,
   PAPER_STATUSES,
   QUESTION_TYPES,
@@ -392,8 +395,12 @@ export const satDatesContentSchema = z.object({
 
 const accessLevelSchema = z.enum(ACCESS_LEVELS);
 
+// A feature added later (e.g. "analytics") is missing from settings saved before it existed: it is
+// read as free rather than throwing the whole saved setting away.
+const featureLevelSchema = accessLevelSchema.default("free");
+
 export const accessSettingsSchema = z.object({
-  features: z.object(Object.fromEntries(ACCESS_FEATURES.map((feature) => [feature, accessLevelSchema])) as Record<AccessFeature, typeof accessLevelSchema>),
+  features: z.object(Object.fromEntries(ACCESS_FEATURES.map((feature) => [feature, featureLevelSchema])) as Record<AccessFeature, typeof featureLevelSchema>),
   content: z
     .array(z.object({ key: z.string().trim().min(1).max(100), level: accessLevelSchema }))
     .max(2000)
@@ -444,3 +451,89 @@ export const updateUserSchema = z
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Nothing to update");
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+
+// ---------- Week 3: history, mistakes, drills from the whole bank, goals, leaderboard ----------
+
+const dayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-12-05");
+
+// A drill drawn from every exam the account can open, by topic/skill (drill mode, insight buttons).
+export const bankDrillSchema = z.object({
+  section: z.enum(SECTIONS),
+  topics: z.array(z.string().min(1).max(100)).max(20).default([]),
+  skills: z.array(z.string().min(1).max(100)).max(40).default([]),
+  difficulty: z.enum(DIFFICULTIES).nullable().default(null),
+  count: z.number().int().min(1).max(100).default(20),
+  timed: z.boolean().default(false),
+  timeMinutes: z.number().int().min(1).max(600).nullable().default(null),
+  excludeAnswered: z.boolean().default(false),
+  name: z.string().trim().max(80).default(""),
+});
+export type BankDrillInput = z.infer<typeof bankDrillSchema>;
+
+// Retry the mistakes that are due, one section at a time.
+export const retryDrillSchema = z.object({
+  section: z.enum(SECTIONS),
+  count: z.number().int().min(1).max(50).default(20),
+});
+export type RetryDrillInput = z.infer<typeof retryDrillSchema>;
+
+export const questionHistoryQuerySchema = z.object({
+  result: z.preprocess(emptyToUndefined, z.enum(["correct", "wrong", "skipped"]).optional()),
+  section: z.preprocess(emptyToUndefined, z.enum(SECTIONS).optional()),
+  topic: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional()),
+  difficulty: z.preprocess(emptyToUndefined, z.enum(DIFFICULTIES).optional()),
+  from: z.preprocess(emptyToUndefined, dayString.optional()),
+  to: z.preprocess(emptyToUndefined, dayString.optional()),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+export type QuestionHistoryQuery = z.infer<typeof questionHistoryQuerySchema>;
+
+export const mistakeQuerySchema = z.object({
+  status: z.preprocess(emptyToUndefined, z.enum(["open", "due", "fixed"]).optional()),
+  section: z.preprocess(emptyToUndefined, z.enum(SECTIONS).optional()),
+});
+export type MistakeQuery = z.infer<typeof mistakeQuerySchema>;
+
+// IANA time zone, checked by Intl (an unknown zone throws).
+export const timeZoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine((zone) => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: zone });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Unknown time zone");
+
+export const engagementSettingsSchema = z
+  .object({
+    targetScore: z.number().int().min(400).max(1600).nullable(),
+    testDate: dayString.nullable(),
+    goalType: z.enum(GOAL_TYPES),
+    goalAmount: z.number().int().min(5).max(300).nullable(),
+    timeZone: timeZoneSchema,
+    showOnLeaderboard: z.boolean(),
+    streakReminders: z.boolean(),
+    weeklyEmail: z.boolean(),
+  })
+  .partial()
+  .refine((value) => value.targetScore == null || value.targetScore % 10 === 0, "SAT scores go up in steps of 10");
+export type EngagementSettingsInput = z.infer<typeof engagementSettingsSchema>;
+
+export const leaderboardQuerySchema = z.object({
+  scope: z.enum(LEADERBOARD_SCOPES).default("global"),
+  period: z.enum(LEADERBOARD_PERIODS).default("week"),
+});
+
+export const friendCodeSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z0-9]{6,10}$/, "Friend codes are 6 to 10 letters and numbers"),
+});

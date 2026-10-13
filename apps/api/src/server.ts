@@ -3,6 +3,7 @@ import { connectMongo, disconnectMongo } from "@satsharks/db";
 import { createLogger, toErrorMessage } from "@satsharks/utils";
 import { createApp } from "./app";
 import { env } from "./config/env";
+import { startEngagementEmails } from "./jobs/engagement-emails";
 
 const logger = createLogger("api");
 
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
     try {
       await connectMongo(env.MONGODB_URI);
       logger.info("MongoDB connected");
+      startEngagementEmails();
     } catch (error) {
       // Keep serving /api/health so the problem is visible; data routes answer 503.
       logger.error("MongoDB connection failed", { error: toErrorMessage(error) });

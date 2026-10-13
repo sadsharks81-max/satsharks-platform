@@ -76,4 +76,56 @@ export const emailService = {
       logger.error("Password reset email failed", { to: maskEmail(to), error: toErrorMessage(error) });
     }
   },
+
+  // Streak reminders and the weekly progress email. `lines` are plain sentences; `rows` a small
+  // label/value table. Ends with a button and a line on how to turn these emails off.
+  // Returns whether it was sent (false = not configured or failed; logged).
+  async sendProgress(
+    to: string,
+    message: { subject: string; greeting: string; lines: string[]; rows?: [string, string][]; button: { label: string; link: string }; settingsLink: string },
+  ): Promise<boolean> {
+    if (!this.isConfigured()) {
+      if (!isProduction) logger.warn("Email not configured; progress email not sent", { to, subject: message.subject });
+      return false;
+    }
+    const rows = message.rows ?? [];
+    try {
+      await send({
+        to,
+        subject: message.subject,
+        text: [
+          message.greeting,
+          "",
+          ...message.lines,
+          ...(rows.length ? ["", ...rows.map(([label, value]) => `${label}: ${value}`)] : []),
+          "",
+          `${message.button.label}: ${message.button.link}`,
+          "",
+          `To stop these emails, change your email choices on ${message.settingsLink}`,
+        ].join("\n"),
+        html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0f172a;max-width:520px">
+  <p style="font-size:22px;font-weight:700;color:#324dc7;margin:0 0 16px">SAT Sharks</p>
+  <p>${escapeHtml(message.greeting)}</p>
+  ${message.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("\n  ")}
+  ${
+    rows.length
+      ? `<table style="border-collapse:collapse;margin:16px 0;width:100%">${rows
+          .map(
+            ([label, value]) =>
+              `<tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;color:#475569">${escapeHtml(label)}</td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700">${escapeHtml(value)}</td></tr>`,
+          )
+          .join("")}</table>`
+      : ""
+  }
+  <p style="margin:24px 0"><a href="${escapeHtml(message.button.link)}" style="background:#324dc7;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px;display:inline-block">${escapeHtml(message.button.label)}</a></p>
+  <p style="font-size:12px;color:#64748b">You get this because email reminders are on in your SAT Sharks account. <a href="${escapeHtml(message.settingsLink)}" style="color:#324dc7">Change your email choices</a>.</p>
+</div>`,
+      });
+      logger.info("Progress email sent", { to: maskEmail(to), subject: message.subject });
+      return true;
+    } catch (error) {
+      logger.error("Progress email failed", { to: maskEmail(to), error: toErrorMessage(error) });
+      return false;
+    }
+  },
 };

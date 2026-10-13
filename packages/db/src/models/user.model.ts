@@ -1,7 +1,46 @@
 import mongoose from "mongoose";
-import { PAID_PLANS, USER_PLANS, USER_REGIONS, USER_ROLES, USER_STATUSES, type PaidPlan, type UserPlan, type UserRegion, type UserRole, type UserStatus } from "@satsharks/types";
+import {
+  GOAL_TYPES,
+  PAID_PLANS,
+  USER_PLANS,
+  USER_REGIONS,
+  USER_ROLES,
+  USER_STATUSES,
+  type GoalType,
+  type PaidPlan,
+  type UserPlan,
+  type UserRegion,
+  type UserRole,
+  type UserStatus,
+} from "@satsharks/types";
 
 const { Schema } = mongoose;
+
+// Goals, reminders and leaderboard choices (Goals & streaks page). Defaults apply until saved.
+export interface UserEngagement {
+  targetScore: number | null;
+  testDate: string | null;
+  goalType: GoalType;
+  // null = the suggested goal.
+  goalAmount: number | null;
+  // IANA zone sent by the student's browser; days, streaks and reminders follow it.
+  timeZone: string | null;
+  showOnLeaderboard: boolean;
+  streakReminders: boolean;
+  weeklyEmail: boolean;
+}
+
+// Days are YYYY-MM-DD in the student's time zone.
+export interface UserStreak {
+  current: number;
+  longest: number;
+  // The last day the daily goal was met.
+  lastDay: string | null;
+  // Missed days covered by a streak freeze (newest kept).
+  freezeDays: string[];
+  // Milestones reached (7, 30, 100 days) and when.
+  badges: { days: number; earnedAt: Date }[];
+}
 
 export interface UserDoc {
   _id: mongoose.Types.ObjectId;
@@ -32,6 +71,16 @@ export interface UserDoc {
   // Cleared when the token is used, so a link works once.
   resetTokenHash: string | null;
   resetTokenExpiresAt: Date | null;
+  engagement: UserEngagement;
+  streak: UserStreak;
+  // All-time practice points (leaderboard). Weekly points come from DailyStatModel.
+  totalPoints: number;
+  // Given to friends so they can add this student; made on first use.
+  friendCode: string | null;
+  friends: mongoose.Types.ObjectId[];
+  // Emails already sent, so a reminder or the weekly email goes out once.
+  lastStreakReminderDay: string | null;
+  lastWeeklyEmailWeek: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,12 +103,50 @@ const userSchema = new Schema<UserDoc>(
     hidden: { type: Boolean, default: false },
     resetTokenHash: { type: String, default: null, select: false },
     resetTokenExpiresAt: { type: Date, default: null, select: false },
+    engagement: {
+      type: new Schema<UserEngagement>(
+        {
+          targetScore: { type: Number, default: null },
+          testDate: { type: String, default: null },
+          goalType: { type: String, enum: GOAL_TYPES, default: "questions" },
+          goalAmount: { type: Number, default: null },
+          timeZone: { type: String, default: null },
+          showOnLeaderboard: { type: Boolean, default: true },
+          streakReminders: { type: Boolean, default: true },
+          weeklyEmail: { type: Boolean, default: true },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
+    streak: {
+      type: new Schema<UserStreak>(
+        {
+          current: { type: Number, default: 0 },
+          longest: { type: Number, default: 0 },
+          lastDay: { type: String, default: null },
+          freezeDays: { type: [String], default: [] },
+          badges: { type: [new Schema({ days: Number, earnedAt: Date }, { _id: false })], default: [] },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
+    totalPoints: { type: Number, default: 0 },
+    friendCode: { type: String, default: null },
+    friends: { type: [Schema.Types.ObjectId], ref: "User", default: [] },
+    lastStreakReminderDay: { type: String, default: null },
+    lastWeeklyEmailWeek: { type: String, default: null },
   },
   { timestamps: true },
 );
 
 // Reset links look the user up by token hash. Sparse: most users have none.
 userSchema.index({ resetTokenHash: 1 }, { sparse: true });
+// All-time leaderboard.
+userSchema.index({ totalPoints: -1 });
+// Adding a friend by code. Partial: most accounts have none yet.
+userSchema.index({ friendCode: 1 }, { unique: true, partialFilterExpression: { friendCode: { $type: "string" } } });
 
 // The plan that applies right now. The only place this rule lives.
 export function effectivePlan(user: Pick<UserDoc, "plan" | "planExpiresAt">, now = new Date()): UserPlan {

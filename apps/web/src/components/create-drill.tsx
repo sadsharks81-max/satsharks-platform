@@ -15,6 +15,9 @@ const DIFFICULTY_OPTIONS: { id: Difficulty | null; label: string }[] = [
   { id: "hard", label: "Hard" },
 ];
 const SKILLS_PER_PAGE = 6;
+// The exam choice that draws from every open exam (drill mode by topic and skill).
+const ALL_EXAMS = "__all__";
+const BANK_MAX = 100;
 
 const fieldLabel = "mb-2 block text-sm font-bold";
 const inputClass = "h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -26,8 +29,14 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
   // Exams kept for paid plans are not offered to a free account.
   const exams = useMemo(() => catalog.exams.filter((exam) => !exam.locked), [catalog]);
   const firstExam = exams.find((exam) => exam.examId === initialExamId) ?? exams[0];
-  const [examId, setExamId] = useState(firstExam?.examId ?? "");
-  const exam = exams.find((entry) => entry.examId === examId);
+  const [examId, setExamId] = useState(initialExamId === ALL_EXAMS ? ALL_EXAMS : (firstExam?.examId ?? ""));
+  const allExams = examId === ALL_EXAMS;
+  // Sections offered with "All exams": those any open exam has.
+  const anyExam = useMemo(
+    () => ({ sections: { math: exams.some((entry) => entry.sections.math) ? { paperId: "", questionCount: 0 } : undefined, reading_writing: exams.some((entry) => entry.sections.reading_writing) ? { paperId: "", questionCount: 0 } : undefined } }),
+    [exams],
+  );
+  const exam = allExams ? anyExam : exams.find((entry) => entry.examId === examId);
   const [section, setSection] = useState<Section>(firstExam?.sections.math ? "math" : "reading_writing");
   const [topics, setTopics] = useState<string[]>([]);
   const [skills, setSkills] = useState<string[]>([]);
@@ -57,6 +66,7 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
   const pageCount = Math.max(1, Math.ceil(availableSkills.length / SKILLS_PER_PAGE));
   const page = Math.min(skillPage, pageCount - 1);
   const target = exam?.sections[section];
+  const bankLimit = Math.min(limit ?? BANK_MAX, BANK_MAX);
 
   const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
   const changeSection = (next: Section) => {
@@ -71,21 +81,12 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
     setSubmitting(true);
     setError(null);
     try {
-      const { attempt } = await api<{ attempt: AttemptSummary }>("/api/practice/attempts", {
-        method: "POST",
-        body: {
-          paperId: target.paperId,
-          topics,
-          // Only send skills that are still offered under the current domain selection.
-          skills: skills.filter((skill) => availableSkills.includes(skill)),
-          difficulty,
-          limit,
-          timed,
-          timeMinutes: timed ? minutes : null,
-          excludeAnswered,
-          name: name.trim(),
-        },
-      });
+      // Only send skills that are still offered under the current domain selection.
+      const chosenSkills = skills.filter((skill) => availableSkills.includes(skill));
+      const common = { topics, skills: chosenSkills, difficulty, timed, timeMinutes: timed ? minutes : null, excludeAnswered, name: name.trim() };
+      const { attempt } = allExams
+        ? await api<{ attempt: AttemptSummary }>("/api/practice/drills/bank", { method: "POST", body: { ...common, section, count: bankLimit } })
+        : await api<{ attempt: AttemptSummary }>("/api/practice/attempts", { method: "POST", body: { ...common, paperId: target.paperId, limit } });
       await queryClient.invalidateQueries({ queryKey: ["practice", "attempts"] });
       router.push(`/practice/${attempt.id}`);
     } catch (caught) {
@@ -103,6 +104,7 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
               Exam
             </label>
             <select id="drill-exam" value={examId} onChange={(event) => setExamId(event.target.value)} className={inputClass}>
+              {exams.length > 1 && <option value={ALL_EXAMS}>All exams (by topic and skill)</option>}
               {exams.map((entry) => (
                 <option key={entry.examId} value={entry.examId}>
                   {entry.name}
@@ -134,7 +136,7 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
                   }`}
                 >
                   {entry === "math" ? "Math Section" : "Reading & Writing"}
-                  {exam?.sections[entry] ? ` (${exam.sections[entry]!.questionCount})` : " (none)"}
+                  {allExams ? "" : exam?.sections[entry] ? ` (${exam.sections[entry]!.questionCount})` : " (none)"}
                 </button>
               ))}
             </div>
@@ -270,7 +272,7 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
 
           {error && <Notice tone="error">{error}</Notice>}
           <Button className="w-full" disabled={submitting || !target || (custom && limit === null)} onClick={start}>
-            {submitting ? "Starting…" : `Start Drill (${limit ?? "All"} Qs, ${SECTION_LABELS[section]})`}
+            {submitting ? "Starting…" : `Start Drill (${allExams ? bankLimit : (limit ?? "All")} Qs, ${SECTION_LABELS[section]})`}
           </Button>
         </div>
       </div>

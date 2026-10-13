@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { createAttemptSchema, createFullTestSchema, createMockSchema, createReportSchema, saveAnswerSchema } from "@satsharks/validation";
+import { bankDrillSchema, createAttemptSchema, createFullTestSchema, createMockSchema, createReportSchema, retryDrillSchema, saveAnswerSchema } from "@satsharks/validation";
+import { createBankDrill, createRetryDrill } from "../controllers/student.controller";
 import {
   checkQuestion,
   continueFullTest,
@@ -34,6 +35,8 @@ practiceRouter.get("/catalog", getCatalog);
 practiceRouter.get("/attempts", listAttempts);
 practiceRouter.post("/attempts", validateBody(createAttemptSchema), createAttempt);
 practiceRouter.post("/mocks", validateBody(createMockSchema), createMock);
+practiceRouter.post("/drills/bank", validateBody(bankDrillSchema), createBankDrill);
+practiceRouter.post("/drills/retry", validateBody(retryDrillSchema), createRetryDrill);
 practiceRouter.get("/tests", listPracticeTests);
 practiceRouter.get("/full-tests", listFullTests);
 practiceRouter.post("/full-tests", validateBody(createFullTestSchema), createFullTest);

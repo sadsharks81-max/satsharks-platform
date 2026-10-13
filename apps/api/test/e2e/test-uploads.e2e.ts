@@ -25,7 +25,7 @@ process.env.MONGODB_URI = uri;
 process.env.JWT_SECRET = "e2e-secret-that-is-long-enough-0123456789";
 process.env.NODE_ENV = "test";
 
-const { connectMongo, PaperModel, QuestionModel, TestUploadModel, UserModel, AttemptModel, trusted } = await import("@satsharks/db");
+const { connectMongo, PaperModel, QuestionModel, TestUploadModel, UserModel, AttemptModel, QuestionLogModel, MistakeModel, DailyStatModel, trusted } = await import("@satsharks/db");
 const { createApp } = await import("../../src/app");
 await connectMongo(uri);
 assert.equal((await import("mongoose")).default.connection.host, "127.0.0.1");
@@ -494,7 +494,7 @@ async function run() {
     const catalog = async () => (await student.call("GET", "/api/practice/catalog")).json.data;
     const before = await catalog();
     assert.ok(before.exams.every((exam: { locked: boolean }) => !exam.locked), "everything is open until an admin saves");
-    assert.deepEqual(before.access, { paid: false, features: { drills: true, mocks: true, full_tests: true } });
+    assert.deepEqual(before.access, { paid: false, features: { drills: true, mocks: true, full_tests: true, analytics: true } });
 
     assert.equal((await student.call("GET", "/api/admin/settings/access")).status, 403);
     const { json } = await admin.call("GET", "/api/admin/settings/access");
@@ -680,6 +680,213 @@ async function run() {
     const me = await dev.call("GET", "/api/auth/me");
     assert.equal(me.json.data.user.plan, "paid");
     await UserModel.deleteOne({ email: login.email });
+  });
+
+  await check("week 3: history, mistake bank and retry queue, analytics, goals, streaks and leaderboards", async () => {
+    // All checks share one address; start this long one with a fresh per-minute request allowance.
+    const { apiRateLimit } = await import("../../src/middleware/rate-limit");
+    for (const address of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) await apiRateLimit.resetKey(address);
+    const login = { email: "phase1-test-week3@example.com", password: "password-123" };
+    const me = client();
+    assert.equal((await me.call("POST", "/api/auth/register", { name: "Week Three Student", ...login, country: "PK" })).status, 201);
+    const userId = String((await UserModel.findOne({ email: login.email }))!._id);
+    // Everything open, whatever earlier checks saved; put back at the end.
+    const savedAccess = (await admin.call("GET", "/api/admin/settings/access")).json.data.settings;
+    const open = { features: { drills: "free", mocks: "free", full_tests: "free", analytics: "free" }, content: [], newContent: "free" };
+    assert.equal((await admin.call("PUT", "/api/admin/settings/access", open)).status, 200);
+
+    const answer = (attempt: string, position: number, value: string) => me.call("PATCH", `/api/practice/attempts/${attempt}/questions/${position}`, { answer: value });
+    // Time on screen is measured from page views; set it directly so the points rules can be tested.
+    const spend = (attempt: string, seconds: number[]) =>
+      AttemptModel.updateOne({ _id: attempt }, { $set: Object.fromEntries(seconds.map((value, index) => [`items.${index}.timeSpentSeconds`, value])) });
+    // A right and a wrong answer for each question of an attempt (bank drills also draw from the
+    // uploaded exam published above, whose keys are not all "A").
+    const keysOf = async (attempt: string) => {
+      const doc = (await AttemptModel.findById(attempt).lean())!;
+      const questions = await QuestionModel.find({ _id: trusted({ $in: doc.items.map((item) => item.questionId) }) }).select("+correctAnswer choices questionType").lean();
+      const byId = new Map(questions.map((question) => [String(question._id), question]));
+      return doc.items.map((item) => {
+        const question = byId.get(String(item.questionId))!;
+        const right = question.correctAnswer!.choiceKey ?? question.correctAnswer!.acceptedValues[0]!;
+        return { right, wrong: question.questionType === "mcq" ? question.choices.find((choice) => choice.key !== right)!.key : "98765" };
+      });
+    };
+    const waitFor = async (condition: () => Promise<boolean>) => {
+      for (let i = 0; i < 40 && !(await condition()); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.ok(await condition(), "timed out waiting");
+    };
+
+    // Drill mode across the bank by skill: every question is of that skill.
+    const drill = await me.call("POST", "/api/practice/drills/bank", { section: "math", skills: ["Linear functions"], count: 5 });
+    assert.equal(drill.status, 201);
+    const drillId = drill.json.data.attempt.id;
+    const drillDoc = (await AttemptModel.findById(drillId))!;
+    assert.equal(drillDoc.origin, "bank");
+    assert.equal(drillDoc.items.length, 5);
+    const skills = await QuestionModel.find({ _id: trusted({ $in: drillDoc.items.map((item) => item.questionId) }) }).distinct("skill");
+    assert.deepEqual(skills, ["Linear functions"]);
+
+    // Q1 right and checked (logged at once); Q2 right then changed to wrong; Q3 wrong; Q4 right; Q5 blank.
+    await spend(drillId, [30, 30, 30, 30, 30]);
+    const keys = await keysOf(drillId);
+    await answer(drillId, 1, keys[0]!.right);
+    assert.equal((await me.call("POST", `/api/practice/attempts/${drillId}/questions/1/check`)).status, 200);
+    await waitFor(async () => (await QuestionLogModel.countDocuments({ attemptId: drillId })) === 1);
+    await answer(drillId, 2, keys[1]!.right);
+    await answer(drillId, 2, keys[1]!.wrong);
+    await answer(drillId, 3, keys[2]!.wrong);
+    await answer(drillId, 4, keys[3]!.right);
+    assert.equal((await me.call("POST", `/api/practice/attempts/${drillId}/end`)).status, 200);
+    const logs = await QuestionLogModel.find({ attemptId: drillId }).sort({ position: 1 }).lean();
+    assert.deepEqual(
+      logs.map((log) => [log.position, log.correct]),
+      [
+        [1, true],
+        [2, false],
+        [3, false],
+        [4, true],
+      ],
+    );
+    assert.equal(logs[1]!.changedFromCorrect, true);
+    assert.equal(logs[2]!.changedFromCorrect, false);
+    const points = logs.reduce((sum, log) => sum + log.points, 0);
+    assert.ok(points >= 24);
+    // The checked question was logged in the background: wait for its day total too.
+    await waitFor(async () => (await DailyStatModel.findOne({ userId }))?.questions === 4);
+    assert.equal((await UserModel.findById(userId))!.totalPoints, points);
+    const today = (await DailyStatModel.findOne({ userId }))!;
+    assert.equal(today.questions, 4);
+    assert.equal(today.points, points);
+
+    // Mistake bank: both wrong answers, back in 1 day.
+    let bank = (await me.call("GET", "/api/student/mistakes")).json.data;
+    assert.equal(bank.counts.open, 2);
+    assert.equal(bank.counts.due, 0);
+    const mistake = (await MistakeModel.findOne({ userId }))!;
+    assert.ok(Math.abs(mistake.dueAt!.getTime() - Date.now() - 86_400_000) < 60_000);
+    assert.equal((await me.call("POST", "/api/practice/drills/retry", { section: "math" })).status, 400);
+
+    // Question history with filters; removing the drill from "My tests" keeps its history.
+    assert.equal((await me.call("GET", "/api/student/history/questions?result=wrong")).json.data.total, 2);
+    assert.equal((await me.call("GET", "/api/student/history/questions?section=reading_writing")).json.data.total, 0);
+    assert.equal((await me.call("DELETE", `/api/practice/attempts/${drillId}`)).status, 200);
+    assert.ok(!(await me.call("GET", "/api/practice/attempts")).json.data.attempts.some((attempt: { id: string }) => attempt.id === drillId));
+    assert.equal((await me.call("GET", "/api/student/history/questions")).json.data.total, 4);
+
+    // Retry queue: once due, the wrong questions come back; right answers fix them.
+    await MistakeModel.updateMany({ userId }, { $set: { dueAt: new Date(Date.now() - 1000) } });
+    bank = (await me.call("GET", "/api/student/mistakes")).json.data;
+    assert.equal(bank.counts.dueBySection.math, 2);
+    const retry = await me.call("POST", "/api/practice/drills/retry", { section: "math" });
+    assert.equal(retry.status, 201);
+    const retryId = retry.json.data.attempt.id;
+    assert.equal(retry.json.data.attempt.total, 2);
+    await spend(retryId, [30, 30]);
+    const retryKeys = await keysOf(retryId);
+    await answer(retryId, 1, retryKeys[0]!.right);
+    await answer(retryId, 2, retryKeys[1]!.wrong);
+    await me.call("POST", `/api/practice/attempts/${retryId}/end`);
+    bank = (await me.call("GET", "/api/student/mistakes")).json.data;
+    assert.equal(bank.counts.fixed, 1);
+    assert.equal(bank.counts.open, 1);
+    const stillOpen = (await MistakeModel.findOne({ userId, fixedAt: null }))!;
+    assert.equal(stillOpen.step, 1); // next wait: 3 days
+    assert.ok(Math.abs(stillOpen.dueAt!.getTime() - Date.now() - 3 * 86_400_000) < 60_000);
+
+    // Random clicking through a set earns nothing.
+    const rushed = (await me.call("POST", "/api/practice/drills/bank", { section: "reading_writing", count: 6 })).json.data.attempt.id;
+    await spend(rushed, [2, 2, 2, 2, 2, 2]);
+    for (let position = 1; position <= 6; position += 1) await answer(rushed, position, "A");
+    await me.call("POST", `/api/practice/attempts/${rushed}/end`);
+    assert.equal((await QuestionLogModel.find({ attemptId: rushed })).reduce((sum, log) => sum + log.points, 0), 0);
+
+    // Predicted score from scored sections: one test never moves it more than 50 points.
+    const section = (name: string, sectionName: string, score: number, day: number) => ({
+      userId, kind: "mock", origin: "mock", name, section: sectionName, status: "done", sectionScore: score, completedAt: new Date(Date.UTC(2026, 9, day)), items: [],
+    });
+    await AttemptModel.insertMany([section("RW", "reading_writing", 600, 1), section("Math", "math", 600, 1), section("Math 2", "math", 780, 2)]);
+    const analyticsResponse = await me.call("GET", "/api/student/analytics");
+    assert.equal(analyticsResponse.status, 200, JSON.stringify(analyticsResponse.json));
+    let analytics = analyticsResponse.json.data;
+    assert.equal(analytics.full, true);
+    assert.equal(analytics.prediction.total, 1250);
+    assert.deepEqual(
+      analytics.prediction.trend.map((point: { score: number }) => point.score),
+      [1200, 1250],
+    );
+    assert.equal(analytics.completedPapers, 3);
+    assert.ok(analytics.skills.some((stat: { skill: string }) => stat.skill === "Linear functions"));
+    assert.ok(analytics.errors.patterns.find((pattern: { pattern: string }) => pattern.pattern === "changed_answer").count >= 1);
+    assert.ok(analytics.skillsStep.drill.skills.length === 1);
+    const history = (await me.call("GET", "/api/student/history/tests")).json.data.tests;
+    assert.deepEqual(
+      history.map((test: { score: number; change: number | null }) => [test.score, test.change]),
+      [
+        [780, 180],
+        [600, null],
+        [600, null],
+      ],
+    );
+
+    // Goal and streak: a lower goal is met by the next practice; bad settings are refused.
+    assert.equal((await me.call("PATCH", "/api/student/engagement", { targetScore: 1455 })).status, 400);
+    assert.equal((await me.call("PATCH", "/api/student/engagement", { timeZone: "Mars/Base" })).status, 400);
+    assert.equal((await me.call("PATCH", "/api/student/engagement", { testDate: "2020-01-01" })).status, 400);
+    assert.equal((await me.call("PATCH", "/api/student/engagement", { goalAmount: 5, targetScore: 1450, timeZone: "Asia/Karachi" })).status, 200);
+    let summary = (await me.call("GET", "/api/student/engagement")).json.data;
+    assert.equal(summary.goal.amount, 5);
+    assert.equal(summary.streak.current, 0);
+    assert.equal(summary.predicted, 1250);
+    assert.equal(summary.mistakesDue, 0);
+    const one = (await me.call("POST", "/api/practice/drills/bank", { section: "math", count: 1 })).json.data.attempt.id;
+    await spend(one, [30]);
+    await answer(one, 1, (await keysOf(one))[0]!.right);
+    await me.call("POST", `/api/practice/attempts/${one}/end`);
+    summary = (await me.call("GET", "/api/student/engagement")).json.data;
+    assert.equal(summary.streak.current, 1);
+    assert.equal(summary.streak.today, true);
+    assert.equal(summary.goal.met, true);
+    assert.match(summary.friendCode, /^[A-Z2-9]{8}$/);
+
+    // Leaderboards: the student is on the global board; friends by code, both ways.
+    const friend = client();
+    await friend.call("POST", "/api/auth/register", { name: "Friendly Peer", email: "phase1-test-week3-friend@example.com", password: "password-123", country: "PK" });
+    const board = (await me.call("GET", "/api/student/leaderboard?scope=global&period=week")).json.data;
+    assert.ok(board.rows.some((row: { me: boolean; name: string }) => row.me && row.name === "Week S."));
+    assert.equal((await me.call("POST", "/api/student/friends", { code: summary.friendCode })).status, 400);
+    assert.equal((await me.call("POST", "/api/student/friends", { code: "ZZZZZZZZ" })).status, 404);
+    const friendCode = (await friend.call("GET", "/api/student/engagement")).json.data.friendCode;
+    assert.equal((await me.call("POST", "/api/student/friends", { code: friendCode })).status, 201);
+    assert.deepEqual(
+      (await friend.call("GET", "/api/student/leaderboard?scope=friends&period=all")).json.data.friends.map((entry: { name: string }) => entry.name),
+      ["Week S."],
+    );
+    await me.call("PATCH", "/api/student/engagement", { showOnLeaderboard: false });
+    assert.ok(!(await friend.call("GET", "/api/student/leaderboard?scope=global&period=all")).json.data.rows.some((row: { name: string }) => row.name === "Week S."));
+
+    // Free accounts with analytics kept for paid plans: score only, top 3, last 20 mistakes.
+    assert.equal((await admin.call("PUT", "/api/admin/settings/access", { ...open, features: { ...open.features, analytics: "paid" } })).status, 200);
+    analytics = (await me.call("GET", "/api/student/analytics")).json.data;
+    assert.equal(analytics.full, false);
+    assert.equal(analytics.prediction.total, 1250);
+    assert.equal(analytics.prediction.low, null);
+    assert.deepEqual(analytics.prediction.trend, []);
+    assert.ok(analytics.skills.length <= 3);
+    assert.equal(analytics.errors, null);
+    assert.equal(analytics.timing, null);
+    bank = (await me.call("GET", "/api/student/mistakes")).json.data;
+    assert.equal(bank.limited, true);
+    assert.equal(bank.limit, 20);
+
+    const card = (await me.call("GET", "/api/student/share-card")).json.data.card;
+    assert.deepEqual([card.name, card.tests, card.best, card.streak], ["Week S.", 0, null, 1]);
+
+    assert.equal((await admin.call("PUT", "/api/admin/settings/access", savedAccess)).status, 200);
+    for (const email of [login.email, "phase1-test-week3-friend@example.com"]) {
+      const user = await UserModel.findOne({ email });
+      await Promise.all([QuestionLogModel.deleteMany({ userId: user!._id }), MistakeModel.deleteMany({ userId: user!._id }), DailyStatModel.deleteMany({ userId: user!._id }), AttemptModel.deleteMany({ userId: user!._id })]);
+      await UserModel.deleteOne({ _id: user!._id });
+    }
   });
 
   console.log(`\n${passed} end-to-end checks passed.`);
