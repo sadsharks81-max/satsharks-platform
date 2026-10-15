@@ -154,6 +154,10 @@ export async function getUser(req: Request, res: Response): Promise<void> {
   sendOk(res, await userAdminService.get(objectIdSchema.parse(req.params.id)));
 }
 
+export async function purgeDeletedUsers(_req: Request, res: Response): Promise<void> {
+  sendOk(res, await userAdminService.purgeDeleted());
+}
+
 export async function updateUser(req: Request, res: Response): Promise<void> {
   const input = updateUserSchema.parse(req.body);
   sendOk(res, { user: await userAdminService.update(objectIdSchema.parse(req.params.id), String(req.user!._id), input) });

@@ -21,7 +21,7 @@ const fromDraft = (draft: Draft): PricingContent => ({
   plans: draft.plans.map((plan) => ({ ...plan, highlights: plan.highlights.split("\n").map((line) => line.trim()).filter(Boolean) })),
 });
 
-// The plans, prices and notes on the public pricing page. The four plans themselves are fixed
+// The plans, prices and notes on the public pricing page. The three plans themselves are fixed
 // (accounts record which one they are on); everything written about them can be changed here.
 export function PricingSettingsCard({ canWrite }: { canWrite: boolean }) {
   const queryClient = useQueryClient();
@@ -73,12 +73,12 @@ export function PricingSettingsCard({ canWrite }: { canWrite: boolean }) {
         </a>
       </div>
       <p className="mt-1 text-sm text-slate-600">
-        What students see on the pricing page. The four plans are fixed; their names, prices and points can be changed. Write prices as they should appear, e.g.
+        What students see on the pricing page. The three plans are fixed; their names, prices and points can be changed. Write prices as they should appear, e.g.
         &quot;PKR 1,500&quot; or &quot;$12.99&quot;.
       </p>
 
       <fieldset disabled={!canWrite || saving} className="mt-4 space-y-5">
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {draft.plans.map((plan, index) => (
             <div key={plan.id} className={`space-y-2.5 rounded-xl border p-3 ${plan.popular ? "border-brand-500 ring-1 ring-brand-500" : "border-slate-300"}`}>
               <label className={label}>

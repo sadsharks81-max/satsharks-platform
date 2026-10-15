@@ -15,6 +15,7 @@ import {
   listQuestions,
   listReports,
   listUsers,
+  purgeDeletedUsers,
   reopenReport,
   resolveReport,
   setAccess,
@@ -69,6 +70,7 @@ adminRouter.put("/announcements/:id", requirePermission("papers:write"), updateA
 adminRouter.delete("/announcements/:id", requirePermission("papers:write"), deleteAnnouncement);
 
 adminRouter.get("/users", requirePermission("users:read"), listUsers);
+adminRouter.delete("/users/deleted", requirePermission("users:write"), purgeDeletedUsers);
 adminRouter.get("/users/:id", requirePermission("users:read"), getUser);
 adminRouter.patch("/users/:id", requirePermission("users:write"), updateUser);
 

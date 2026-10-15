@@ -9,6 +9,7 @@ import {
   getShareCard,
   getTestHistory,
   removeFriend,
+  setCountry,
   updateEngagement,
 } from "../controllers/student.controller";
 import { requireAuth } from "../middleware/auth";
@@ -26,6 +27,7 @@ studentRouter.get("/analytics", getAnalytics);
 studentRouter.get("/engagement", getEngagement);
 studentRouter.patch("/engagement", updateEngagement);
 studentRouter.get("/leaderboard", getLeaderboard);
+studentRouter.put("/country", setCountry);
 studentRouter.post("/friends", addFriend);
 studentRouter.delete("/friends/:id", removeFriend);
 studentRouter.get("/share-card", getShareCard);

@@ -46,14 +46,17 @@ export const LOCAL_COUNTRY_CODE = "PK";
 export const USER_PLANS = ["free", "paid"] as const;
 export type UserPlan = (typeof USER_PLANS)[number];
 
-// The paid plans on the pricing page.
-export const PAID_PLANS = ["monthly", "three_months", "till_test_day"] as const;
+// The paid plans on the pricing page. "Till Test Day" was removed on 2026-10-16 (client: only Free,
+// Monthly and 3 Months); an account that still stores it keeps its paid access (see LEGACY_PAID_PLANS).
+export const PAID_PLANS = ["monthly", "three_months"] as const;
 export type PaidPlan = (typeof PAID_PLANS)[number];
+// Plan ids no longer offered but possibly stored on older accounts.
+export const LEGACY_PAID_PLANS = ["till_test_day"] as const;
+export const isPaidPlan = (value: unknown): value is PaidPlan => (PAID_PLANS as readonly unknown[]).includes(value);
 
 export const PAID_PLAN_LABELS: Record<PaidPlan, string> = {
   monthly: "Monthly",
   three_months: "3 Months",
-  till_test_day: "Till Test Day",
 };
 
 export const USER_STATUS_LABELS: Record<UserStatus, string> = {
@@ -670,7 +673,7 @@ export function looseMathWarning(text: string): boolean {
 export const CURRENCIES = ["PKR", "USD"] as const;
 export type Currency = (typeof CURRENCIES)[number];
 
-// The four plans are fixed (accounts store which one they have); their wording and prices are not.
+// The three plans are fixed (accounts store which one they have); their wording and prices are not.
 export const PRICING_PLAN_IDS = ["free", ...PAID_PLANS] as const;
 export type PricingPlanId = (typeof PRICING_PLAN_IDS)[number];
 
@@ -716,15 +719,6 @@ export const DEFAULT_PRICING: PricingContent = {
       saving: { PKR: "Save 22%", USD: "Save 23%" },
       highlights: ["Everything unlocked", "The normal prep window"],
       popular: true,
-    },
-    {
-      id: "till_test_day",
-      name: "Till Test Day",
-      price: { PKR: "PKR 5,999", USD: "$49.99" },
-      period: "per 6 months",
-      saving: { PKR: "Save 33%", USD: "Save 36%" },
-      highlights: ["Everything unlocked", "Covers the full run-up to the exam"],
-      popular: false,
     },
   ],
   comparison: [
@@ -1205,6 +1199,8 @@ export interface LeaderboardRow {
 export interface Leaderboard {
   scope: LeaderboardScope;
   period: LeaderboardPeriod;
+  // The viewer's own country (null on accounts made before sign-up asked for it).
+  country: string | null;
   rows: LeaderboardRow[];
   // The student's own row when outside the list (null when hidden or without points).
   me: LeaderboardRow | null;

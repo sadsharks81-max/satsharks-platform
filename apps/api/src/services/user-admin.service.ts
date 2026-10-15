@@ -2,19 +2,23 @@
 // (free / paid), disable or delete (and undo either), and change their role.
 //
 // Disabling or deleting takes effect on the user's very next request: requireAuth reads the status
-// from the database every time. Nothing is ever hard-deleted here; a deleted account can be restored.
+// from the database every time. A deleted account can be restored until an admin clears the deleted
+// accounts (purgeDeleted), which removes them and their practice data for good.
 import {
   AttemptModel,
+  DailyStatModel,
   effectivePlan,
   FullTestModel,
+  MistakeModel,
   ProblemReportModel,
+  QuestionLogModel,
   trusted,
   UserModel,
   type AttemptDoc,
   type FullTestDoc,
   type UserDoc,
 } from "@satsharks/db";
-import type { AdminUser, AdminUserActivity, UserListCounts } from "@satsharks/types";
+import { isPaidPlan, type AdminUser, type AdminUserActivity, type UserListCounts } from "@satsharks/types";
 import type { UpdateUserInput, UserListQuery } from "@satsharks/validation";
 import mongoose from "mongoose";
 import { AppError } from "../utils/app-error";
@@ -31,7 +35,8 @@ function toAdminUser(user: UserDoc): AdminUser {
     country: user.country ?? null,
     region: user.region ?? null,
     plan: effectivePlan(user),
-    paidPlan: user.paidPlan ?? null,
+    // A plan no longer offered (e.g. Till Test Day) shows as plain "Paid".
+    paidPlan: isPaidPlan(user.paidPlan) ? user.paidPlan : null,
     planExpiresAt: user.planExpiresAt ? user.planExpiresAt.toISOString() : null,
     createdAt: user.createdAt.toISOString(),
   };
@@ -157,6 +162,28 @@ export const userAdminService = {
     const updated = await UserModel.findByIdAndUpdate(id, { $set: set }, { new: true }).lean<UserDoc>();
     if (!updated) throw AppError.notFound("User not found");
     return toAdminUser(updated);
+  },
+
+  // Removes every deleted account for good, with its tests, history, mistakes and points, and takes it
+  // off other students' friend lists. Problem reports are kept (they are about questions) and show no
+  // reporter. One account at a time, and only while it is still deleted, so one restored meanwhile is kept.
+  async purgeDeleted(): Promise<{ removed: number }> {
+    const users = await UserModel.find({ status: "deleted", ...visible() }).select("_id").lean<UserDoc[]>();
+    let removed = 0;
+    for (const { _id: userId } of users) {
+      const gone = await UserModel.findOneAndDelete({ _id: userId, status: "deleted" }).select("_id").lean<UserDoc>();
+      if (!gone) continue;
+      await Promise.all([
+        AttemptModel.deleteMany({ userId }),
+        FullTestModel.deleteMany({ userId }),
+        QuestionLogModel.deleteMany({ userId }),
+        MistakeModel.deleteMany({ userId }),
+        DailyStatModel.deleteMany({ userId }),
+        UserModel.updateMany({ friends: userId }, { $pull: { friends: userId } }),
+      ]);
+      removed += 1;
+    }
+    return { removed };
   },
 
   async paidCount(): Promise<number> {

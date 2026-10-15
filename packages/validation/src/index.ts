@@ -36,15 +36,17 @@ const emailSchema = z.string().trim().toLowerCase().email().max(254);
 // bcrypt only uses the first 72 bytes, so longer passwords are rejected rather than silently truncated.
 const newPasswordSchema = z.string().min(8, "Use at least 8 characters").max(72, "Use at most 72 characters");
 
+const countryCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .refine(isCountryCode, "Choose your country from the list");
+
 export const registerSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email: emailSchema,
   password: newPasswordSchema,
-  country: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .refine(isCountryCode, "Choose your country from the list"),
+  country: countryCodeSchema,
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -340,7 +342,7 @@ export const testUploadActiveSchema = z.object({ active: z.boolean() });
 const shortText = (max: number) => z.string().trim().min(1, "Fill in every field").max(max);
 const perCurrency = (max: number) => z.object({ PKR: shortText(max), USD: shortText(max) });
 
-// The four plans, in their fixed order; only their wording and prices change.
+// The three plans, in their fixed order; only their wording and prices change.
 export const pricingContentSchema = z.object({
   plans: z
     .array(
@@ -529,6 +531,9 @@ export const leaderboardQuerySchema = z.object({
   scope: z.enum(LEADERBOARD_SCOPES).default("global"),
   period: z.enum(LEADERBOARD_PERIODS).default("week"),
 });
+
+// Accounts made before sign-up asked for a country add it once (for the "My country" board).
+export const setCountrySchema = z.object({ country: countryCodeSchema });
 
 export const friendCodeSchema = z.object({
   code: z

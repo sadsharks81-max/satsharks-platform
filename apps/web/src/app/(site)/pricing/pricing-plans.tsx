@@ -62,7 +62,7 @@ export function PricingPlans() {
         {fromAccount && !chosen && <p className="text-xs text-slate-500">Showing prices for your account&apos;s region.</p>}
       </div>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mx-auto mt-8 grid max-w-6xl gap-4 lg:grid-cols-3">
         {plans.map((plan) => {
           const paid = plan.id !== "free";
           return (

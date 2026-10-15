@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-14 (Week 3 of the proposal: history, mistake bank, analytics, goals, streaks, leaderboard; student panel. Not committed).
+Last updated: 2026-10-16 (country board, target-score box, "Delete all permanently", Till Test Day plan removed, full names on the leaderboard; committed and pushed to both remotes).
 
 ---
 
@@ -46,13 +46,20 @@ Last updated: 2026-10-14 (Week 3 of the proposal: history, mistake bank, analyti
   Admin → Users (list, search, counts), the user detail/edit endpoints (404) and the dashboard
   stats (`visible()` in `user-admin.service.ts`); the "keep one active admin" rule ignores them.
   Made with `create:admin --hidden` (`--role student --paid` for a paid student, plan
-  `till_test_day`, no end date, country PK). Live accounts: **`dev-admin@satsharks.invalid`**
+  `three_months` since 2026-10-16 (was `till_test_day`), no end date, country PK). Live accounts: **`dev-admin@satsharks.invalid`**
   (admin, same role as `admin2.0@gmail.com`) and **`dev-student@satsharks.invalid`** (paid
   student). `.invalid` can never receive mail, so no one can take them over by password reset.
   Passwords were given to Umair only; not stored anywhere in the repo. Reports filed by a hidden
   student still show its name/email in the report queue.
 - **Country at sign-up** (required, ISO code): `PK` → `region: local`, anything else →
-  `international`. Never from IP. Accounts made before this have `country`/`region` null.
+  `international`. Never from IP. Accounts made before this have `country`/`region` null; such a
+  student adds it **once** on Leaderboard → My country (`PUT /api/student/country`, 409 when a
+  country is already set; it also sets the region). On 2026-10-16 one live student had none.
+- **Clear deleted accounts (2026-10-16):** Admin → Users → Deleted tab → "Delete all permanently"
+  (admins only, `users:write`, `DELETE /api/admin/users/deleted`, `userAdminService.purgeDeleted`).
+  Removes each still-deleted, non-hidden account with its attempts, full tests, question log,
+  mistakes and day totals, and takes it off friend lists. Problem reports are kept (no reporter
+  shown). Until cleared, a deleted account can still be restored.
 - **Forgot / reset password** through Resend (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`). Token: 32
   random bytes, only its SHA-256 stored, 30 minutes, single use, same answer for unknown emails,
   a reset signs out every older session (`passwordChangedAt`). Without the key, development prints
@@ -75,7 +82,14 @@ Last updated: 2026-10-14 (Week 3 of the proposal: history, mistake bank, analyti
 - **Pricing is editable** in Admin → Settings (plan names, PKR/USD prices, periods, saving badges,
   points, most popular, comparison rows, the lines under them and a **refund policy** line, default
   "All payments are final: SAT Sharks does not offer refunds."). Stored as setting `pricing`;
-  the pricing page reads `GET /api/pricing`. The four plan ids are fixed (accounts store them).
+  the pricing page reads `GET /api/pricing`. The plan ids are fixed (accounts store them).
+  **Three plans since 2026-10-16** (client): Free, Monthly, 3 Months, in PKR and USD. "Till Test
+  Day" (`till_test_day`) was removed: it is in `LEGACY_PAID_PLANS` only, so the user model still
+  accepts it and such an account stays paid (Admin → Users shows it as plain "Paid"; it can be
+  moved to Monthly / 3 Months). Pricing saved with four plans has the old plan dropped on read
+  (`settingsService.getPricing`), keeping the admin's other edits; the live saved pricing still
+  lists it until an admin saves Admin → Settings again. On 2026-10-16 only the hidden
+  `dev-student@satsharks.invalid` stored `till_test_day` (left as it is: no live writes).
 - **Login / sign-up / forgot / reset pages** redesigned (split brand panel, inline validation,
   password show/hide, loading states). **Pricing** (proposal pp. 9–10, PKR/USD switch),
   **Terms** and **Privacy** pages (factual, not legally reviewed), site footer, phone menu.
@@ -220,12 +234,15 @@ Last updated: 2026-10-14 (Week 3 of the proposal: history, mistake bank, analyti
     official pace 71 s / 95 s, pace chart of the latest timed test, slowest questions). Each part
     ends with a next step and a button that starts the matching drill.
   - **3.3** Daily goal (questions or minutes; suggested 20 + 10 × points-per-day still needed,
-    15–80) from target score, predicted score and test date (own or next SAT date). Streak = days the
+    15–80) from target score, predicted score and test date (own or next SAT date). Target score
+    400–1600 in steps of 10; the boxes on Goals & streaks round and limit only when the student
+    leaves the box (`NumberField`). Streak = days the
     goal was met, in the student's time zone; freezes used by themselves (free 1, paid 3 a month);
     badges at 7/30/100. Points: 10 right (+5 hard), 2 for a real wrong try, nothing under 10 s (R&W) /
     8 s (Math), nothing for a set that is mostly that fast, 300 a day at most. Leaderboards global /
-    country / friends (friend codes, both ways), week (ISO, Monday) / all time; first name + initial;
-    opt-out. Share card (canvas, 1080×1350, real first/best full-test totals and streak; share sheet,
+    country / friends (friend codes, both ways), week (ISO, Monday) / all time; **full names**
+    on boards and the friends list since 2026-10-16 (client; the share card keeps first name +
+    initial); opt-out. Share card (canvas, 1080×1350, real first/best full-test totals and streak; share sheet,
     download, WhatsApp). **Emails** `jobs/engagement-emails.ts` in the API every 15 min: streak at risk
     (7–10 pm local) and weekly progress (Monday 9–12 local), claimed in the DB so never sent twice;
     off without Resend or with `ENGAGEMENT_EMAILS=off`. Settings on Goals & streaks.
@@ -359,9 +376,12 @@ Last updated: 2026-10-14 (Week 3 of the proposal: history, mistake bank, analyti
   `9fad05e` "few changes done"). Next commit (2026-10-11, Claude): "Show an estimated score
   instead of Pending", pushed to both remotes. Next (2026-10-12, Claude): "One device at a time
   for students; hidden developer accounts", pushed to both remotes.
-- **Uncommitted (2026-10-14):** Week 3 + student panel (student pages moved with `git mv` into
-  `app/(site)/(student)/`). Ask Umair before committing or pushing. Deploying it needs the API and
-  web redeployed together (new `/api/student/*` routes).
+- `a5ed021` "phase 3" (Umair): Week 3 + student panel (student pages moved with `git mv` into
+  `app/(site)/(student)/`). Pushed to `origin` by Umair, to `client` by Claude on 2026-10-15.
+  Needs the API and web live together (new `/api/student/*` routes); not yet checked live.
+- Next commit (2026-10-16, Claude, asked by Umair): "Leaderboard country and full names, target
+  score box, clear deleted users, remove Till Test Day", pushed to both remotes (see `git log`).
+  Needs the API and web live together (new routes); the live site was not checked.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -439,7 +459,7 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-07 | Port the other site's full-test PDF upload; Umair left the design to Claude ("do what is best for this web"). Chosen: two papers per test + fixed-module mode in the mock engine; Math in LaTeX `$…$` like the bank; CATEGORY = bank domain or skill; students take uploaded tests as full tests only; test against an in-memory MongoDB, never Atlas |
 | 2026-10-07 | The admin question editor must work like the other site's: image upload, symbol bar, visual equation editor, editable choices with Set/Correct, question type |
 | 2026-10-09 | Free accounts get limited access to papers and exams; admins choose in the admin portal what free and paid accounts can open. Built as Admin → Access (per way of practising and per exam/test, plus a default for new ones); everything stays free until saved |
-| 2026-10-11 | FAQ text used **exactly as written** although parts are not true yet (explanations: none exist; "20 practice questions a day": no quota built; "Pro": the plans are Monthly / 3 Months / Till Test Day; "same time left": the clock keeps running while away; card payment / one-click cancel: no payments). Asked and confirmed |
+| 2026-10-11 | FAQ text used **exactly as written** although parts are not true yet (explanations: none exist; "20 practice questions a day": no quota built; "Pro": the plans are Monthly / 3 Months (Till Test Day removed 2026-10-16); "same time left": the clock keeps running while away; card payment / one-click cancel: no payments). Asked and confirmed |
 | 2026-10-11 | SAT dates editable in Admin (not fixed in code); dashboard countdown always to the next upcoming date |
 | 2026-10-11 | Students must always see a score after a full test / mock: use a built-in estimated conversion table until SAT Sharks enters real ones (replaces "no scores are invented") |
 | 2026-10-12 | Stop account sharing (client request): a student account is used on one device at a time. Umair chose "new login kicks out the old device" (not a hard lock to the first device, not "logout frees it"), for all students, free and paid; staff/admins exempt |
@@ -833,3 +853,37 @@ Newest last. One entry per session or major step.
   page (sidebar row "Dashboard") holds the strip and links; nav button "Dashboard" opens it; time
   zone sync moved to the nav (`timeZone` added to `/api/auth/me`). Checked: type check; headless
   Chrome of `/dashboard` and `/portal` at 1440/390px, no overflow, no console errors. Not committed.
+- **2026-10-15 — Week 3 pushed to the client repo.** Umair had committed the Week 3 work as
+  `a5ed021` "phase 3" and pushed it to `origin` only; Claude pushed `main` to `client`
+  (`3190fe8..a5ed021`, fast-forward). This should start the Vercel and Railway deploys; the live
+  site was not checked.
+- **2026-10-16 — Leaderboard country, target score, clearing deleted accounts (Umair).**
+  (1) "My country" was empty for a student whose account has no country (made before sign-up asked;
+  a read-only count on Atlas found one such student among this week's point earners; five PK
+  students had points). The board now tells such a student to choose a country (saved once, sets
+  the region) and then shows that country's board. (2) Target score could not be typed: the box
+  rounded to 10 on every key ("4" → 0). New `NumberField` on Goals & streaks rounds/limits on
+  leaving the box (400–1600, steps of 10); the daily-goal amount box had the same fault (5–300).
+  (3) Admin → Users, Deleted tab: "Delete all permanently" with a confirmation (see §2). Checked:
+  type check (only the stale `apps/web/.next/types` dashboard file fails); 62 unit tests; **21 e2e
+  checks** (new: no-country board empty → country chosen → PK board for week and all time, bad code
+  400, second choice 409; purge 403 for students, removes the deleted account, its day totals and
+  friend link, keeps a restored account, second run removes 0). **Not checked in a browser.**
+  Not committed.
+- **2026-10-16 — "Till Test Day" plan removed (client via Umair).** Only Free, Monthly and 3 Months,
+  for PKR and USD. `PAID_PLANS` = monthly, three_months; `till_test_day` kept as `LEGACY_PAID_PLANS`
+  (user model enum, no access change). `DEFAULT_PRICING` and the pricing validation have three plans;
+  saved pricing (live has four, read-only check) drops the old plan on read. Pricing page: three
+  columns from 1024px (max 6xl wide); Admin → Settings editor three columns. `create:admin --paid`
+  now gives `three_months`. Checked: type check (stale `.next/types` only); 62 unit tests; **22 e2e
+  checks** (new: `/api/pricing` has three plans; old four-plan saved pricing keeps its edited price
+  without the old plan; saving four plans refused; an account on `till_test_day` stays paid, shows
+  plain Paid, cannot be given it again, can be moved to 3 Months). **Not checked in a browser.**
+  Not committed.
+- **2026-10-16 — Full names on the leaderboard (client via Umair).** Boards, the friends list and the
+  "is now your friend" message show the name as given at sign-up (`boardName`), not "Ayesha R.", so
+  students see who is on top. The share card (posted outside the site) keeps first name + initial.
+  Footer text on the page changed; opting out on Goals & streaks still hides a student. Checked: type
+  check; 22 e2e checks (leaderboard name expectations updated). Not checked in a browser. Not committed.
+- **2026-10-16 — Committed and pushed** the five changes above (one commit) to `origin` and `client`
+  at Umair's request.

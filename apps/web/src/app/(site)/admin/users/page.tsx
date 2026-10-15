@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { USER_ROLES, type AdminUser, type UserListCounts } from "@satsharks/types";
 import { RequireUser } from "@/components/require-user";
-import { Button, Card, Notice, PageHeader, Toggle } from "@/components/ui";
+import { Button, Card, Modal, Notice, PageHeader, Toggle } from "@/components/ui";
 import { countryLabel, formatDay, PlanBadge, StatusBadge } from "@/components/user-badges";
 import { api } from "@/lib/api";
 
@@ -24,7 +24,64 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-function Users() {
+// Deleted accounts can be restored until an admin clears them here; this removes them for good.
+function ClearDeleted({ count }: { count: number }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ tone: "info" | "error"; text: string } | null>(null);
+
+  async function clear() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { removed } = await api<{ removed: number }>("/api/admin/users/deleted", { method: "DELETE" });
+      setOpen(false);
+      setMessage({ tone: "info", text: `${removed.toLocaleString()} deleted account${removed === 1 ? "" : "s"} removed permanently.` });
+      await queryClient.invalidateQueries({ queryKey: ["admin"] });
+    } catch (caught) {
+      setMessage({ tone: "error", text: caught instanceof Error ? caught.message : "Could not remove the deleted accounts" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-4">
+      {count > 0 && (
+        <Card className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-slate-700">Deleted accounts can be restored until you clear them. Clearing removes them and all their data for good.</p>
+          <Button variant="danger" onClick={() => setOpen(true)}>
+            Delete all permanently
+          </Button>
+        </Card>
+      )}
+      {message && (
+        <div className="mt-3">
+          <Notice tone={message.tone}>{message.text}</Notice>
+        </div>
+      )}
+      {open && (
+        <Modal title={`Permanently delete ${count.toLocaleString()} account${count === 1 ? "" : "s"}?`} onClose={() => !busy && setOpen(false)}>
+          <p className="text-sm text-slate-700">
+            Every account in the Deleted tab is removed for good, with its tests, history, mistake bank and points. This cannot be undone. Problem reports they sent are kept,
+            without their name.
+          </p>
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" disabled={busy} onClick={clear}>
+              {busy ? "Deleting…" : "Delete permanently"}
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function Users({ canWrite }: { canWrite: boolean }) {
   const [tab, setTab] = useState<TabId>("all");
   const [region, setRegion] = useState("");
   const [role, setRole] = useState("");
@@ -67,6 +124,8 @@ function Users() {
           </Toggle>
         ))}
       </div>
+
+      {tab === "deleted" && canWrite && <ClearDeleted count={counts?.deleted ?? 0} />}
 
       <Card className="mb-4 flex flex-wrap items-end gap-3">
         <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs font-bold">
@@ -180,5 +239,5 @@ function Users() {
 }
 
 export default function AdminUsersPage() {
-  return <RequireUser permission="users:read">{() => <Users />}</RequireUser>;
+  return <RequireUser permission="users:read">{(me) => <Users canWrite={me.permissions.includes("users:write")} />}</RequireUser>;
 }

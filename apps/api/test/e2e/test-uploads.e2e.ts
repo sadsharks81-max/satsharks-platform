@@ -660,7 +660,7 @@ async function run() {
     const dev = client();
     const login = { email: "phase1-test-hidden@example.com", password: "password-123" };
     await dev.call("POST", "/api/auth/register", { name: "E2E Hidden", ...login, country: "PK" });
-    const made = await UserModel.findOneAndUpdate({ email: login.email }, { $set: { hidden: true, plan: "paid", paidPlan: "till_test_day" } }, { new: true });
+    const made = await UserModel.findOneAndUpdate({ email: login.email }, { $set: { hidden: true, plan: "paid", paidPlan: "three_months" } }, { new: true });
     const id = String(made!._id);
 
     const after = (await admin.call("GET", "/api/admin/users")).json.data;
@@ -852,17 +852,17 @@ async function run() {
     const friend = client();
     await friend.call("POST", "/api/auth/register", { name: "Friendly Peer", email: "phase1-test-week3-friend@example.com", password: "password-123", country: "PK" });
     const board = (await me.call("GET", "/api/student/leaderboard?scope=global&period=week")).json.data;
-    assert.ok(board.rows.some((row: { me: boolean; name: string }) => row.me && row.name === "Week S."));
+    assert.ok(board.rows.some((row: { me: boolean; name: string }) => row.me && row.name === "Week Three Student"));
     assert.equal((await me.call("POST", "/api/student/friends", { code: summary.friendCode })).status, 400);
     assert.equal((await me.call("POST", "/api/student/friends", { code: "ZZZZZZZZ" })).status, 404);
     const friendCode = (await friend.call("GET", "/api/student/engagement")).json.data.friendCode;
     assert.equal((await me.call("POST", "/api/student/friends", { code: friendCode })).status, 201);
     assert.deepEqual(
       (await friend.call("GET", "/api/student/leaderboard?scope=friends&period=all")).json.data.friends.map((entry: { name: string }) => entry.name),
-      ["Week S."],
+      ["Week Three Student"],
     );
     await me.call("PATCH", "/api/student/engagement", { showOnLeaderboard: false });
-    assert.ok(!(await friend.call("GET", "/api/student/leaderboard?scope=global&period=all")).json.data.rows.some((row: { name: string }) => row.name === "Week S."));
+    assert.ok(!(await friend.call("GET", "/api/student/leaderboard?scope=global&period=all")).json.data.rows.some((row: { name: string }) => row.name === "Week Three Student"));
 
     // Free accounts with analytics kept for paid plans: score only, top 3, last 20 mistakes.
     assert.equal((await admin.call("PUT", "/api/admin/settings/access", { ...open, features: { ...open.features, analytics: "paid" } })).status, 200);
@@ -887,6 +887,110 @@ async function run() {
       await Promise.all([QuestionLogModel.deleteMany({ userId: user!._id }), MistakeModel.deleteMany({ userId: user!._id }), DailyStatModel.deleteMany({ userId: user!._id }), AttemptModel.deleteMany({ userId: user!._id })]);
       await UserModel.deleteOne({ _id: user!._id });
     }
+  });
+
+  await check("an account without a country chooses one for its country board; admins clear deleted accounts for good", async () => {
+    const { apiRateLimit } = await import("../../src/middleware/rate-limit");
+    for (const address of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) await apiRateLimit.resetKey(address);
+    const { timeZoneOf } = await import("../../src/services/engagement.service");
+    const { dayIn, isoWeek } = await import("../../src/services/engagement-rules");
+    const make = async (name: string, email: string) => {
+      const session = client();
+      assert.equal((await session.call("POST", "/api/auth/register", { name, email, password: "password-123", country: "PK" })).status, 201);
+      const user = (await UserModel.findOne({ email }))!;
+      // Points this week and in all time, without answering questions.
+      await DailyStatModel.create({ userId: user._id, day: dayIn(new Date(), timeZoneOf(user)), week: isoWeek(dayIn(new Date(), timeZoneOf(user))), points: 40 });
+      await UserModel.updateOne({ _id: user._id }, { $set: { totalPoints: 40 } });
+      return { session, id: user._id };
+    };
+    const local = await make("Lahore Student", "phase1-test-country-a@example.com");
+    const old = await make("Older Account", "phase1-test-country-b@example.com");
+    // Made before sign-up asked for a country.
+    await UserModel.updateOne({ _id: old.id }, { $set: { country: null, region: null } });
+
+    for (const period of ["week", "all"]) {
+      const empty = (await old.session.call("GET", `/api/student/leaderboard?scope=country&period=${period}`)).json.data;
+      assert.equal(empty.country, null);
+      assert.deepEqual(empty.rows, []);
+      const pakistan = (await local.session.call("GET", `/api/student/leaderboard?scope=country&period=${period}`)).json.data;
+      assert.equal(pakistan.country, "PK");
+      assert.ok(pakistan.rows.some((row: { me: boolean }) => row.me));
+    }
+    assert.equal((await old.session.call("PUT", "/api/student/country", { country: "XX" })).status, 400);
+    assert.equal((await old.session.call("PUT", "/api/student/country", { country: "pk" })).status, 200);
+    const saved = (await UserModel.findById(old.id).lean())!;
+    assert.deepEqual([saved.country, saved.region], ["PK", "local"]);
+    for (const period of ["week", "all"]) {
+      const names = (await old.session.call("GET", `/api/student/leaderboard?scope=country&period=${period}`)).json.data.rows.map((row: { name: string }) => row.name);
+      assert.ok(names.includes("Older Account") && names.includes("Lahore Student"), `${period}: ${names}`);
+    }
+    // Set once; a country already set is not changed here.
+    assert.equal((await old.session.call("PUT", "/api/student/country", { country: "SA" })).status, 409);
+    assert.equal((await local.session.call("PUT", "/api/student/country", { country: "SA" })).status, 409);
+
+    // Clearing deleted accounts: only admins; removes the account, its data and friend links; a restored account stays.
+    const friendCode = (await old.session.call("GET", "/api/student/engagement")).json.data.friendCode;
+    assert.equal((await local.session.call("POST", "/api/student/friends", { code: friendCode })).status, 201);
+    const restored = await make("Comes Back", "phase1-test-country-c@example.com");
+    for (const id of [old.id, restored.id]) assert.equal((await admin.call("PATCH", `/api/admin/users/${id}`, { status: "deleted" })).status, 200);
+    assert.equal((await admin.call("PATCH", `/api/admin/users/${restored.id}`, { status: "active" })).status, 200);
+    assert.equal((await local.session.call("DELETE", "/api/admin/users/deleted")).status, 403);
+    const before = (await admin.call("GET", "/api/admin/users?status=deleted")).json.data.counts.deleted;
+    assert.ok(before >= 1);
+    const purge = await admin.call("DELETE", "/api/admin/users/deleted");
+    assert.equal(purge.status, 200);
+    assert.equal(purge.json.data.removed, before);
+    assert.equal((await admin.call("GET", "/api/admin/users")).json.data.counts.deleted, 0);
+    assert.equal(await UserModel.countDocuments({ _id: old.id }), 0);
+    assert.equal(await DailyStatModel.countDocuments({ userId: old.id }), 0);
+    assert.ok(!(await UserModel.findById(local.id).lean())!.friends?.some((friend) => String(friend) === String(old.id)));
+    assert.equal(await UserModel.countDocuments({ _id: trusted({ $in: [local.id, restored.id] }) }), 2);
+    assert.equal(await DailyStatModel.countDocuments({ userId: restored.id }), 1);
+    assert.equal((await admin.call("DELETE", "/api/admin/users/deleted")).json.data.removed, 0);
+
+    for (const { id } of [local, restored]) {
+      await DailyStatModel.deleteMany({ userId: id });
+      await UserModel.deleteOne({ _id: id });
+    }
+  });
+
+  await check("Till Test Day is gone: three plans, older saved pricing kept, an account on it stays paid", async () => {
+    const { SettingModel } = await import("@satsharks/db");
+    const ids = (pricing: { plans: { id: string }[] }) => pricing.plans.map((plan) => plan.id);
+    assert.deepEqual(ids((await student.call("GET", "/api/pricing")).json.data), ["free", "monthly", "three_months"]);
+
+    // Pricing saved while there were four plans: the old plan is dropped, the admin's edits stay.
+    const old = {
+      plans: [
+        { id: "free", name: "Free", price: { PKR: "PKR 0", USD: "$0" }, period: "forever", saving: null, highlights: ["2 full papers"], popular: false },
+        { id: "monthly", name: "Monthly", price: { PKR: "PKR 1,234", USD: "$9.99" }, period: "per month", saving: null, highlights: ["Everything"], popular: false },
+        { id: "three_months", name: "3 Months", price: { PKR: "PKR 3,500", USD: "$29.99" }, period: "per 3 months", saving: null, highlights: ["Everything"], popular: true },
+        { id: "till_test_day", name: "Till Test Day", price: { PKR: "PKR 5,999", USD: "$49.99" }, period: "per 6 months", saving: null, highlights: ["Everything"], popular: false },
+      ],
+      comparison: [],
+      tagline: "",
+      schoolsNote: "",
+      refundPolicy: "",
+    };
+    await SettingModel.updateOne({ key: "pricing" }, { $set: { value: old } }, { upsert: true });
+    const pricing = (await student.call("GET", "/api/pricing")).json.data;
+    assert.deepEqual(ids(pricing), ["free", "monthly", "three_months"]);
+    assert.equal(pricing.plans[1].price.PKR, "PKR 1,234");
+    assert.equal((await admin.call("PUT", "/api/admin/settings/pricing", old)).status, 400);
+    assert.equal((await admin.call("PUT", "/api/admin/settings/pricing", { ...old, plans: old.plans.slice(0, 3) })).status, 200);
+    await SettingModel.deleteOne({ key: "pricing" });
+
+    // An account that still stores the old plan keeps paid access and shows as plain "Paid".
+    const login = { email: "phase1-test-legacy-plan@example.com", password: "password-123" };
+    const legacy = client();
+    await legacy.call("POST", "/api/auth/register", { name: "Legacy Plan", ...login, country: "PK" });
+    const user = await UserModel.findOneAndUpdate({ email: login.email }, { $set: { plan: "paid", paidPlan: "till_test_day" as never, planExpiresAt: null } }, { new: true });
+    assert.equal((await legacy.call("GET", "/api/auth/me")).json.data.user.plan, "paid");
+    const shown = (await admin.call("GET", `/api/admin/users/${user!._id}`)).json.data.user;
+    assert.deepEqual([shown.plan, shown.paidPlan], ["paid", null]);
+    assert.equal((await admin.call("PATCH", `/api/admin/users/${user!._id}`, { plan: "paid", paidPlan: "till_test_day" })).status, 400);
+    assert.equal((await admin.call("PATCH", `/api/admin/users/${user!._id}`, { plan: "paid", paidPlan: "three_months" })).status, 200);
+    await UserModel.deleteOne({ _id: user!._id });
   });
 
   console.log(`\n${passed} end-to-end checks passed.`);

@@ -3,6 +3,7 @@ import {
   DEFAULT_ACCESS,
   DEFAULT_CONVERSION_TABLES,
   DEFAULT_PRICING,
+  LEGACY_PAID_PLANS,
   DEFAULT_ROUTING_THRESHOLD_PERCENT,
   DEFAULT_SAT_DATES,
   type AccessSettings,
@@ -73,8 +74,13 @@ export const settingsService = {
 
   // Shown on the public pricing page. Until an admin saves their own, the proposal's plans.
   async getPricing(): Promise<PricingContent> {
-    const stored = await SettingModel.findOne({ key: PRICING_KEY }).lean();
-    const parsed = pricingContentSchema.safeParse(stored?.value);
+    const stored = await SettingModel.findOne({ key: PRICING_KEY }).lean<{ value?: { plans?: unknown } }>();
+    // Pricing saved before a plan was removed (Till Test Day, 2026-10-16) still lists it: drop it
+    // so the admin's other wording and prices are kept.
+    const value = stored?.value && Array.isArray(stored.value.plans)
+      ? { ...stored.value, plans: stored.value.plans.filter((plan: { id?: unknown }) => !(LEGACY_PAID_PLANS as readonly unknown[]).includes(plan?.id)) }
+      : stored?.value;
+    const parsed = pricingContentSchema.safeParse(value);
     return parsed.success ? (parsed.data as PricingContent) : DEFAULT_PRICING;
   },
 

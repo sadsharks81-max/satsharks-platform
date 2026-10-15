@@ -14,6 +14,55 @@ const input = "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text
 const unit = (type: GoalType, amount: number) => (type === "questions" ? `question${amount === 1 ? "" : "s"}` : `minute${amount === 1 ? "" : "s"}`);
 const shortDay = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", day: "numeric" });
 
+// A number box that lets the student type freely: the value is only rounded to `step` and kept in
+// min–max when they leave the box (rounding on every key turned "4" into 0, so 1450 could not be typed).
+function NumberField({
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  optional = false,
+  ...rest
+}: {
+  value: number | null;
+  onChange: (value: number | null) => void;
+  min: number;
+  max: number;
+  step?: number;
+  optional?: boolean;
+  placeholder?: string;
+  className?: string;
+  "aria-label"?: string;
+}) {
+  const [text, setText] = useState(value === null ? "" : String(value));
+  useEffect(() => setText(value === null ? "" : String(value)), [value]);
+  const settle = (raw: string): number | null => {
+    if (raw === "") return optional ? null : min;
+    return Math.min(max, Math.max(min, Math.round(Number(raw) / step) * step));
+  };
+  return (
+    <input
+      {...rest}
+      type="text"
+      inputMode="numeric"
+      value={text}
+      onChange={(event) => {
+        const raw = event.target.value.replace(/\D/g, "").slice(0, String(max).length);
+        setText(raw);
+        // A finished, valid number is kept at once, so Save never misses it.
+        const number = Number(raw);
+        if (raw === "" ? optional : number >= min && number <= max && number % step === 0) onChange(raw === "" ? null : number);
+      }}
+      onBlur={() => {
+        const settled = settle(text);
+        setText(settled === null ? "" : String(settled));
+        onChange(settled);
+      }}
+    />
+  );
+}
+
 function Flame({ on }: { on: boolean }) {
   return (
     <svg aria-hidden viewBox="0 0 24 24" className={`h-9 w-9 ${on ? "text-orange-500" : "text-slate-300"}`} fill="currentColor">
@@ -133,16 +182,17 @@ function Settings({ data }: { data: EngagementSummary }) {
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <label className="block text-sm font-bold">
           Target score
-          <input
-            type="number"
+          <NumberField
+            value={form.targetScore}
+            onChange={(value) => set("targetScore", value)}
             min={400}
             max={1600}
             step={10}
-            value={form.targetScore ?? ""}
+            optional
             placeholder="e.g. 1450"
-            onChange={(event) => set("targetScore", event.target.value ? Math.round(Number(event.target.value) / 10) * 10 : null)}
             className={`${input} mt-1`}
           />
+          <span className="mt-1 block text-xs font-normal text-slate-500">From 400 to 1600, in steps of 10.</span>
         </label>
         <label className="block text-sm font-bold">
           Your SAT date
@@ -182,13 +232,12 @@ function Settings({ data }: { data: EngagementSummary }) {
               <option value="own">My own</option>
             </select>
             {form.goalAmount !== null && (
-              <input
-                type="number"
+              <NumberField
                 min={5}
                 max={300}
                 aria-label="Daily goal amount"
                 value={form.goalAmount}
-                onChange={(event) => set("goalAmount", Math.min(300, Math.max(5, parseInt(event.target.value, 10) || 5)))}
+                onChange={(value) => set("goalAmount", value)}
                 className={`${input} w-28`}
               />
             )}

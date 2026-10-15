@@ -6,6 +6,7 @@ import {
   mistakeQuerySchema,
   objectIdSchema,
   questionHistoryQuerySchema,
+  setCountrySchema,
   type BankDrillInput,
   type RetryDrillInput,
 } from "@satsharks/validation";
@@ -61,6 +62,11 @@ export async function updateEngagement(req: Request, res: Response): Promise<voi
 export async function getLeaderboard(req: Request, res: Response): Promise<void> {
   const query = parse(leaderboardQuerySchema.safeParse(req.query), "Check the leaderboard choice");
   sendOk(res, await engagementService.leaderboard(me(req), query.scope, query.period));
+}
+
+export async function setCountry(req: Request, res: Response): Promise<void> {
+  await engagementService.setCountry(me(req), parse(setCountrySchema.safeParse(req.body), "Choose your country from the list").country);
+  sendOk(res, { saved: true });
 }
 
 export async function addFriend(req: Request, res: Response): Promise<void> {

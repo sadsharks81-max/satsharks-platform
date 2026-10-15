@@ -3,6 +3,7 @@ import { randomInt } from "node:crypto";
 import { DailyStatModel, FullTestModel, MistakeModel, trusted, UserModel, type DailyStatDoc, type FullTestDoc, type UserDoc, type UserEngagement } from "@satsharks/db";
 import {
   POINTS,
+  regionForCountry,
   STREAK_FREEZES_PER_MONTH,
   STREAK_MILESTONES,
   type EngagementSettings,
@@ -86,7 +87,13 @@ function streakView(user: EngagementUser, today: string): StreakView {
   };
 }
 
-// "Ayesha R." — enough to recognise a friend without showing full names to everyone.
+// Leaderboards and the friends list show the full name as given at sign-up (client, 2026-10-16), so
+// students can see who is at the top. Students who do not want this turn the leaderboard off.
+function boardName(name: string): string {
+  return name.trim().replace(/\s+/g, " ") || "Student";
+}
+
+// "Ayesha R." — for the share card, which is posted outside the site.
 function publicName(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "Student";
@@ -181,7 +188,7 @@ export const engagementService = {
 
   async leaderboard(user: UserDoc, scope: LeaderboardScope, period: LeaderboardPeriod, now = new Date()): Promise<Leaderboard> {
     const friends = await UserModel.find({ _id: trusted({ $in: user.friends ?? [] }) }).select("name").lean<UserDoc[]>();
-    const friendList = friends.map((friend) => ({ id: String(friend._id), name: publicName(friend.name) }));
+    const friendList = friends.map((friend) => ({ id: String(friend._id), name: boardName(friend.name) }));
     const scopeFilter: Record<string, unknown> =
       scope === "friends" ? { _id: trusted({ $in: [user._id, ...(user.friends ?? [])] }) } : scope === "country" ? { country: user.country ?? "__none__" } : {};
     const today = dayIn(now, timeZoneOf(user));
@@ -214,7 +221,7 @@ export const engagementService = {
 
     const toRow = (entry: { user: UserDoc; points: number }, index: number): LeaderboardRow => ({
       rank: index + 1,
-      name: publicName(entry.user.name),
+      name: boardName(entry.user.name),
       country: entry.user.country ?? null,
       points: entry.points,
       streak: streakOn(streakOf(entry.user), dayIn(now, timeZoneOf(entry.user)), freezesPerMonth(entry.user)).current,
@@ -222,7 +229,14 @@ export const engagementService = {
     });
     const rows = ranked.slice(0, 50).map(toRow);
     const myIndex = ranked.findIndex((entry) => String(entry.user._id) === String(user._id));
-    return { scope, period, rows, me: myIndex >= 50 ? toRow(ranked[myIndex]!, myIndex) : null, friends: friendList };
+    return { scope, period, country: user.country ?? null, rows, me: myIndex >= 50 ? toRow(ranked[myIndex]!, myIndex) : null, friends: friendList };
+  },
+
+  // Accounts made before sign-up asked for a country have none, so their "My country" board was
+  // empty. They choose it once here; changing a country already set is not offered (it sets the region).
+  async setCountry(user: UserDoc, country: string): Promise<void> {
+    const result = await UserModel.updateOne({ _id: user._id, country: null }, { $set: { country, region: regionForCountry(country) } });
+    if (result.matchedCount === 0) throw AppError.conflict("Your country is already set");
   },
 
   async addFriend(user: UserDoc, code: string): Promise<{ name: string }> {
@@ -233,7 +247,7 @@ export const engagementService = {
     // Friendship goes both ways: each sees the other on the Friends board.
     await UserModel.updateOne({ _id: user._id }, { $addToSet: { friends: friend._id } });
     await UserModel.updateOne({ _id: friend._id }, { $addToSet: { friends: user._id } });
-    return { name: publicName(friend.name) };
+    return { name: boardName(friend.name) };
   },
 
   async removeFriend(user: UserDoc, friendId: string): Promise<void> {

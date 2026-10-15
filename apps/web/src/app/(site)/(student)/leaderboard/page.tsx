@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Leaderboard, LeaderboardPeriod, LeaderboardRow, LeaderboardScope } from "@satsharks/types";
 import { Button, Card, Notice, PageHeader, Spinner, Toggle } from "@/components/ui";
 import { api } from "@/lib/api";
+import { countryOptions } from "@/lib/countries";
 import { useEngagement } from "@/lib/engagement";
 
 const SCOPES: { id: LeaderboardScope; label: string }[] = [
@@ -34,6 +35,62 @@ function Row({ row }: { row: LeaderboardRow }) {
       <td className="px-4 py-3 text-right tabular-nums text-slate-600">{row.streak > 0 ? `${row.streak} d` : "–"}</td>
       <td className="px-4 py-3 text-right font-bold tabular-nums">{row.points.toLocaleString()}</td>
     </tr>
+  );
+}
+
+// Accounts made before sign-up asked for a country have none: they choose it once to get a country board.
+function ChooseCountry() {
+  const queryClient = useQueryClient();
+  // Built after mount: country names differ between Node and the browser (hydration).
+  const [countries, setCountries] = useState<{ code: string; name: string }[]>([]);
+  useEffect(() => setCountries(countryOptions()), []);
+  const [country, setCountry] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/api/student/country", { method: "PUT", body: { country } });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["student", "leaderboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["auth", "me"] }),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save your country");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="px-4 py-6 text-sm">
+      <p className="text-slate-700">Your account has no country yet. Choose it to see the leaderboard for students from your country.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <select
+          value={country}
+          onChange={(event) => setCountry(event.target.value)}
+          aria-label="Your country"
+          className="h-10 w-64 max-w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+        >
+          <option value="">Choose your country</option>
+          {countries.map((entry) => (
+            <option key={entry.code} value={entry.code}>
+              {entry.name}
+            </option>
+          ))}
+        </select>
+        <Button disabled={busy || !country} onClick={save}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      {error && (
+        <div className="mt-3">
+          <Notice tone="error">{error}</Notice>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -162,7 +219,8 @@ export default function LeaderboardPage() {
               <Notice tone="error">{board.error.message}</Notice>
             </div>
           )}
-          {data && data.rows.length === 0 && (
+          {data && scope === "country" && data.country === null && <ChooseCountry />}
+          {data && data.rows.length === 0 && !(scope === "country" && data.country === null) && (
             <p className="px-4 py-6 text-sm text-slate-600">
               {scope === "friends" && data.friends.length === 0 ? "Add a friend with their code to start a Friends board." : "No points here yet. Answer some questions to get on the board."}
             </p>
@@ -197,7 +255,7 @@ export default function LeaderboardPage() {
             </div>
           )}
           <p className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
-            Weeks run Monday to Sunday. Only first names and an initial are shown; turn the leaderboard off for your account on Goals &amp; streaks.
+            Weeks run Monday to Sunday. Names are shown as given at sign-up; to stay off the leaderboard, turn it off on Goals &amp; streaks.
           </p>
         </Card>
         {data && <Friends board={data} />}

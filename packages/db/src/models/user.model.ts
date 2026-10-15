@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import {
   GOAL_TYPES,
+  LEGACY_PAID_PLANS,
   PAID_PLANS,
   USER_PLANS,
   USER_REGIONS,
@@ -96,7 +97,8 @@ const userSchema = new Schema<UserDoc>(
     country: { type: String, uppercase: true, minlength: 2, maxlength: 2, default: null },
     region: { type: String, enum: [...USER_REGIONS, null], default: null, index: true },
     plan: { type: String, enum: USER_PLANS, default: "free", index: true },
-    paidPlan: { type: String, enum: [...PAID_PLANS, null], default: null },
+    // Older accounts may still hold a plan no longer offered (LEGACY_PAID_PLANS); their access is unchanged.
+    paidPlan: { type: String, enum: [...PAID_PLANS, ...LEGACY_PAID_PLANS, null], default: null },
     planExpiresAt: { type: Date, default: null },
     passwordChangedAt: { type: Date, default: null },
     sessionId: { type: String, default: null },

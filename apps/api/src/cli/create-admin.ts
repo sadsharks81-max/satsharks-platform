@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   }
   if (flag("paid")) {
     set.plan = "paid";
-    set.paidPlan = "till_test_day";
+    set.paidPlan = "three_months";
     set.planExpiresAt = null;
   }
 
