@@ -57,6 +57,34 @@ export function localClock(date: Date, timeZone: string): { hour: number; weekda
 
 const dayToUtc = (day: string) => Date.parse(`${day}T00:00:00Z`);
 
+// How far `timeZone` is ahead of UTC at `date`, in milliseconds.
+function zoneOffset(date: Date, timeZone: string): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: safeTimeZone(timeZone),
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  const asUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute), Number(p.second));
+  return asUtc - Math.floor(date.getTime() / 1000) * 1000;
+}
+
+// The moment the local day of `date` began in `timeZone` (e.g. the free daily drill limit).
+export function startOfLocalDay(date: Date, timeZone: string): Date {
+  const midnightAsUtc = dayToUtc(dayIn(date, timeZone));
+  // The offset at midnight itself (it can differ from now on a daylight-saving day).
+  const guess = midnightAsUtc - zoneOffset(date, timeZone);
+  return new Date(midnightAsUtc - zoneOffset(new Date(guess), timeZone));
+}
+
 export function addDays(day: string, days: number): string {
   return new Date(dayToUtc(day) + days * DAY_MS).toISOString().slice(0, 10);
 }

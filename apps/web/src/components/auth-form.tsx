@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
-import { USER_REGION_LABELS, regionForCountry, type PublicUser } from "@satsharks/types";
+import { USER_REGION_LABELS, regionForCountry, type PublicUser, type SatDatesContent } from "@satsharks/types";
 import { api, ApiError } from "@/lib/api";
 import { isStaffUser, nextPathFor, takeSignedInElsewhere, useSwitchUser } from "@/lib/auth";
 import { countryOptions, LOCAL_COUNTRY_CODE } from "@/lib/countries";
@@ -17,6 +17,9 @@ interface Values {
   email: string;
   password: string;
   country: string;
+  // Optional (sign-up only).
+  phone: string;
+  testDate: string;
 }
 type Errors = Partial<Record<keyof Values, string>>;
 
@@ -25,6 +28,7 @@ function validate(values: Values, isRegister: boolean): Errors {
   if (isRegister) {
     if (values.name.trim().length < 2) errors.name = "Enter your name (at least 2 characters).";
     if (!values.country) errors.country = "Choose your country.";
+    if (values.phone.trim() && !/^\+?\d{7,15}$/.test(values.phone.replace(/[\s-]/g, ""))) errors.phone = "Enter a phone number like +92 300 1234567, or leave it empty.";
   }
   if (!values.email.trim()) errors.email = "Enter your email address.";
   else if (!EMAIL_PATTERN.test(values.email.trim())) errors.email = "Enter a valid email address, like name@example.com.";
@@ -39,7 +43,18 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const searchParams = useSearchParams();
   const switchUser = useSwitchUser();
   const isRegister = mode === "register";
-  const [values, setValues] = useState<Values>({ name: "", email: "", password: "", country: "" });
+  const [values, setValues] = useState<Values>({ name: "", email: "", password: "", country: "", phone: "", testDate: "" });
+  // A friend's invite link (/register?ref=CODE): the two become friends and the friend earns towards a free week.
+  const ref = isRegister ? (searchParams.get("ref") ?? "").trim().toUpperCase() : "";
+  // The upcoming SAT dates to choose a test date from (proposal: the student enters their SAT date at sign-up).
+  const [satDates, setSatDates] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isRegister) return;
+    const today = new Date().toISOString().slice(0, 10);
+    api<SatDatesContent>("/api/sat-dates")
+      .then((content) => setSatDates(content.dates.map((entry) => entry.date).filter((date) => date >= today)))
+      .catch(() => setSatDates([]));
+  }, [isRegister]);
   const [errors, setErrors] = useState<Errors>({});
   // Fields are checked once the student has left them (or tried to submit), not while typing.
   const [touched, setTouched] = useState<Partial<Record<keyof Values, boolean>>>({});
@@ -76,7 +91,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     event.preventDefault();
     const found = validate(values, isRegister);
     setErrors(found);
-    setTouched({ name: true, email: true, password: true, country: true });
+    setTouched({ name: true, email: true, password: true, country: true, phone: true });
     if (Object.keys(found).length > 0) return;
 
     setSubmitting(true);
@@ -85,7 +100,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       const { user } = await api<{ user: PublicUser }>(`/api/auth/${mode}`, {
         method: "POST",
         body: {
-          ...(isRegister ? { name: values.name.trim(), country: values.country } : {}),
+          ...(isRegister
+            ? { name: values.name.trim(), country: values.country, phone: values.phone.trim() || undefined, testDate: values.testDate || undefined, ref: ref || undefined }
+            : {}),
           email: values.email.trim(),
           password: values.password,
         },
@@ -221,6 +238,40 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
               ))}
           </SelectField>
         )}
+
+        {isRegister && (
+          <TextField
+            label="Phone (optional)"
+            name="phone"
+            type="tel"
+            autoComplete="tel"
+            inputMode="tel"
+            value={values.phone}
+            maxLength={20}
+            placeholder="+92 300 1234567"
+            onChange={(event) => change("phone")(event.target.value)}
+            onBlur={blur("phone")}
+            error={shown("phone")}
+            hint="So SAT Sharks can reach you about your account or payments."
+          />
+        )}
+        {isRegister && (
+          <SelectField
+            label="When is your SAT? (optional)"
+            name="testDate"
+            value={values.testDate}
+            onChange={(event) => change("testDate")(event.target.value)}
+            hint="We count down to it and set your daily goal from it. You can change it later."
+          >
+            <option value="">Not decided yet</option>
+            {satDates.map((date) => (
+              <option key={date} value={date}>
+                {new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}
+              </option>
+            ))}
+          </SelectField>
+        )}
+        {ref && <p className="text-center text-[13px] font-semibold text-[#2E3557]">You were invited by a friend: you will be friends on the leaderboard.</p>}
 
         <SubmitButton loading={submitting} loadingLabel={isRegister ? "Creating account…" : "Logging in…"}>
           {isRegister ? "Create account" : "Log in"}

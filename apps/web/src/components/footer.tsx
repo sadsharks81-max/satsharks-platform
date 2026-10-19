@@ -4,8 +4,10 @@ const links = [
   { href: "/pricing", label: "Pricing" },
   { href: "/sat-dates", label: "SAT Dates" },
   { href: "/faq", label: "FAQ" },
+  { href: "/guides", label: "SAT Guides" },
   { href: "/terms", label: "Terms of Service" },
   { href: "/privacy", label: "Privacy Policy" },
+  { href: "/refund", label: "Refund Policy" },
 ];
 
 export function Footer() {

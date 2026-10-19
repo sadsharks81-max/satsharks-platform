@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Announcements } from "@/components/announcements";
-import { FaqList } from "@/components/faq";
+import { FAQS, FaqList } from "@/components/faq";
+import { JsonLd, courseLd, faqLd, organizationLd, websiteLd } from "@/components/json-ld";
+import { StudentProof } from "@/components/student-proof";
 import { HomeActions } from "@/components/home-actions";
 import { LandingTestDemo } from "@/components/landing-test-demo";
 import { Nav } from "@/components/nav";
@@ -9,6 +11,8 @@ import { Nav } from "@/components/nav";
 export const metadata: Metadata = {
   title: { absolute: "SAT Sharks | Digital SAT practice on real past papers" },
   description: "Full-length adaptive Digital SAT practice tests and focused drills from 26 past SAT exams, in a Bluebook-style test screen, scored 400–1600.",
+  alternates: { canonical: "/" },
+  openGraph: { title: "SAT Sharks | Digital SAT practice on real past papers", url: "/" },
 };
 
 // Every figure on this page must be true (proposal: "every number on screen must be true").
@@ -655,11 +659,15 @@ function ClosingCall() {
 export default function HomePage() {
   return (
     <>
+      <JsonLd data={[organizationLd(), websiteLd(), courseLd(), faqLd(FAQS.flatMap((faq) => (typeof faq.answer === "string" ? [{ question: faq.question, answer: faq.answer }] : [])))]} />
       <Hero />
       <Stats />
       <Why />
       <TwoWays />
       <HowItWorks />
+      <div className="px-4 md:px-8">
+        <StudentProof />
+      </div>
       <Faq />
       <ClosingCall />
     </>

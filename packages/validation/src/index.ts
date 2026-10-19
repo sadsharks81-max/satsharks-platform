@@ -2,6 +2,11 @@ import { z } from "zod";
 import {
   ACCESS_FEATURES,
   ACCESS_LEVELS,
+  CONTENT_ACCESS_LEVELS,
+  CONTENT_LABELS,
+  CURRENCIES,
+  MANUAL_PAYMENT_METHODS,
+  PAYMENT_STATUSES,
   ANNOUNCEMENT_AUDIENCES,
   ANNOUNCEMENT_TONES,
   DIFFICULTIES,
@@ -42,11 +47,25 @@ const countryCodeSchema = z
   .toUpperCase()
   .refine(isCountryCode, "Choose your country from the list");
 
+// Optional phone number: digits with an optional leading +, spaces and dashes allowed while typing.
+export const phoneSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/[\s-]/g, ""))
+  .refine((value) => /^\+?\d{7,15}$/.test(value), "Enter a phone number like +92 300 1234567");
+
+const optionalEmpty = (value: unknown) => (value === "" || value === null ? undefined : value);
+
 export const registerSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email: emailSchema,
   password: newPasswordSchema,
   country: countryCodeSchema,
+  phone: z.preprocess(optionalEmpty, phoneSchema.optional()),
+  // The student's own SAT date (proposal: "enters their real SAT date at sign-up"). YYYY-MM-DD.
+  testDate: z.preprocess(optionalEmpty, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a test date").optional()),
+  // A friend's invite code (from their link): the two become friends and the friend earns towards a free week.
+  ref: z.preprocess(optionalEmpty, z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6,12}$/).optional().catch(undefined)),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -401,14 +420,39 @@ const accessLevelSchema = z.enum(ACCESS_LEVELS);
 // read as free rather than throwing the whole saved setting away.
 const featureLevelSchema = accessLevelSchema.default("free");
 
+// Invite codes: 4–24 letters, digits or dashes, compared without case.
+export const inviteCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9-]{4,24}$/, "Invite codes are 4 to 24 letters, digits or dashes");
+
+// Rules saved before invite codes, pins and labels existed have only key and level.
+const contentRuleSchema = z
+  .object({
+    key: z.string().trim().min(1).max(100),
+    level: z.enum(CONTENT_ACCESS_LEVELS),
+    inviteCode: inviteCodeSchema.nullable().default(null),
+    pinned: z.boolean().default(false),
+    label: z.enum(CONTENT_LABELS).nullable().default(null),
+  })
+  .refine((rule) => rule.level !== "invite" || rule.inviteCode !== null, { message: "Give every invite-only exam or test an invite code" });
+
 export const accessSettingsSchema = z.object({
   features: z.object(Object.fromEntries(ACCESS_FEATURES.map((feature) => [feature, featureLevelSchema])) as Record<AccessFeature, typeof featureLevelSchema>),
   content: z
-    .array(z.object({ key: z.string().trim().min(1).max(100), level: accessLevelSchema }))
+    .array(contentRuleSchema)
     .max(2000)
-    .refine((rules) => new Set(rules.map((rule) => rule.key)).size === rules.length, "Each exam may appear only once"),
+    .refine((rules) => new Set(rules.map((rule) => rule.key)).size === rules.length, "Each exam may appear only once")
+    .refine((rules) => {
+      const codes = rules.filter((rule) => rule.level === "invite").map((rule) => rule.inviteCode);
+      return new Set(codes).size === codes.length;
+    }, "Each invite-only exam or test needs its own invite code"),
   newContent: accessLevelSchema,
+  freeDrillQuestionsPerDay: z.number().int().min(1, "Allow at least 1 drill question a day, or leave it empty").max(1000).nullable().default(null),
 });
+
+export const redeemInviteSchema = z.object({ code: inviteCodeSchema });
 
 // ---------- admin: announcements ----------
 
@@ -542,3 +586,69 @@ export const friendCodeSchema = z.object({
     .toUpperCase()
     .regex(/^[A-Z0-9]{6,10}$/, "Friend codes are 6 to 10 letters and numbers"),
 });
+
+// ---------- Week 4: scheduling, payments, billing ----------
+
+// A moment (ISO date-time) to publish a paper or activate a test by itself; null clears it.
+export const scheduleSchema = z.object({ at: z.string().datetime({ offset: true, message: "Choose a valid date and time" }).nullable() });
+
+const paidPlanSchema = z.enum(PAID_PLANS);
+
+export const checkoutQuerySchema = z.object({
+  plan: paidPlanSchema,
+  currency: z.enum(CURRENCIES).optional(),
+  // Use the one-time exit offer if this account still has it.
+  offer: z.preprocess((value) => value === "1" || value === "true" || value === true, z.boolean()).default(false),
+});
+export type CheckoutQuery = z.infer<typeof checkoutQuerySchema>;
+
+// A transfer the student has made outside the site, sent for approval.
+export const manualPaymentSchema = z.object({
+  plan: paidPlanSchema,
+  currency: z.enum(CURRENCIES),
+  method: z.enum(MANUAL_PAYMENT_METHODS),
+  reference: z.string().trim().min(4, "Enter the transaction ID or reference from your receipt").max(80),
+  note: z.string().trim().max(500).default(""),
+  offer: z.boolean().default(false),
+});
+export type ManualPaymentInput = z.infer<typeof manualPaymentSchema>;
+
+export const cardCheckoutSchema = z.object({ plan: paidPlanSchema, currency: z.enum(CURRENCIES), offer: z.boolean().default(false) });
+export type CardCheckoutInput = z.infer<typeof cardCheckoutSchema>;
+
+export const autoRenewSchema = z.object({ autoRenew: z.boolean() });
+
+export const paymentReviewSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  note: z.string().trim().max(300).default(""),
+});
+
+export const paymentListQuerySchema = z.object({
+  status: z.preprocess(emptyToUndefined, z.enum(PAYMENT_STATUSES).optional()),
+  currency: z.preprocess(emptyToUndefined, z.enum(CURRENCIES).optional()),
+  search: z.preprocess(emptyToUndefined, z.string().trim().max(100).optional()),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+export type PaymentListQuery = z.infer<typeof paymentListQuerySchema>;
+
+const manualMethodSchema = z.object({
+  enabled: z.boolean(),
+  instructions: z.string().trim().max(600),
+  currencies: z.array(z.enum(CURRENCIES)).min(1, "Choose at least one currency for each way to pay"),
+});
+
+export const paymentSettingsSchema = z
+  .object({
+    manual: z.object(Object.fromEntries(MANUAL_PAYMENT_METHODS.map((method) => [method, manualMethodSchema])) as Record<(typeof MANUAL_PAYMENT_METHODS)[number], typeof manualMethodSchema>),
+    alertEmail: z.union([z.literal(""), z.string().trim().toLowerCase().email("Enter a valid alert email").max(254)]),
+    exitOffer: z.object({
+      enabled: z.boolean(),
+      percentOff: z.number().int().min(5, "The offer is 5% to 50% off").max(50, "The offer is 5% to 50% off"),
+      headline: z.string().trim().min(1, "Write the offer's headline").max(120),
+    }),
+    referrals: z.object({ enabled: z.boolean() }),
+  })
+  .refine((settings) => Object.values(settings.manual).every((method) => !method.enabled || method.instructions.length >= 10), {
+    message: "Write the account details for every way to pay that is turned on",
+  });

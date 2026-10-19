@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 // with this message typed in, ready for the student to finish and send.
 const WHATSAPP_MESSAGE = "Hi SAT Sharks! I need some help. Here is my question or issue: ";
 const WHATSAPP_URL = `https://wa.me/923066595745?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`;
+// For other "message us" links (checkout without an online way to pay).
+export const WHATSAPP_LINK = WHATSAPP_URL;
 
 // Floating "chat on WhatsApp" button, bottom right. It is placed in the (site), (landing) and (auth)
 // layouts only, so the full-screen test screen (drills, mocks, full tests) never shows it. Admin

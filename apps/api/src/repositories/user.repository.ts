@@ -21,6 +21,9 @@ export const userRepository = {
     role?: UserRole;
     country?: string | null;
     region?: UserRegion | null;
+    phone?: string | null;
+    engagement?: Partial<UserDoc["engagement"]>;
+    referredBy?: UserDoc["referredBy"];
   }): Promise<UserDoc> {
     const created = await UserModel.create(input);
     return created.toObject();

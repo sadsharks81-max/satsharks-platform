@@ -7,7 +7,8 @@ import type { AttemptSummary, CatalogExam, FullTestSummary, PracticeCatalog, Pra
 import { AttemptCard, FullTestCard } from "@/components/attempt-card";
 import { CreateDrill } from "@/components/create-drill";
 import { CreateMock } from "@/components/create-mock";
-import { PaidBadge, UnlockButton } from "@/components/plan-lock";
+import { ContentPills, InviteCodeBox, LockedAction, PaidBadge, UnlockButton } from "@/components/plan-lock";
+import { GoalGap } from "@/components/goal-gap";
 import { PracticeTests, StartPracticeTest, usePracticeTests } from "@/components/practice-tests";
 import { RequireUser } from "@/components/require-user";
 import { SatCountdown } from "@/components/sat-countdown";
@@ -70,7 +71,10 @@ function Home() {
   const canMock = !!access && (access.features.mocks || access.features.full_tests) && openExams.length > 0;
   // A free account with anything kept for paid plans is told once, above the cards.
   const limited =
-    !!access && !access.paid && (openExams.length < exams.length || Object.values(access.features).includes(false) || !!uploadedTests.data?.tests.some((test) => test.locked));
+    !!access &&
+    !access.paid &&
+    (exams.some((exam) => exam.lockReason === "paid") || Object.values(access.features).includes(false) || !!uploadedTests.data?.tests.some((test) => test.lockReason === "paid") || !!access.dailyDrill);
+  const inviteLocked = exams.some((exam) => exam.lockReason === "invite") || !!uploadedTests.data?.tests.some((test) => test.lockReason === "invite");
   const years = useMemo(() => [...new Set(exams.map(yearOf).filter((value): value is number => value !== null))].sort((a, b) => b - a), [exams]);
   const visible = exams.filter((exam) => (year === "all" || yearOf(exam) === year) && (season === "all" || seasonOf(exam) === season));
   // A full test in progress is shown as one card (its sections are not listed separately).
@@ -85,9 +89,16 @@ function Home() {
     <div className="flex flex-col gap-6">
       {/* Countdown to the next SAT, then the two ways to start, then the exams. */}
       <SatCountdown />
+      <GoalGap />
       {limited && (
         <Notice tone="info">
-          You are on the free plan. Exams and tests marked <b>Paid</b> open with a paid plan.{" "}
+          You are on the free plan. Exams and tests marked <b>Paid</b> open with a paid plan.
+          {access?.dailyDrill && (
+            <>
+              {" "}
+              Drills: <b>{Math.max(0, access.dailyDrill.limit - access.dailyDrill.used)}</b> of {access.dailyDrill.limit} questions left today.
+            </>
+          )}{" "}
           <Link href="/pricing" className="font-bold text-brand-500 hover:underline">
             See plans
           </Link>
@@ -141,10 +152,13 @@ function Home() {
       <section>
         <div className="mb-3.5 flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <h2 className={heading}>Exams</h2>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <FilterGroup options={years} value={year} onChange={setYear} />
             <FilterGroup options={SEASONS} value={season} onChange={setSeason} />
           </div>
+        </div>
+        <div className="mb-3">
+          <InviteCodeBox startOpen={inviteLocked} />
         </div>
         {exams.length === 0 && <Notice tone="info">No exams have been published yet.</Notice>}
         {exams.length > 0 && visible.length === 0 && <Notice tone="info">No exams match these filters.</Notice>}
@@ -166,9 +180,10 @@ function Home() {
                     </span>
                   </div>
                   <h3 className="flex min-h-[44px] items-center text-[18px] font-bold leading-snug tracking-tight">{exam.name}</h3>
+                  <ContentPills label={exam.label} pinned={exam.pinned} free={exam.free} showFree={limited} />
                   {exam.locked && (
                     <span>
-                      <PaidBadge />
+                      <PaidBadge reason={exam.lockReason ?? "paid"} />
                     </span>
                   )}
                 </div>
@@ -182,7 +197,8 @@ function Home() {
                       Start Exam
                     </button>
                   ) : (
-                    (exam.locked || !whole) && <UnlockButton label={exam.locked ? "Unlock with a paid plan" : "Drills need a paid plan"} className="w-full" />
+                    (exam.locked || !whole) &&
+                    (exam.locked ? <LockedAction reason={exam.lockReason ?? "paid"} className="w-full" /> : <UnlockButton label="Drills need a paid plan" className="w-full" />)
                   )}
                   {whole && !whole.locked && (
                     <button
@@ -200,7 +216,7 @@ function Home() {
         </div>
       </section>
 
-      <PracticeTests />
+      <PracticeTests showFree={limited} />
 
       {drillExam !== undefined && catalog.data && <CreateDrill catalog={catalog.data} initialExamId={drillExam ?? undefined} onClose={() => setDrillExam(undefined)} />}
       {mockOpen && catalog.data && <CreateMock catalog={catalog.data} onClose={() => setMockOpen(false)} />}

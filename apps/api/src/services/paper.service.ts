@@ -15,6 +15,7 @@ function toPaperSummary(paper: PaperDoc): PaperSummary {
     modules: paper.modules,
     adaptive: paper.adaptive,
     questionCount: paper.questionCount,
+    publishAt: paper.publishAt ? new Date(paper.publishAt).toISOString() : null,
     createdAt: paper.createdAt.toISOString(),
     updatedAt: paper.updatedAt.toISOString(),
   };

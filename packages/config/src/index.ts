@@ -33,6 +33,14 @@ const envSchema = z.object({
   // Streak reminders and the weekly progress email, sent by the API every 15 minutes when email is
   // configured. "off" stops them (e.g. on a second API instance or a test copy of the database).
   ENGAGEMENT_EMAILS: z.preprocess(emptyToUndefined, z.enum(["on", "off"]).default("on")),
+  // Where "new payment" alerts go when Admin → Settings → Payments has no alert email.
+  PAYMENT_ALERT_EMAIL: optionalString,
+  // "on" turns on the test card gateway (a fake checkout page, no money) to try the payment flow.
+  // Refused in production.
+  PAYMENTS_TEST_GATEWAY: z.preprocess(emptyToUndefined, z.enum(["on", "off"]).default("off")),
+  // Scheduled publishing, friend-invite rewards, renewal and come-back emails, and removing accounts
+  // deleted over 30 days ago, run every minute by the API. "off" stops them (e.g. a second instance).
+  SCHEDULER: z.preprocess(emptyToUndefined, z.enum(["on", "off"]).default("on")),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -270,6 +270,15 @@ export function CreateDrill({ catalog, initialExamId, onClose }: { catalog: Prac
             <input id="drill-name" value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="e.g. Algebra practice" className={`${inputClass} bg-white`} />
           </div>
 
+          {catalog.access.dailyDrill && (
+            <Notice tone="info">
+              Free plan: {Math.max(0, catalog.access.dailyDrill.limit - catalog.access.dailyDrill.used)} of {catalog.access.dailyDrill.limit} drill questions left today. A longer
+              drill is cut to what is left.{" "}
+              <a href="/pricing" className="font-bold text-brand-500 hover:underline">
+                Unlimited drills
+              </a>
+            </Notice>
+          )}
           {error && <Notice tone="error">{error}</Notice>}
           <Button className="w-full" disabled={submitting || !target || (custom && limit === null)} onClick={start}>
             {submitting ? "Starting…" : `Start Drill (${allExams ? bankLimit : (limit ?? "All")} Qs, ${SECTION_LABELS[section]})`}

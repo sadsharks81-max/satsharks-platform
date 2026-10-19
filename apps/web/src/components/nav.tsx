@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useMe, useSwitchUser } from "@/lib/auth";
 import { useTimeZoneSync } from "@/lib/engagement";
+import { TestCountdownChip } from "./goal-gap";
 import { Logo } from "./logo";
 
 const button = "whitespace-nowrap rounded-[6px] bg-brand-500 px-5 py-2 text-[14px] font-bold tracking-tight text-white transition hover:opacity-90";
@@ -78,6 +79,9 @@ export function Nav({ tone = "light" }: { tone?: keyof typeof TONES }) {
         <Link href="/" className={`mr-auto block transition hover:opacity-90 ${style.logo}`}>
           <Logo className="h-9 w-auto sm:h-11" />
         </Link>
+
+        {/* Students: their own countdown (proposal: "every page shows 'Your test is in 47 days'"). */}
+        {user && !isAdmin && <TestCountdownChip className={`self-center ${tone === "brand" ? "text-white" : "text-brand-600"}`} />}
 
         {/* Tablets and up: the full row. */}
         {user && (

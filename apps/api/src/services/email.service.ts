@@ -128,4 +128,53 @@ export const emailService = {
       return false;
     }
   },
+
+  // Account and payment emails (receipts, renewal reminders, payment alerts to the owner): no opt-out
+  // line, since they are about money or the account itself. Returns whether it was sent.
+  async sendNotice(
+    to: string,
+    message: { subject: string; greeting: string; lines: string[]; rows?: [string, string][]; button?: { label: string; link: string }; footer?: string },
+  ): Promise<boolean> {
+    if (!this.isConfigured()) {
+      if (!isProduction) logger.warn("Email not configured; notice not sent", { to, subject: message.subject, lines: message.lines, rows: message.rows });
+      return false;
+    }
+    const rows = message.rows ?? [];
+    try {
+      await send({
+        to,
+        subject: message.subject,
+        text: [
+          message.greeting,
+          "",
+          ...message.lines,
+          ...(rows.length ? ["", ...rows.map(([label, value]) => `${label}: ${value}`)] : []),
+          ...(message.button ? ["", `${message.button.label}: ${message.button.link}`] : []),
+          ...(message.footer ? ["", message.footer] : []),
+        ].join("\n"),
+        html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0f172a;max-width:520px">
+  <p style="font-size:22px;font-weight:700;color:#324dc7;margin:0 0 16px">SAT Sharks</p>
+  <p>${escapeHtml(message.greeting)}</p>
+  ${message.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("\n  ")}
+  ${
+    rows.length
+      ? `<table style="border-collapse:collapse;margin:16px 0;width:100%">${rows
+          .map(
+            ([label, value]) =>
+              `<tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;color:#475569">${escapeHtml(label)}</td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700">${escapeHtml(value)}</td></tr>`,
+          )
+          .join("")}</table>`
+      : ""
+  }
+  ${message.button ? `<p style="margin:24px 0"><a href="${escapeHtml(message.button.link)}" style="background:#324dc7;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px;display:inline-block">${escapeHtml(message.button.label)}</a></p>` : ""}
+  ${message.footer ? `<p style="font-size:12px;color:#64748b">${escapeHtml(message.footer)}</p>` : ""}
+</div>`,
+      });
+      logger.info("Notice email sent", { to: maskEmail(to), subject: message.subject });
+      return true;
+    } catch (error) {
+      logger.error("Notice email failed", { to: maskEmail(to), error: toErrorMessage(error) });
+      return false;
+    }
+  },
 };

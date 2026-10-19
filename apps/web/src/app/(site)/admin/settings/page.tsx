@@ -16,6 +16,7 @@ import {
   type Section,
 } from "@satsharks/types";
 import { Button, Card, Notice, PageHeader, Spinner } from "@/components/ui";
+import { PaymentSettingsCard } from "@/components/payment-settings";
 import { PricingSettingsCard } from "@/components/pricing-settings";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/auth";
@@ -207,15 +208,17 @@ function ConversionTablesCard({ canWrite }: { canWrite: boolean }) {
 export default function AdminSettingsPage() {
   const { data: user } = useMe();
   const canWrite = user?.permissions.includes("papers:write") ?? false;
+  const payments = user?.permissions.includes("payments:read") ?? false;
   return (
     <>
-      <PageHeader title="Settings" subtitle="Adaptive routing and scoring for mocks and full tests, and the plans on the pricing page." />
+      <PageHeader title="Settings" subtitle="Adaptive routing and scoring for mocks and full tests, the plans on the pricing page, and payments." />
       <div className="grid gap-4">
         <div className="max-w-xl">
           <AdaptiveSettingsCard canWrite={canWrite} />
         </div>
         <ConversionTablesCard canWrite={canWrite} />
         <PricingSettingsCard canWrite={canWrite} />
+        {payments && <PaymentSettingsCard canWrite={user?.permissions.includes("payments:write") ?? false} />}
       </div>
     </>
   );

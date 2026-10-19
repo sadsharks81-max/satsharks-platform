@@ -68,6 +68,8 @@ questionLogSchema.index({ attemptId: 1, position: 1 }, { unique: true });
 // History, newest first, with filters.
 questionLogSchema.index({ userId: 1, answeredAt: -1 });
 questionLogSchema.index({ userId: 1, section: 1, answeredAt: -1 });
+// "Students practising right now" on the public pages.
+questionLogSchema.index({ answeredAt: -1 });
 // Trap answers: what other students chose on the same question.
 questionLogSchema.index({ questionId: 1, correct: 1 });
 

@@ -23,6 +23,8 @@ export interface PaperDoc {
   modules: PaperModule[];
   adaptive: PaperAdaptiveInfo;
   questionCount: number;
+  // Published by the scheduler at this moment (proposal 4.2 "schedule a paper"); cleared when it runs.
+  publishAt: Date | null;
   metadata: Record<string, unknown>;
   sourceMetadata: Record<string, unknown>;
   createdAt: Date;
@@ -64,6 +66,7 @@ const paperSchema = new Schema<PaperDoc>(
     modules: { type: [moduleSchema], default: [] },
     adaptive: { type: adaptiveSchema, default: () => ({}) },
     questionCount: { type: Number, default: 0 },
+    publishAt: { type: Date, default: null, index: { sparse: true } },
     metadata: { type: Schema.Types.Mixed, default: {} },
     sourceMetadata: { type: Schema.Types.Mixed, default: {} },
   },

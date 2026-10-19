@@ -105,7 +105,7 @@ const onBoard = () => ({ role: "student", status: "active", hidden: trusted({ $n
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-async function ensureFriendCode(user: Pick<UserDoc, "_id" | "friendCode">): Promise<string> {
+export async function ensureFriendCode(user: Pick<UserDoc, "_id" | "friendCode">): Promise<string> {
   if (user.friendCode) return user.friendCode;
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = Array.from({ length: 8 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");

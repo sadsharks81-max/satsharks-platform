@@ -18,10 +18,13 @@ import {
   type FullTestDoc,
   type UserDoc,
 } from "@satsharks/db";
-import { isPaidPlan, type AdminUser, type AdminUserActivity, type UserListCounts } from "@satsharks/types";
+import { DELETED_RESTORE_DAYS, isPaidPlan, type AdminUser, type AdminUserActivity, type UserListCounts } from "@satsharks/types";
 import type { UpdateUserInput, UserListQuery } from "@satsharks/validation";
 import mongoose from "mongoose";
 import { AppError } from "../utils/app-error";
+import { csvCell } from "./payment-rules";
+
+const DAY_MS = 86_400_000;
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -38,6 +41,9 @@ function toAdminUser(user: UserDoc): AdminUser {
     // A plan no longer offered (e.g. Till Test Day) shows as plain "Paid".
     paidPlan: isPaidPlan(user.paidPlan) ? user.paidPlan : null,
     planExpiresAt: user.planExpiresAt ? user.planExpiresAt.toISOString() : null,
+    phone: user.phone ?? null,
+    deletedAt: user.status === "deleted" && user.deletedAt ? user.deletedAt.toISOString() : null,
+    restorableUntil: user.status === "deleted" && user.deletedAt ? new Date(user.deletedAt.getTime() + DELETED_RESTORE_DAYS * DAY_MS).toISOString() : null,
     createdAt: user.createdAt.toISOString(),
   };
 }
@@ -71,7 +77,12 @@ function buildFilter(query: UserListQuery, now: Date): Record<string, unknown> {
   if (query.plan === "free") and.push({ $nor: trusted([paidNow(now)]) });
   if (query.search) {
     const pattern = new RegExp(escapeRegex(query.search), "i");
-    and.push({ $or: trusted([{ name: pattern }, { email: pattern }]) });
+    const or: Record<string, unknown>[] = [{ name: pattern }, { email: pattern }];
+    // Phone numbers are stored as digits (with an optional +); "0300 123-4567" finds "+923001234567"
+    // by its last digits.
+    const digits = query.search.replace(/\D/g, "").replace(/^0+/, "");
+    if (digits.length >= 4) or.push({ phone: new RegExp(escapeRegex(digits)) });
+    and.push({ $or: trusted(or) });
   }
   return { $and: trusted(and) };
 }
@@ -142,6 +153,9 @@ export const userAdminService = {
 
     const set: Record<string, unknown> = {};
     if (input.status !== undefined) set.status = input.status;
+    // The restore window starts when the account is deleted, and ends if it is restored.
+    if (input.status === "deleted" && user.status !== "deleted") set.deletedAt = new Date();
+    if (input.status !== undefined && input.status !== "deleted") set.deletedAt = null;
     if (input.role !== undefined) set.role = input.role;
     if (input.plan === "free") {
       set.plan = "free";
@@ -167,8 +181,11 @@ export const userAdminService = {
   // Removes every deleted account for good, with its tests, history, mistakes and points, and takes it
   // off other students' friend lists. Problem reports are kept (they are about questions) and show no
   // reporter. One account at a time, and only while it is still deleted, so one restored meanwhile is kept.
-  async purgeDeleted(): Promise<{ removed: number }> {
-    const users = await UserModel.find({ status: "deleted", ...visible() }).select("_id").lean<UserDoc[]>();
+  // `olderThan`: only accounts deleted before that moment (the scheduler's 30-day clean-up; accounts
+  // deleted before deletedAt existed are left for an admin to clear).
+  async purgeDeleted(olderThan?: Date): Promise<{ removed: number }> {
+    const filter = olderThan ? { status: "deleted", deletedAt: trusted({ $ne: null, $lte: olderThan }), ...visible() } : { status: "deleted", ...visible() };
+    const users = await UserModel.find(filter).select("_id").lean<UserDoc[]>();
     let removed = 0;
     for (const { _id: userId } of users) {
       const gone = await UserModel.findOneAndDelete({ _id: userId, status: "deleted" }).select("_id").lean<UserDoc>();
@@ -184,6 +201,18 @@ export const userAdminService = {
       removed += 1;
     }
     return { removed };
+  },
+
+  // The list as CSV (same filters as the page, every page), for a spreadsheet.
+  async exportCsv(query: UserListQuery): Promise<string> {
+    const users = await UserModel.find(buildFilter(query, new Date())).sort({ createdAt: -1 }).limit(50_000).lean<UserDoc[]>();
+    const header = ["Name", "Email", "Phone", "Country", "Region", "Role", "Status", "Plan", "Paid plan", "Plan ends", "Joined"];
+    const rows = users.map((user) => {
+      const view = toAdminUser(user);
+      return [view.name, view.email, view.phone, view.country, view.region, view.role, view.status, view.plan, view.paidPlan, view.planExpiresAt?.slice(0, 10), view.createdAt.slice(0, 10)];
+    });
+    // A byte-order mark so Excel reads names in Urdu or with accents correctly.
+    return "\uFEFF" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
   },
 
   async paidCount(): Promise<number> {

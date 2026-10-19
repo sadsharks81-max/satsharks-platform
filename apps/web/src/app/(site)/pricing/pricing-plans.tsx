@@ -2,15 +2,23 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { homePath, useMe } from "@/lib/auth";
+import { homePath, isStaffUser, useMe } from "@/lib/auth";
+import { ExitOffer } from "@/components/exit-offer";
+import { StudentProof } from "@/components/student-proof";
 import { Notice, Spinner } from "@/components/ui";
 import { usePricing, type Currency } from "@/lib/pricing";
 
-// Signed-in students see their own region's currency (from the country they chose at sign-up).
-// Visitors get a first guess from their device's time zone. The switch always works either way.
+// Signed-in students see only their own region's plans (from the country they chose at sign-up,
+// which is also the currency checkout charges): no switch, so a Pakistani student never sees USD
+// prices and an international student never sees PKR. Visitors get the currency of the country they
+// are browsing from (Vercel's IP country, passed in by the page) or a guess from their device's time
+// zone, and keep the switch (a VPN or a phone network can put them in the wrong country). Accounts
+// without a country, and staff, keep the switch too.
 function guessCurrency(): Currency {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone === "Asia/Karachi" ? "PKR" : "USD";
+    return Intl.DateTimeFormat().resolvedOptions().timeZone === "Asia/Karachi"
+      ? "PKR"
+      : "USD";
   } catch {
     return "USD";
   }
@@ -18,49 +26,90 @@ function guessCurrency(): Currency {
 
 function Check() {
   return (
-    <svg aria-hidden viewBox="0 0 20 20" className="mt-0.5 h-5 w-5 flex-none text-brand-500" fill="currentColor">
+    <svg
+      aria-hidden
+      viewBox="0 0 20 20"
+      className="mt-0.5 h-5 w-5 flex-none text-brand-500"
+      fill="currentColor"
+    >
       <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" />
     </svg>
   );
 }
 
-export function PricingPlans() {
+export function PricingPlans({
+  initialCurrency = null,
+}: {
+  initialCurrency?: Currency | null;
+}) {
   const { data: user } = useMe();
   const pricing = usePricing();
   const [chosen, setChosen] = useState<Currency | null>(null);
   const [guess, setGuess] = useState<Currency>("PKR");
   useEffect(() => setGuess(guessCurrency()), []);
-  const fromAccount: Currency | null = user?.region ? (user.region === "local" ? "PKR" : "USD") : null;
-  const currency = chosen ?? fromAccount ?? guess;
+  const fromAccount: Currency | null = user?.region
+    ? user.region === "local"
+      ? "PKR"
+      : "USD"
+    : null;
+  // A student's country decides; nothing on the page can change it.
+  const fixedByAccount = user?.role === "student" && fromAccount !== null;
+  const currency = fixedByAccount
+    ? fromAccount!
+    : (chosen ?? fromAccount ?? initialCurrency ?? guess);
+  const checkoutHref = (planId: string) => `/checkout?plan=${planId}`;
 
   if (pricing.isLoading) return <Spinner label="Loading plans" />;
-  if (pricing.error || !pricing.data) return <Notice tone="error">The plans could not be loaded. Please try again.</Notice>;
-  const { plans, comparison, tagline, schoolsNote, refundPolicy } = pricing.data;
+  if (pricing.error || !pricing.data)
+    return (
+      <Notice tone="error">
+        The plans could not be loaded. Please try again.
+      </Notice>
+    );
+  const { plans, comparison, tagline, schoolsNote, refundPolicy } =
+    pricing.data;
 
   return (
     <>
-      <div className="flex flex-col items-center gap-2">
-        <div role="radiogroup" aria-label="Currency" className="inline-flex rounded-full border border-slate-900 bg-white p-1">
-          {(
-            [
-              { id: "PKR", label: "Pakistan · PKR" },
-              { id: "USD", label: "International · USD" },
-            ] as const
-          ).map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              role="radio"
-              aria-checked={currency === option.id}
-              onClick={() => setChosen(option.id)}
-              className={`min-h-10 cursor-pointer rounded-full px-4 text-sm font-bold transition sm:px-5 ${currency === option.id ? "bg-brand-500 text-white" : "text-slate-700 hover:bg-slate-100"}`}
-            >
-              {option.label}
-            </button>
-          ))}
+      {fixedByAccount ? (
+        <p className="text-center text-sm font-medium text-slate-600">
+          {currency === "PKR"
+            ? "Prices in PKR for students in Pakistan"
+            : "Prices in USD for international students"}
+          , from the country on your account.
+        </p>
+      ) : (
+        <div className="flex flex-col items-center gap-2">
+          <div
+            role="radiogroup"
+            aria-label="Currency"
+            className="inline-flex rounded-full border border-slate-900 bg-white p-1"
+          >
+            {(
+              [
+                { id: "PKR", label: "Pakistan · PKR" },
+                { id: "USD", label: "International · USD" },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={currency === option.id}
+                onClick={() => setChosen(option.id)}
+                className={`min-h-10 cursor-pointer rounded-full px-4 text-sm font-bold transition sm:px-5 ${currency === option.id ? "bg-brand-500 text-white" : "text-slate-700 hover:bg-slate-100"}`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {fromAccount && !chosen && (
+            <p className="text-xs text-slate-500">
+              Showing prices for your account&apos;s region.
+            </p>
+          )}
         </div>
-        {fromAccount && !chosen && <p className="text-xs text-slate-500">Showing prices for your account&apos;s region.</p>}
-      </div>
+      )}
 
       <div className="mx-auto mt-8 grid max-w-6xl gap-4 lg:grid-cols-3">
         {plans.map((plan) => {
@@ -71,14 +120,22 @@ export function PricingPlans() {
               className={`relative flex flex-col rounded-2xl border bg-white p-6 ${plan.popular ? "border-brand-500 ring-2 ring-brand-500" : "border-slate-900"}`}
             >
               {plan.popular && (
-                <span className="absolute -top-3 left-6 rounded-full bg-brand-500 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white">Most popular</span>
+                <span className="absolute -top-3 left-6 rounded-full bg-brand-500 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                  Most popular
+                </span>
               )}
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-bold">{plan.name}</h2>
-                {plan.saving && <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-bold text-green-700">{plan.saving[currency]}</span>}
+                {plan.saving && (
+                  <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-bold text-green-700">
+                    {plan.saving[currency]}
+                  </span>
+                )}
               </div>
               <p className="mt-4 flex flex-wrap items-baseline gap-x-1.5">
-                <span className="text-[34px] font-bold leading-none tracking-tight">{plan.price[currency]}</span>
+                <span className="text-[34px] font-bold leading-none tracking-tight">
+                  {plan.price[currency]}
+                </span>
                 <span className="text-sm text-slate-500">{plan.period}</span>
               </p>
               <ul className="mt-6 flex-1 space-y-2.5 text-sm">
@@ -97,13 +154,28 @@ export function PricingPlans() {
                   >
                     {user ? "Go to your dashboard" : "Create a free account"}
                   </Link>
-                ) : user ? (
-                  // Payments are not built yet (proposal Checkpoint 4.1); nothing here takes money.
-                  <button type="button" disabled className="h-11 w-full cursor-not-allowed rounded-lg bg-brand-500 text-sm font-bold text-white opacity-60">
-                    Payments coming soon
+                ) : user && isStaffUser(user) ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="h-11 w-full cursor-not-allowed rounded-lg bg-brand-500 text-sm font-bold text-white opacity-60"
+                  >
+                    Student accounts only
                   </button>
+                ) : user ? (
+                  <Link
+                    href={checkoutHref(plan.id)}
+                    className="flex h-11 w-full items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white transition hover:bg-brand-600"
+                  >
+                    {user.plan === "paid"
+                      ? `Renew with ${plan.name}`
+                      : `Choose ${plan.name}`}
+                  </Link>
                 ) : (
-                  <Link href="/register" className="flex h-11 w-full items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white transition hover:bg-brand-600">
+                  <Link
+                    href={`/register?next=${encodeURIComponent(checkoutHref(plan.id))}`}
+                    className="flex h-11 w-full items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white transition hover:bg-brand-600"
+                  >
                     Get started
                   </Link>
                 )}
@@ -113,11 +185,21 @@ export function PricingPlans() {
         })}
       </div>
 
-      {tagline && <p className="mt-6 text-center text-sm font-medium text-slate-600">{tagline}</p>}
-      {refundPolicy && <p className="mt-2 text-center text-xs font-bold text-slate-700">{refundPolicy}</p>}
+      {tagline && (
+        <p className="mt-6 text-center text-sm font-medium text-slate-600">
+          {tagline}
+        </p>
+      )}
+      {refundPolicy && (
+        <p className="mt-2 text-center text-xs font-bold text-slate-700">
+          {refundPolicy}
+        </p>
+      )}
 
       <section className="mt-14">
-        <h2 className="text-center text-2xl font-bold tracking-tight">Free vs paid</h2>
+        <h2 className="text-center text-2xl font-bold tracking-tight">
+          Free vs paid
+        </h2>
         <div className="mx-auto mt-6 max-w-4xl overflow-hidden rounded-2xl border border-slate-900 bg-white">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-900 bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
@@ -128,7 +210,10 @@ export function PricingPlans() {
                 <th scope="col" className="w-[26%] px-3 py-3">
                   Free
                 </th>
-                <th scope="col" className="w-[30%] px-3 py-3 text-brand-600 sm:px-6">
+                <th
+                  scope="col"
+                  className="w-[30%] px-3 py-3 text-brand-600 sm:px-6"
+                >
                   Paid
                 </th>
               </tr>
@@ -146,8 +231,15 @@ export function PricingPlans() {
             </tbody>
           </table>
         </div>
-        {schoolsNote && <p className="mx-auto mt-5 max-w-2xl text-center text-sm text-slate-600">{schoolsNote}</p>}
+        {schoolsNote && (
+          <p className="mx-auto mt-5 max-w-2xl text-center text-sm text-slate-600">
+            {schoolsNote}
+          </p>
+        )}
       </section>
+
+      <StudentProof />
+      <ExitOffer />
     </>
   );
 }

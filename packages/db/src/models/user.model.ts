@@ -82,6 +82,26 @@ export interface UserDoc {
   // Emails already sent, so a reminder or the weekly email goes out once.
   lastStreakReminderDay: string | null;
   lastWeeklyEmailWeek: string | null;
+  // ---- Week 4 (read through the defaults: older accounts lack these fields) ----
+  // Optional, from sign-up; digits with an optional leading "+". Searchable in Admin → Users.
+  phone: string | null;
+  // When the account was deleted; it can be restored for DELETED_RESTORE_DAYS, then it is removed.
+  deletedAt: Date | null;
+  // Off once the student cancels on the Billing page: no renewal reminders, the plan just ends.
+  autoRenew: boolean;
+  // The one-time exit offer was used on a paid payment (it is offered once per account).
+  exitOfferUsedAt: Date | null;
+  // Exams and tests opened with an invite code (their access keys).
+  inviteKeys: string[];
+  // Friend invites: who invited this student, when this student counted for them, and (for the
+  // inviter) how many free weeks were given.
+  referredBy: mongoose.Types.ObjectId | null;
+  referralQualifiedAt: Date | null;
+  referralRewards: number;
+  // Emails already sent: the renewal reminder for this plan end (ISO day) and the "come back" email
+  // for this silence (the day of the last practice).
+  lastRenewalReminderFor: string | null;
+  lastWinbackFor: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -139,6 +159,16 @@ const userSchema = new Schema<UserDoc>(
     friends: { type: [Schema.Types.ObjectId], ref: "User", default: [] },
     lastStreakReminderDay: { type: String, default: null },
     lastWeeklyEmailWeek: { type: String, default: null },
+    phone: { type: String, default: null, maxlength: 16 },
+    deletedAt: { type: Date, default: null },
+    autoRenew: { type: Boolean, default: true },
+    exitOfferUsedAt: { type: Date, default: null },
+    inviteKeys: { type: [String], default: [] },
+    referredBy: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    referralQualifiedAt: { type: Date, default: null },
+    referralRewards: { type: Number, default: 0 },
+    lastRenewalReminderFor: { type: String, default: null },
+    lastWinbackFor: { type: String, default: null },
   },
   { timestamps: true },
 );

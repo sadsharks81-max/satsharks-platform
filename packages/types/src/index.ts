@@ -16,6 +16,9 @@ export const PERMISSIONS = [
   "users:write",
   "reports:read",
   "reports:write",
+  // Payments, revenue and payment settings: admins only (staff never see money).
+  "payments:read",
+  "payments:write",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -224,6 +227,8 @@ export interface PublicUser {
   plan: UserPlan;
   // The time zone days and streaks follow (saved from the browser); null until first saved.
   timeZone: string | null;
+  // When the paid plan ends (null = free, or paid with no end date).
+  planExpiresAt: string | null;
 }
 
 // ---------- admin: users ----------
@@ -240,8 +245,16 @@ export interface AdminUser {
   plan: UserPlan;
   paidPlan: PaidPlan | null;
   planExpiresAt: string | null;
+  // Optional, given at sign-up.
+  phone: string | null;
+  // Deleted accounts: when, and the last day they can be restored (DELETED_RESTORE_DAYS).
+  deletedAt: string | null;
+  restorableUntil: string | null;
   createdAt: string;
 }
+
+// A deleted account can be restored for this many days; then it is removed for good.
+export const DELETED_RESTORE_DAYS = 30;
 
 export interface AdminUserActivity {
   drills: number;
@@ -286,6 +299,8 @@ export interface PaperSummary {
   modules: PaperModule[];
   adaptive: PaperAdaptiveInfo;
   questionCount: number;
+  // Published by itself at this moment (ISO); null = not scheduled.
+  publishAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -317,9 +332,18 @@ export interface CatalogExam {
   // An uploaded exam, which can also be taken as a fixed full test.
   testUploadId: string | null;
   sections: Partial<Record<Section, { paperId: string; questionCount: number }>>;
-  // Kept for paid accounts and this account is free (see Admin → Access).
+  // Kept for paid accounts (or for invite codes) and this account cannot open it (see Admin → Access).
   locked: boolean;
+  lockReason: LockReason | null;
+  // Admin → Access: shown first, and a label on the card.
+  pinned: boolean;
+  label: ContentLabel | null;
+  // Free for every account (shown as "Free" to free accounts when other exams are locked).
+  free: boolean;
 }
+
+// Why an exam or test is locked for this account.
+export type LockReason = "paid" | "invite";
 
 export interface CatalogTopic {
   topic: string;
@@ -534,6 +558,8 @@ export interface TestUploadSummary {
   status: "draft" | "published";
   // Published tests only: students can see and start it.
   active: boolean;
+  // Published tests only: activated by itself at this moment (ISO); null = not scheduled.
+  activateAt: string | null;
   readingWriting: TestUploadSection | null;
   math: TestUploadSection | null;
   // The two papers created on publish.
@@ -551,8 +577,12 @@ export interface PracticeTestListing {
   year: number;
   testNumber: number;
   moduleCounts: Record<Section, Record<MockModule, number>>;
-  // Kept for paid accounts and this account is free.
+  // Kept for paid accounts (or for invite codes) and this account cannot open it.
   locked: boolean;
+  lockReason: LockReason | null;
+  pinned: boolean;
+  label: ContentLabel | null;
+  free: boolean;
 }
 
 const MAX_SPR_LENGTH = 5;
@@ -791,9 +821,25 @@ export const ACCESS_FEATURE_LABELS: Record<AccessFeature, { label: string; descr
 // on the Full tests page (exam or practice test) is "upload:<id>", which is also its exam id.
 export const uploadAccessKey = (uploadId: string) => `upload:${uploadId}`;
 
+// Exams and uploaded tests can also be kept for students who were given an invite code (proposal
+// 4.2: "Free, Paid only or Invite code only"). Paid plans do not open invite-only content; the code
+// does. Staff and admins open everything.
+export const CONTENT_ACCESS_LEVELS = ["free", "paid", "invite"] as const;
+export type ContentAccessLevel = (typeof CONTENT_ACCESS_LEVELS)[number];
+
+// A label an admin puts on an exam or test card (proposal 4.2).
+export const CONTENT_LABELS = ["new", "hard", "most_attempted"] as const;
+export type ContentLabel = (typeof CONTENT_LABELS)[number];
+export const CONTENT_LABEL_TEXT: Record<ContentLabel, string> = { new: "New", hard: "Hard", most_attempted: "Most attempted" };
+
 export interface AccessRule {
   key: string;
-  level: AccessLevel;
+  level: ContentAccessLevel;
+  // Invite-only content: the code students type to open it (letters and digits, stored upper case).
+  inviteCode: string | null;
+  // Shown first in its list.
+  pinned: boolean;
+  label: ContentLabel | null;
 }
 
 export interface AccessSettings {
@@ -802,6 +848,9 @@ export interface AccessSettings {
   content: AccessRule[];
   // For exams and tests without a rule: those that appeared after the last save.
   newContent: AccessLevel;
+  // Free accounts: drill questions per day (proposal: 20). null = no limit. Retry drills of the
+  // mistake bank do not count (the mistake bank has its own free limit).
+  freeDrillQuestionsPerDay: number | null;
 }
 
 // Everything open until an admin saves their own, so existing accounts lose nothing on release.
@@ -809,10 +858,18 @@ export const DEFAULT_ACCESS: AccessSettings = {
   features: { drills: "free", mocks: "free", full_tests: "free", analytics: "free" },
   content: [],
   newContent: "free",
+  freeDrillQuestionsPerDay: null,
 };
 
-export function contentAccessLevel(settings: AccessSettings, key: string): AccessLevel {
-  return settings.content.find((rule) => rule.key === key)?.level ?? settings.newContent;
+// The proposal's free limit, suggested on the Access page.
+export const SUGGESTED_FREE_DRILL_QUESTIONS = 20;
+
+export function contentRule(settings: AccessSettings, key: string): AccessRule {
+  return settings.content.find((rule) => rule.key === key) ?? { key, level: settings.newContent, inviteCode: null, pinned: false, label: null };
+}
+
+export function contentAccessLevel(settings: AccessSettings, key: string): ContentAccessLevel {
+  return contentRule(settings, key).level;
 }
 
 // One exam or uploaded test on the Access page.
@@ -836,6 +893,9 @@ export interface PracticeAccess {
   // Paid plan, staff or admin.
   paid: boolean;
   features: Record<AccessFeature, boolean>;
+  // Free accounts with a daily drill limit: questions allowed and already used today (the
+  // student's own day). null = no limit.
+  dailyDrill: { limit: number; used: number } | null;
 }
 
 // ---------- announcements (Admin → Announcements, shown as banners to students) ----------
@@ -942,6 +1002,14 @@ export interface AdminStats {
   questions: Record<PaperStatus, number>;
   questionsBySection: Record<Section, number>;
   attempts: number;
+  // "Today" is the day in Pakistan (Asia/Karachi), where the admins are.
+  signups: { today: number; week: number };
+  // Drills, section mocks and full tests started today.
+  practiceToday: { drills: number; mocks: number; fullTests: number };
+  // Money received (paid payments), this calendar month and all time, per currency.
+  revenue: Record<Currency, { month: number; total: number }>;
+  // Payments the admins have not looked at yet (red badge on Payments), and transfers to approve.
+  payments: { unseen: number; toReview: number };
 }
 
 // ---------- Week 3: history, mistake bank, analytics, goals, streaks, leaderboard ----------
@@ -1136,6 +1204,9 @@ export interface Analytics {
     slowest: SlowQuestion[];
     step: NextStep;
   } | null;
+  // The free view only: how many skills cost this student points, and roughly how many points in all
+  // (real numbers; the skills themselves are shown with a paid plan). null on the full view.
+  locked: { skills: number; points: number } | null;
 }
 
 export const GOAL_TYPES = ["questions", "minutes"] as const;
@@ -1214,4 +1285,165 @@ export interface ShareCard {
   best: number | null;
   tests: number;
   streak: number;
+}
+
+// ---------- Week 4: payments, billing and the conversion set-up (proposal 4.1, 4.2) ----------
+
+// How long each paid plan lasts, in calendar months.
+export const PLAN_MONTHS: Record<PaidPlan, number> = { monthly: 1, three_months: 3 };
+
+// Card payments go through a payment gateway (the "test" gateway exists only outside production,
+// for trying the flow). Bank transfer, JazzCash and Easypaisa are paid by the student outside the
+// site and approved by an admin. "referral" is a free week earned by inviting friends (no money).
+export const PAYMENT_METHODS = ["card", "bank_transfer", "jazzcash", "easypaisa", "referral"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+export const MANUAL_PAYMENT_METHODS = ["bank_transfer", "jazzcash", "easypaisa"] as const;
+export type ManualPaymentMethod = (typeof MANUAL_PAYMENT_METHODS)[number];
+export const isManualMethod = (method: unknown): method is ManualPaymentMethod => (MANUAL_PAYMENT_METHODS as readonly unknown[]).includes(method);
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  card: "Card",
+  bank_transfer: "Bank transfer",
+  jazzcash: "JazzCash",
+  easypaisa: "Easypaisa",
+  referral: "Friend invites",
+};
+
+// pending: a card checkout was opened and not finished. review: a transfer waiting for an admin.
+// paid: the plan was given. rejected: an admin turned a transfer down. failed: the gateway refused it
+// or it was abandoned.
+export const PAYMENT_STATUSES = ["pending", "review", "paid", "rejected", "failed"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pending: "Not finished",
+  review: "Waiting for approval",
+  paid: "Paid",
+  rejected: "Rejected",
+  failed: "Failed",
+};
+
+export interface PaymentSummary {
+  id: string;
+  user: { id: string; name: string; email: string } | null;
+  plan: PaidPlan;
+  currency: Currency;
+  // In the currency's main unit (rupees, dollars).
+  amount: number;
+  // Before the one-time offer, when it was used.
+  listAmount: number;
+  discountPercent: number;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  // The student's transaction ID / reference for a transfer, or the gateway's payment ID.
+  reference: string | null;
+  note: string | null;
+  // Set when paid: "SS-20261019-4F2A9C".
+  receiptNumber: string | null;
+  // The plan period this payment paid for.
+  periodStart: string | null;
+  periodEnd: string | null;
+  reviewNote: string | null;
+  // Admins have opened the Payments page since it arrived.
+  seen: boolean;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+// "PKR 3,500" / "$29.99".
+export function formatMoney(amount: number, currency: Currency): string {
+  return currency === "PKR"
+    ? `PKR ${Math.round(amount).toLocaleString("en-US")}`
+    : `$${amount.toLocaleString("en-US", { minimumFractionDigits: amount % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
+}
+
+// The price an admin typed on the pricing page ("PKR 1,500", "$12.99") as a number; null when it
+// has no usable number (the plan then cannot be bought).
+export function parsePrice(price: string): number | null {
+  const match = /(\d[\d,]*(?:\.\d+)?)/.exec(price);
+  if (!match) return null;
+  const value = Number(match[1]!.replace(/,/g, ""));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+// One manual way to pay, set up in Admin → Settings → Payments.
+export interface ManualMethodSettings {
+  enabled: boolean;
+  // Account title, number / IBAN, bank: shown to the student as written.
+  instructions: string;
+  currencies: Currency[];
+}
+
+export interface PaymentSettings {
+  manual: Record<ManualPaymentMethod, ManualMethodSettings>;
+  // Where "new payment" alerts go (e.g. the owner's Gmail). Empty = PAYMENT_ALERT_EMAIL from the
+  // API's environment, if set.
+  alertEmail: string;
+  // One-time offer shown when a visitor leaves the pricing page without paying (proposal "exit offer").
+  exitOffer: { enabled: boolean; percentOff: number; headline: string };
+  // "Invite two friends, get a week of Pro free."
+  referrals: { enabled: boolean };
+}
+
+export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
+  manual: {
+    bank_transfer: { enabled: false, instructions: "", currencies: ["PKR", "USD"] },
+    jazzcash: { enabled: false, instructions: "", currencies: ["PKR"] },
+    easypaisa: { enabled: false, instructions: "", currencies: ["PKR"] },
+  },
+  alertEmail: "",
+  exitOffer: { enabled: false, percentOff: 15, headline: "Wait! Take {percent}% off your first plan" },
+  referrals: { enabled: true },
+};
+
+// Friend invites: each friend who signs up with the student's link and earns this many practice
+// points counts; every REFERRALS_PER_REWARD such friends give REFERRAL_REWARD_DAYS of paid access,
+// at most REFERRAL_MAX_REWARDS times.
+export const REFERRAL_QUALIFY_POINTS = 50;
+export const REFERRALS_PER_REWARD = 2;
+export const REFERRAL_REWARD_DAYS = 7;
+export const REFERRAL_MAX_REWARDS = 5;
+
+// What the checkout page shows for one plan.
+export interface CheckoutOption {
+  method: Exclude<PaymentMethod, "referral">;
+  label: string;
+  // Manual methods: where to send the money.
+  instructions: string | null;
+}
+
+export interface Checkout {
+  plan: PaidPlan;
+  planName: string;
+  currency: Currency;
+  amount: number;
+  listAmount: number;
+  discountPercent: number;
+  // When the paid period would start and end if paid now.
+  periodStart: string;
+  periodEnd: string;
+  methods: CheckoutOption[];
+  // A transfer of this account already waits for approval.
+  waiting: PaymentSummary | null;
+}
+
+export interface Billing {
+  plan: UserPlan;
+  paidPlan: PaidPlan | null;
+  planExpiresAt: string | null;
+  // Off after the student cancels: no renewal reminders, the plan simply ends.
+  autoRenew: boolean;
+  currency: Currency | null;
+  payments: PaymentSummary[];
+  referrals: { code: string; joined: number; qualified: number; rewards: number; enabled: boolean };
+  // The one-time exit offer, while this account can still use it.
+  offer: { percentOff: number; headline: string } | null;
+}
+
+// Real numbers for the landing and pricing pages (proposal "proof from real students").
+export interface PublicProof {
+  // Students who answered a question in the last 15 minutes.
+  practisingNow: number;
+  // First and best full-test totals of students who show on the leaderboard ("Ayesha R.").
+  improvements: { name: string; from: number; to: number; weeks: number }[];
 }

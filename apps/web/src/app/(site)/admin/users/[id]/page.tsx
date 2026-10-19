@@ -5,10 +5,15 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  formatMoney,
   PAID_PLAN_LABELS,
   PAID_PLANS,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUS_LABELS,
+  type PaymentSummary,
   USER_REGION_LABELS,
   USER_ROLES,
+  DELETED_RESTORE_DAYS,
   type AdminUser,
   type AdminUserActivity,
   type PaidPlan,
@@ -17,7 +22,7 @@ import {
   type UserStatus,
 } from "@satsharks/types";
 import { RequireUser } from "@/components/require-user";
-import { Button, Card, Modal, Notice, PageHeader, Spinner } from "@/components/ui";
+import { Badge, Button, Card, Modal, Notice, PageHeader, Spinner } from "@/components/ui";
 import { countryLabel, formatDay, PlanBadge, StatusBadge } from "@/components/user-badges";
 import { api } from "@/lib/api";
 
@@ -36,6 +41,50 @@ interface Pending {
 }
 
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
+
+// Everything this student has paid (proposal 4.2: "open any user: papers taken, scores and payments").
+function UserPayments({ id }: { id: string }) {
+  const payments = useQuery({ queryKey: ["admin", "user", id, "payments"], queryFn: () => api<{ payments: PaymentSummary[] }>(`/api/admin/users/${id}/payments`) });
+  return (
+    <Card className="p-0">
+      <h2 className="border-b border-slate-900 px-5 py-4 font-bold">Payments</h2>
+      {payments.isLoading && (
+        <div className="px-5">
+          <Spinner label="Loading payments" />
+        </div>
+      )}
+      {payments.error && (
+        <div className="p-4">
+          <Notice tone="error">{payments.error.message}</Notice>
+        </div>
+      )}
+      {payments.data && payments.data.payments.length === 0 && <p className="px-5 py-5 text-sm text-slate-600">No payments.</p>}
+      <ul className="divide-y divide-slate-200">
+        {payments.data?.payments.map((payment) => (
+          <li key={payment.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm">
+            <div>
+              <p className="font-bold">
+                {formatMoney(payment.amount, payment.currency)} · {payment.method === "referral" ? "Free week" : PAID_PLAN_LABELS[payment.plan]}
+              </p>
+              <p className="text-xs text-slate-500">
+                {formatDay(payment.createdAt)} · {PAYMENT_METHOD_LABELS[payment.method]}
+                {payment.reference && payment.method !== "card" && payment.method !== "referral" && ` · ${payment.reference}`}
+              </p>
+            </div>
+            <span className="flex items-center gap-2">
+              <Badge tone={payment.status === "paid" ? "green" : payment.status === "review" ? "amber" : "red"}>{PAYMENT_STATUS_LABELS[payment.status]}</Badge>
+              {payment.status === "paid" && (
+                <Link href={`/receipts/${payment.id}`} className="text-xs font-bold text-brand-500 hover:underline">
+                  Receipt
+                </Link>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
 
 function UserView({ id, me }: { id: string; me: PublicUser }) {
   const queryClient = useQueryClient();
@@ -86,7 +135,7 @@ function UserView({ id, me }: { id: string; me: PublicUser }) {
       status === "blocked"
         ? { title: "Disable this account?", message: `${user.name} will be signed out at once and cannot log in until the account is enabled again. Their data is kept.`, confirm: "Disable account", danger: true, body: { status }, done: "Account disabled." }
         : status === "deleted"
-          ? { title: "Delete this account?", message: `${user.name} will be signed out and cannot log in. The account and its data are kept, so you can restore it from the Deleted tab.`, confirm: "Delete account", danger: true, body: { status }, done: "Account deleted. It can be restored." }
+          ? { title: "Delete this account?", message: `${user.name} will be signed out and cannot log in. The account and its data are kept for ${DELETED_RESTORE_DAYS} days, so you can restore it from the Deleted tab; after that it is removed for good.`, confirm: "Delete account", danger: true, body: { status }, done: `Account deleted. It can be restored for ${DELETED_RESTORE_DAYS} days.` }
           : { title: user.status === "deleted" ? "Restore this account?" : "Enable this account?", message: `${user.name} will be able to log in again.`, confirm: user.status === "deleted" ? "Restore account" : "Enable account", danger: false, body: { status }, done: "Account active again." },
     );
 
@@ -138,10 +187,19 @@ function UserView({ id, me }: { id: string; me: PublicUser }) {
                 {countryLabel(user.country)}
                 {user.region && <span className="text-slate-500"> · {USER_REGION_LABELS[user.region]}</span>}
               </dd>
+              <dt className="text-slate-500">Phone</dt>
+              <dd>{user.phone ?? "Not given"}</dd>
               <dt className="text-slate-500">Joined</dt>
               <dd>{formatDay(user.createdAt)}</dd>
+              {user.restorableUntil && (
+                <>
+                  <dt className="text-slate-500">Deleted</dt>
+                  <dd className="text-red-700">Can be restored until {formatDay(user.restorableUntil)}, then removed for good</dd>
+                </>
+              )}
             </dl>
           </Card>
+          {me.permissions.includes("payments:read") && <UserPayments id={id} />}
           <Card>
             <h2 className="font-bold">Activity</h2>
             <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -159,8 +217,8 @@ function UserView({ id, me }: { id: string; me: PublicUser }) {
           <Card>
             <h2 className="font-bold">Plan</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Give this account paid access, or move it back to free. A paid plan becomes free by itself after its end date. Free and paid limits are not enforced yet; they arrive with
-              payments.
+              Give this account paid access by hand (a payment made outside the site, a scholarship), or move it back to free. A paid plan becomes free by itself after its end date.
+              Payments made on the site set the plan themselves.
             </p>
             <fieldset disabled={!canWrite || busy} className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-bold">

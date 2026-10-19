@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { ContactLine, LegalPage } from "@/components/legal-page";
 
-export const metadata: Metadata = { title: "Privacy Policy", description: "What SAT Sharks collects, why, and who it is shared with." };
+export const metadata: Metadata = { title: "Privacy Policy", description: "What SAT Sharks collects, why, and who it is shared with.", alternates: { canonical: "/privacy" } };
 
 // Every statement here describes what the code does today (see docs/database.md and the API).
 // Not reviewed by a lawyer: SAT Sharks should have it checked before launch, and update it when

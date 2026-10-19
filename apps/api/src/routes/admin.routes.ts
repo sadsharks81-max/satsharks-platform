@@ -16,6 +16,8 @@ import {
   listReports,
   listUsers,
   purgeDeletedUsers,
+  exportUsers,
+  setPaperSchedule,
   reopenReport,
   resolveReport,
   setAccess,
@@ -38,10 +40,20 @@ import {
   publishTestUpload,
   replaceTestUploadSection,
   saveTestUploadSection,
+  scheduleTestUpload,
   setTestUploadActive,
   updateTestUpload,
 } from "../controllers/test-upload.controller";
 import { createAnnouncement, deleteAnnouncement, listAnnouncements, updateAnnouncement } from "../controllers/announcement.controller";
+import {
+  getAdminReceipt,
+  getPaymentSettings,
+  getUserPayments,
+  listPayments,
+  markPaymentsSeen,
+  reviewPayment,
+  setPaymentSettings,
+} from "../controllers/billing.controller";
 import { requireAuth, requirePermission } from "../middleware/auth";
 import { imageUpload, testPdfUpload } from "../middleware/upload";
 import { requireDb } from "../middleware/require-db";
@@ -70,8 +82,17 @@ adminRouter.put("/announcements/:id", requirePermission("papers:write"), updateA
 adminRouter.delete("/announcements/:id", requirePermission("papers:write"), deleteAnnouncement);
 
 adminRouter.get("/users", requirePermission("users:read"), listUsers);
+adminRouter.get("/users/export", requirePermission("users:read"), exportUsers);
 adminRouter.delete("/users/deleted", requirePermission("users:write"), purgeDeletedUsers);
 adminRouter.get("/users/:id", requirePermission("users:read"), getUser);
+adminRouter.get("/users/:id/payments", requirePermission("payments:read"), getUserPayments);
+
+adminRouter.get("/payments", requirePermission("payments:read"), listPayments);
+adminRouter.post("/payments/seen", requirePermission("payments:read"), markPaymentsSeen);
+adminRouter.get("/payments/:id/receipt", requirePermission("payments:read"), getAdminReceipt);
+adminRouter.post("/payments/:id/review", requirePermission("payments:write"), reviewPayment);
+adminRouter.get("/settings/payments", requirePermission("payments:read"), getPaymentSettings);
+adminRouter.put("/settings/payments", requirePermission("payments:write"), setPaymentSettings);
 adminRouter.patch("/users/:id", requirePermission("users:write"), updateUser);
 
 adminRouter.get("/reports", requirePermission("reports:read"), listReports);
@@ -83,6 +104,7 @@ adminRouter.get("/papers", requirePermission("papers:read"), listPapers);
 adminRouter.post("/papers/status", requirePermission("papers:write"), setPapersStatus);
 adminRouter.get("/papers/:id", requirePermission("papers:read"), getPaper);
 adminRouter.patch("/papers/:id/status", requirePermission("papers:write"), setPaperStatus);
+adminRouter.put("/papers/:id/schedule", requirePermission("papers:write"), setPaperSchedule);
 
 adminRouter.get("/questions", requirePermission("questions:read"), listQuestions);
 adminRouter.get("/questions/facets", requirePermission("questions:read"), getFacets);
@@ -108,4 +130,5 @@ adminRouter.post("/test-uploads/:id/sections/:section/file", requirePermission("
 adminRouter.put("/test-uploads/:id/sections/:section", requirePermission("papers:write"), saveTestUploadSection);
 adminRouter.post("/test-uploads/:id/publish", requirePermission("papers:write"), publishTestUpload);
 adminRouter.post("/test-uploads/:id/active", requirePermission("papers:write"), setTestUploadActive);
+adminRouter.put("/test-uploads/:id/schedule", requirePermission("papers:write"), scheduleTestUpload);
 adminRouter.delete("/test-uploads/:id", requirePermission("papers:write"), deleteTestUpload);

@@ -56,7 +56,7 @@ import type { BankDrillInput, CreateAttemptInput, CreateFullTestInput, CreateMoc
 import mongoose from "mongoose";
 import { AppError } from "../utils/app-error";
 import { gradeAnswer } from "../utils/grading";
-import { paidOnly, requireContent, requireFeature, type UserAccess } from "./access.service";
+import { drillSize, paidOnly, requireContent, requireFeature, type UserAccess } from "./access.service";
 import { activityService } from "./activity.service";
 import { historyService } from "./history.service";
 import { orderModule, pickModule, requiredForHard, type Candidate } from "./mock-assembly";
@@ -71,7 +71,7 @@ const CATALOG_TTL_MS = 60_000;
 const UNTIMED_VIEW_CAP_SECONDS = 10 * 60;
 
 // The catalog as every account sees it; locks are added per account on each request.
-type BaseCatalog = { exams: Omit<CatalogExam, "locked">[]; topics: PracticeCatalog["topics"] };
+type BaseCatalog = { exams: Omit<CatalogExam, "locked" | "lockReason" | "pinned" | "label" | "free">[]; topics: PracticeCatalog["topics"] };
 let catalogCache: { value: BaseCatalog; expires: number } | null = null;
 
 export function invalidateCatalog(): void {
@@ -531,6 +531,16 @@ async function fullTestSummary(userId: string, fullTest: FullTestDoc): Promise<F
   };
 }
 
+// Lock, pin and label of an exam or test for one account (Admin → Access).
+function display(access: UserAccess, key: string): Pick<CatalogExam, "locked" | "lockReason" | "pinned" | "label" | "free"> {
+  const rule = access.rule(key);
+  const lockReason = access.lockReason(key);
+  return { locked: lockReason !== null, lockReason, pinned: rule.pinned, label: rule.label, free: rule.level === "free" };
+}
+
+// Pinned exams and tests first; the order is otherwise kept (stable sort).
+const pinnedFirst = <T extends { pinned: boolean }>(items: T[]): T[] => [...items].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+
 // What can be practised: published papers grouped by exam, and the topic/skill vocabulary.
 async function baseCatalog(): Promise<BaseCatalog> {
   if (catalogCache && catalogCache.expires > Date.now()) return catalogCache.value;
@@ -584,7 +594,7 @@ export const practiceService = {
   async catalog(access: UserAccess): Promise<PracticeCatalog> {
     const base = await baseCatalog();
     return {
-      exams: base.exams.map((exam) => ({ ...exam, locked: !access.content(exam.examId) })),
+      exams: pinnedFirst(base.exams.map((exam) => ({ ...exam, ...display(access, exam.examId) }))),
       topics: base.topics,
       access: access.summary,
     };
@@ -620,7 +630,8 @@ export const practiceService = {
       if (answered.length > 0) match._id = { $nin: answered.map((row) => row._id) };
     }
 
-    const size = Math.min(input.limit ?? MAX_QUESTIONS_PER_ATTEMPT, MAX_QUESTIONS_PER_ATTEMPT);
+    // A free account's daily drill limit cuts the set to what is left today.
+    const size = drillSize(access, Math.min(input.limit ?? MAX_QUESTIONS_PER_ATTEMPT, MAX_QUESTIONS_PER_ATTEMPT));
     const picked = await QuestionModel.aggregate<{ _id: mongoose.Types.ObjectId }>([
       { $match: match },
       { $sample: { size } },
@@ -668,7 +679,7 @@ export const practiceService = {
       ]);
       if (answered.length > 0) match._id = { $nin: answered.map((row) => row._id) };
     }
-    const picked = await QuestionModel.aggregate<{ _id: mongoose.Types.ObjectId }>([{ $match: match }, { $sample: { size: input.count } }, { $project: { _id: 1 } }]);
+    const picked = await QuestionModel.aggregate<{ _id: mongoose.Types.ObjectId }>([{ $match: match }, { $sample: { size: drillSize(access, input.count) } }, { $project: { _id: 1 } }]);
     if (picked.length === 0) throw AppError.badRequest("No questions match those filters");
 
     const label = input.skills.length === 1 ? input.skills[0]! : input.topics.length === 1 ? input.topics[0]! : SECTION_LABELS[input.section];
@@ -752,7 +763,7 @@ export const practiceService = {
   // Active uploaded practice tests a student can sit.
   async practiceTests(access: UserAccess): Promise<PracticeTestListing[]> {
     const tests = await testUploadService.listActive();
-    return tests.map((test) => ({ ...test, locked: !access.content(uploadAccessKey(test.id)) }));
+    return pinnedFirst(tests.map((test) => ({ ...test, ...display(access, uploadAccessKey(test.id)) })));
   },
 
   // A sitting of an uploaded practice test: the ordinary full-test flow with the test's fixed modules.

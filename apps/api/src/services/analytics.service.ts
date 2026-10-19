@@ -221,6 +221,16 @@ async function timingAnalysis(userId: string, logs: QuestionLogDoc[]): Promise<N
   return { sections, pace, slowest, step };
 }
 
+// The free view's teaser (proposal "the results-page moment"): how many skills cost points and how
+// many points in all, never more than the distance to 1600. Real numbers; the skills stay hidden.
+const LOCKED_MIN_POINTS = 5;
+function lockedSummary(skills: SkillStat[], predicted: number | null): { skills: number; points: number } {
+  const costly = skills.filter((skill) => skill.pointsToGain >= LOCKED_MIN_POINTS);
+  const points = costly.reduce((sum, skill) => sum + skill.pointsToGain, 0);
+  const room = predicted === null ? 1200 : Math.max(0, 1600 - predicted);
+  return { skills: costly.length, points: Math.round(Math.min(points, room) / 10) * 10 };
+}
+
 export const analyticsService = {
   // The predicted total alone (goals, emails). null until both sections have a score.
   async predictedTotal(userId: string): Promise<number | null> {
@@ -269,6 +279,7 @@ export const analyticsService = {
       skillsStep,
       errors: full ? await errorAnalysis(userId, logs, skills) : null,
       timing: full ? await timingAnalysis(userId, logs) : null,
+      locked: full ? null : lockedSummary(skills, predicted.total),
     };
   },
 

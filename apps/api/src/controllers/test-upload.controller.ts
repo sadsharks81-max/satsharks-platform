@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   objectIdSchema,
   saveUploadSectionSchema,
+  scheduleSchema,
   testUploadActiveSchema,
   testUploadMetaSchema,
   uploadSectionParamSchema,
@@ -61,4 +62,10 @@ export async function setTestUploadActive(req: Request, res: Response): Promise<
 export async function deleteTestUpload(req: Request, res: Response): Promise<void> {
   await testUploadService.remove(uploadId(req));
   sendOk(res, { deleted: true });
+}
+
+// Activate a published test by itself at a date and time (proposal 4.2); null clears the schedule.
+export async function scheduleTestUpload(req: Request, res: Response): Promise<void> {
+  const { at } = scheduleSchema.parse(req.body);
+  sendOk(res, { upload: await testUploadService.setSchedule(uploadId(req), at ? new Date(at) : null) });
 }

@@ -12,4 +12,5 @@ export { AnnouncementModel, type AnnouncementDoc } from "./models/announcement.m
 export { QuestionLogModel, type QuestionLogDoc } from "./models/question-log.model";
 export { MistakeModel, type MistakeDoc } from "./models/mistake.model";
 export { DailyStatModel, type DailyStatDoc } from "./models/daily-stat.model";
+export { PaymentModel, type PaymentDoc } from "./models/payment.model";
 export { trusted } from "./connection";

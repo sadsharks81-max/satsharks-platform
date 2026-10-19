@@ -207,6 +207,36 @@ function PublishedQuestions({ upload }: { upload: TestUploadSummary }) {
   );
 }
 
+// Activate a published test by itself at a chosen moment (proposal 4.2 "schedule a paper").
+function ScheduleActivation({ upload, busy, onSave }: { upload: TestUploadSummary; busy: boolean; onSave: (at: string | null) => void }) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const local = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const tomorrow = new Date(Date.now() + 86_400_000);
+  tomorrow.setHours(9, 0, 0, 0);
+  const [value, setValue] = useState(local(upload.activateAt ? new Date(upload.activateAt) : tomorrow));
+  return (
+    <div className="flex w-full flex-wrap items-end gap-2 border-t border-slate-200 pt-3 text-sm">
+      <label className="text-xs font-bold">
+        Or activate it by itself at
+        <input type="datetime-local" className="mt-1 block h-9 rounded-lg border border-slate-300 px-2 text-sm" value={value} min={local(new Date())} onChange={(event) => setValue(event.target.value)} />
+      </label>
+      <Button size="sm" variant="outline" disabled={busy || !value} onClick={() => onSave(new Date(value).toISOString())}>
+        {upload.activateAt ? "Change schedule" : "Schedule"}
+      </Button>
+      {upload.activateAt && (
+        <>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => onSave(null)}>
+            Remove schedule
+          </Button>
+          <span className="text-xs font-bold text-brand-600">
+            Activates {new Date(upload.activateAt).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TestDetail({ id, canWrite }: { id: string; canWrite: boolean }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -346,6 +376,13 @@ function TestDetail({ id, canWrite }: { id: string; canWrite: boolean }) {
             >
               {busy ? "Saving…" : upload.active ? "Deactivate" : "Activate"}
             </Button>
+          )}
+          {canWrite && !upload.active && (
+            <ScheduleActivation
+              upload={upload}
+              busy={busy}
+              onSave={(at) => run(async () => changed((await api<{ upload: TestUploadSummary }>(`/api/admin/test-uploads/${id}/schedule`, { method: "PUT", body: { at } })).upload))}
+            />
           )}
         </Card>
       )}

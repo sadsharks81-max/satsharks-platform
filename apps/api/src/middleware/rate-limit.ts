@@ -30,6 +30,15 @@ export const reportRateLimit = rateLimit({
   message: limited("Too many reports. Try again later."),
 });
 
+// Payments a student sends (transfers, card checkouts): enough for mistakes, not for a script.
+export const paymentRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: limited("Too many payment attempts. Try again later."),
+});
+
 export const apiRateLimit = rateLimit({
   windowMs: 60 * 1000,
   limit: 300,

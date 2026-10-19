@@ -6,6 +6,7 @@ import { SatDatesList } from "@/components/sat-dates-list";
 export const metadata: Metadata = {
   title: "SAT dates and registration",
   description: "Upcoming Digital SAT test dates, registration and late registration deadlines, and how to register, including in Pakistan.",
+  alternates: { canonical: "/sat-dates" },
 };
 
 const OFFICIAL_DATES = "https://satsuite.collegeboard.org/sat/dates-deadlines";

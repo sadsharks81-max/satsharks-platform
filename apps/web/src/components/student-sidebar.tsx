@@ -24,6 +24,7 @@ const SECTIONS: Section[] = [
   { href: "/analytics", label: "Analytics", icon: <path d="M4 20V10m6 10V4m6 16v-7m4 7H2" /> },
   { href: "/goals", label: "Goals & streaks", icon: <path d="M12 3c1 3 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-8.5z" /> },
   { href: "/leaderboard", label: "Leaderboard", icon: <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3" /> },
+  { href: "/billing", label: "Plan & billing", icon: <path d="M3 7h18v12H3V7zm0 4h18M7 15h3" /> },
 ];
 
 const HELP = [

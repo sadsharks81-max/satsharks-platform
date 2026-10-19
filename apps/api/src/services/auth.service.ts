@@ -29,6 +29,7 @@ export function toPublicUser(user: UserDoc): PublicUser {
     region: user.region ?? null,
     plan: effectivePlan(user),
     timeZone: user.engagement?.timeZone ?? null,
+    planExpiresAt: effectivePlan(user) === "paid" && user.planExpiresAt ? user.planExpiresAt.toISOString() : null,
   };
 }
 
@@ -39,7 +40,14 @@ export const authService = {
       throw AppError.conflict("An account with this email already exists");
     }
     const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
-    return userRepository.create({
+    // A friend's invite link: only a real, active student counts. A wrong code is ignored, never an error.
+    const inviter = input.ref
+      ? await UserModel.findOne({ friendCode: input.ref, role: "student", status: "active", hidden: trusted({ $ne: true }) }).select("_id").lean<UserDoc>()
+      : null;
+    // A test date in the past (or a typo far ahead) is not kept; it can be set later on Goals & streaks.
+    const today = new Date().toISOString().slice(0, 10);
+    const testDate = input.testDate && input.testDate >= today && input.testDate <= `${Number(today.slice(0, 4)) + 3}-12-31` ? input.testDate : null;
+    const user = await userRepository.create({
       name: input.name,
       email: input.email,
       passwordHash,
@@ -47,7 +55,18 @@ export const authService = {
       country: input.country,
       // Set from the chosen country only, never from the request's IP address.
       region: regionForCountry(input.country),
+      phone: input.phone ?? null,
+      engagement: testDate ? { testDate } : undefined,
+      referredBy: inviter?._id ?? null,
     });
+    // The two become friends at once (Friends leaderboard).
+    if (inviter) {
+      await Promise.all([
+        UserModel.updateOne({ _id: inviter._id }, { $addToSet: { friends: user._id } }),
+        UserModel.updateOne({ _id: user._id }, { $addToSet: { friends: inviter._id } }),
+      ]);
+    }
+    return user;
   },
 
   async login(input: LoginInput): Promise<UserDoc> {

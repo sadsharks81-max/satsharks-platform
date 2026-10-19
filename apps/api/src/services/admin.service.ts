@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { AssetModel, AttemptModel, PaperModel, ProblemReportModel, QuestionModel, trusted, UserModel, type PaperDoc, type QuestionDoc } from "@satsharks/db";
+import { AssetModel, AttemptModel, FullTestModel, PaperModel, ProblemReportModel, QuestionModel, trusted, UserModel, type PaperDoc, type QuestionDoc } from "@satsharks/db";
 import {
   FULL_TEST_QUESTION_TAG,
   PAPER_STATUSES,
@@ -15,8 +15,13 @@ import {
 } from "@satsharks/types";
 import type { QuestionListQuery, UpdateQuestionInput } from "@satsharks/validation";
 import { AppError } from "../utils/app-error";
+import { startOfLocalDay } from "./engagement-rules";
+import { paymentService } from "./payment.service";
 import { invalidateCatalog } from "./practice.service";
 import { userAdminService, visible } from "./user-admin.service";
+
+// "Today" on the admin dashboard is the day in Pakistan.
+const ADMIN_TIME_ZONE = "Asia/Karachi";
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const ASSET_URL = /^\/api\/assets\/([a-f0-9]{32}\.(?:svg|png|jpg|webp))$/;
@@ -74,10 +79,35 @@ export const adminService = {
       ProblemReportModel.countDocuments({ status: "pending" }),
       ProblemReportModel.countDocuments({ status: "resolved" }),
     ]);
-    const paidUsers = await userAdminService.paidCount();
+    const now = new Date();
+    const today = startOfLocalDay(now, ADMIN_TIME_ZONE);
+    const weekAgo = new Date(today.getTime() - 6 * 86_400_000);
+    const [paidUsers, signupsToday, signupsWeek, drillsToday, mocksToday, fullTestsToday, revenue, payments] = await Promise.all([
+      userAdminService.paidCount(),
+      UserModel.countDocuments({ ...visible(), role: "student", createdAt: trusted({ $gte: today }) }),
+      UserModel.countDocuments({ ...visible(), role: "student", createdAt: trusted({ $gte: weekAgo }) }),
+      AttemptModel.countDocuments({ kind: "drill", createdAt: trusted({ $gte: today }) }),
+      AttemptModel.countDocuments({ kind: "mock", fullTestId: null, createdAt: trusted({ $gte: today }) }),
+      FullTestModel.countDocuments({ createdAt: trusted({ $gte: today }) }),
+      paymentService.revenue(now),
+      paymentService.counts(),
+    ]);
     const usersByRegion: AdminStats["usersByRegion"] = { local: 0, international: 0, unknown: 0 };
     for (const row of regions) usersByRegion[row._id ?? "unknown"] += row.n;
-    return { users, usersByRegion, paidUsers, reports: { pending: pendingReports, resolved: resolvedReports }, papers, questions, questionsBySection, attempts };
+    return {
+      users,
+      usersByRegion,
+      paidUsers,
+      reports: { pending: pendingReports, resolved: resolvedReports },
+      papers,
+      questions,
+      questionsBySection,
+      attempts,
+      signups: { today: signupsToday, week: signupsWeek },
+      practiceToday: { drills: drillsToday, mocks: mocksToday, fullTests: fullTestsToday },
+      revenue,
+      payments,
+    };
   },
 
   // A paper's questions always share its status: students only ever query published questions.
@@ -89,11 +119,33 @@ export const adminService = {
     }
     const paperFilter = ids ? { _id: trusted({ $in: ids }) } : { source: trusted({ $nin: UPLOAD_SOURCES }) };
     const questionFilter = ids ? { paperId: trusted({ $in: ids }) } : { tags: trusted({ $nin: [FULL_TEST_QUESTION_TAG, UPLOADED_EXAM_QUESTION_TAG] }) };
-    const papers = await PaperModel.updateMany(paperFilter, { $set: { status } });
+    // A paper published or hidden by hand loses any schedule.
+    const papers = await PaperModel.updateMany(paperFilter, { $set: { status, publishAt: null } });
     if (ids && papers.matchedCount === 0) throw AppError.notFound("Paper not found");
     const questions = await QuestionModel.updateMany(questionFilter, { $set: { status } });
     invalidateCatalog();
     return { papers: papers.matchedCount, questions: questions.matchedCount };
+  },
+
+  // Publishes a draft or hidden paper by itself at `at` (proposal 4.2); null clears the schedule.
+  async setPaperSchedule(id: string, at: Date | null): Promise<{ publishAt: string | null }> {
+    const paper = await PaperModel.findById(id).select("status source").lean<PaperDoc>();
+    if (!paper) throw AppError.notFound("Paper not found");
+    if ((UPLOAD_SOURCES as string[]).includes(paper.source)) throw AppError.badRequest("This paper belongs to an uploaded test. Schedule the test under Full tests.");
+    if (at && paper.status === "published") throw AppError.badRequest("This paper is already published.");
+    if (at && at.getTime() <= Date.now()) throw AppError.badRequest("Choose a time in the future.");
+    await PaperModel.updateOne({ _id: id }, { $set: { publishAt: at } });
+    return { publishAt: at ? at.toISOString() : null };
+  },
+
+  // Called by the scheduler: publishes the papers whose time has come.
+  async publishDue(now: Date): Promise<number> {
+    const due = await PaperModel.find({ status: trusted({ $ne: "published" }), publishAt: trusted({ $ne: null, $lte: now }), source: trusted({ $nin: UPLOAD_SOURCES }) })
+      .select("_id")
+      .lean<PaperDoc[]>();
+    if (due.length === 0) return 0;
+    const result = await this.setPaperStatus("published", due.map((paper) => String(paper._id)));
+    return result.papers;
   },
 
   // Topic and skill values present in the bank, for the filter dropdowns.

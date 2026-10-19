@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ContactLine, LegalPage } from "@/components/legal-page";
 
-export const metadata: Metadata = { title: "Terms of Service", description: "The terms for using SAT Sharks." };
+export const metadata: Metadata = { title: "Terms of Service", description: "The terms for using SAT Sharks.", alternates: { canonical: "/terms" } };
 
 // Written from what the site does today. Not reviewed by a lawyer: SAT Sharks should have it
-// checked before launch, and add payment and refund terms when paid plans go live.
+// checked before launch.
 export default function TermsPage() {
   return (
     <LegalPage
@@ -50,13 +50,30 @@ export default function TermsPage() {
         {
           heading: "Plans and payments",
           body: (
-            <p>
-              The plans on the{" "}
-              <Link href="/pricing" className="font-bold text-brand-500 hover:underline">
-                pricing page
-              </Link>{" "}
-              are not yet available to buy, and SAT Sharks takes no payments today. Terms for paid plans, renewals, cancellations and refunds will be published before payments start.
-            </p>
+            <>
+              <p>
+                The plans and prices are on the{" "}
+                <Link href="/pricing" className="font-bold text-brand-500 hover:underline">
+                  pricing page
+                </Link>
+                . Students in Pakistan pay in PKR and everyone else in USD, according to the country on their account.
+              </p>
+              <p>
+                A paid plan unlocks everything for the period you paid for (one or three months). It starts when the payment is confirmed: at once for card payments, and after we check
+                a bank transfer, JazzCash or Easypaisa payment by hand. If you pay while a plan is still running, the new period starts when the current one ends.
+              </p>
+              <p>
+                Nothing is charged automatically. Two days before a plan ends we send a reminder; you can cancel these reminders with one click on your billing page, and your plan then
+                simply ends on its end date. Your history and scores are kept on the free plan.
+              </p>
+              <p>
+                Refunds are covered on the{" "}
+                <Link href="/refund" className="font-bold text-brand-500 hover:underline">
+                  refund policy
+                </Link>{" "}
+                page.
+              </p>
+            </>
           ),
         },
         {

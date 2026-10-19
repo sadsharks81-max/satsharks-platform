@@ -2,6 +2,7 @@ import { SettingModel } from "@satsharks/db";
 import {
   DEFAULT_ACCESS,
   DEFAULT_CONVERSION_TABLES,
+  DEFAULT_PAYMENT_SETTINGS,
   DEFAULT_PRICING,
   LEGACY_PAID_PLANS,
   DEFAULT_ROUTING_THRESHOLD_PERCENT,
@@ -9,10 +10,11 @@ import {
   type AccessSettings,
   type AdaptiveSettings,
   type ConversionTables,
+  type PaymentSettings,
   type PricingContent,
   type SatDatesContent,
 } from "@satsharks/types";
-import { accessSettingsSchema, conversionTablesSchema, pricingContentSchema, satDatesContentSchema } from "@satsharks/validation";
+import { accessSettingsSchema, conversionTablesSchema, paymentSettingsSchema, pricingContentSchema, satDatesContentSchema } from "@satsharks/validation";
 import { emptyConversionTables } from "./scoring";
 
 const ADAPTIVE_KEY = "adaptive";
@@ -20,6 +22,7 @@ const SCORING_KEY = "scoring.conversionTables";
 const PRICING_KEY = "pricing";
 const ACCESS_KEY = "access";
 const SAT_DATES_KEY = "satDates";
+const PAYMENTS_KEY = "payments";
 
 // Scores are read for every attempt in a list, so the tables are kept in memory briefly. Saving
 // clears the copy at once on this instance.
@@ -110,6 +113,19 @@ export const settingsService = {
     const value = parsed.success ? parsed.data : DEFAULT_ACCESS;
     accessCache = { value, expires: Date.now() + TABLES_TTL_MS };
     return value;
+  },
+
+  // Ways to pay, the alert email, the exit offer and friend invites (Admin → Settings → Payments).
+  // Until saved: no manual ways to pay, no offer, friend invites on.
+  async getPayments(): Promise<PaymentSettings> {
+    const stored = await SettingModel.findOne({ key: PAYMENTS_KEY }).lean();
+    const parsed = paymentSettingsSchema.safeParse(stored?.value);
+    return parsed.success ? parsed.data : DEFAULT_PAYMENT_SETTINGS;
+  },
+
+  async setPayments(settings: PaymentSettings, userId: string): Promise<PaymentSettings> {
+    await SettingModel.updateOne({ key: PAYMENTS_KEY }, { $set: { value: settings, updatedBy: userId } }, { upsert: true });
+    return this.getPayments();
   },
 
   // Applies to what is started from now on; attempts already begun can always be finished.

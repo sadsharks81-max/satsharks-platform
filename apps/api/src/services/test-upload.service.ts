@@ -286,6 +286,7 @@ function toSummary(upload: TestUploadDoc, withQuestions = false, uploaderName: s
     examDate: upload.examDate ?? null,
     status: upload.status,
     active: upload.active,
+    activateAt: upload.activateAt ? upload.activateAt.toISOString() : null,
     readingWriting: toSection(upload.readingWriting, withQuestions),
     math: toSection(upload.math, withQuestions),
     paperIds,
@@ -625,8 +626,40 @@ export const testUploadService = {
     const paperIds = SECTIONS.map((section) => upload.paperIds[section]);
     await PaperModel.updateMany({ _id: trusted({ $in: paperIds }) }, { $set: { status } });
     await QuestionModel.updateMany({ paperId: trusted({ $in: paperIds }) }, { $set: { status } });
-    const saved = await TestUploadModel.findByIdAndUpdate(upload._id, { $set: { active } }, { new: true }).lean<TestUploadDoc>();
+    // Turning a test on or off by hand replaces any schedule.
+    const saved = await TestUploadModel.findByIdAndUpdate(upload._id, { $set: { active, activateAt: null } }, { new: true }).lean<TestUploadDoc>();
     return toSummary(saved!);
+  },
+
+  // Activates a published, inactive test by itself at `at` (proposal 4.2 "schedule a paper"). The
+  // module checks run then; a test that fails them stays off, its schedule is cleared and the reason logged.
+  async setSchedule(id: string, at: Date | null): Promise<TestUploadSummary> {
+    const upload = await loadUpload(id);
+    if (at) {
+      if (upload.status !== "published") throw AppError.badRequest("Publish the test before scheduling it.");
+      if (upload.active) throw AppError.badRequest("This test is already active.");
+      if (at.getTime() <= Date.now()) throw AppError.badRequest("Choose a time in the future.");
+    }
+    const saved = await TestUploadModel.findByIdAndUpdate(upload._id, { $set: { activateAt: at } }, { new: true }).lean<TestUploadDoc>();
+    return toSummary(saved!);
+  },
+
+  // Called by the scheduler: activates the tests whose time has come. Returns how many.
+  async activateDue(now: Date): Promise<{ activated: number; failed: string[] }> {
+    const due = await TestUploadModel.find({ status: "published", active: false, activateAt: trusted({ $ne: null, $lte: now }) }).select("_id title").lean<TestUploadDoc[]>();
+    let activated = 0;
+    const failed: string[] = [];
+    for (const upload of due) {
+      try {
+        await this.setActive(String(upload._id), true);
+        activated += 1;
+      } catch (error) {
+        failed.push(`${upload.title}: ${error instanceof Error ? error.message : String(error)}`);
+        // Not retried every minute: the admin sees the test is still off and fixes it.
+        await TestUploadModel.updateOne({ _id: upload._id }, { $set: { activateAt: null } });
+      }
+    }
+    return { activated, failed };
   },
 
   // Only a draft can be deleted. A published test may already have student attempts, which keep
@@ -655,7 +688,7 @@ export const testUploadService = {
   },
 
   // The locks are added per account by practice.service.
-  async listActive(): Promise<Omit<PracticeTestListing, "locked">[]> {
+  async listActive(): Promise<Omit<PracticeTestListing, "locked" | "lockReason" | "pinned" | "label" | "free">[]> {
     const uploads = await TestUploadModel.find({ status: "published", active: true })
       .select("kind title year testNumber paperIds status")
       .sort({ year: -1, testNumber: -1 })

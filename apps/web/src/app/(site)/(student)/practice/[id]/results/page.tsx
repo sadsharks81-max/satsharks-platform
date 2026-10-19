@@ -8,6 +8,7 @@ import { MOCK_MODULE_LABELS, SECTION_LABELS, type AttemptSummary, type ModuleRes
 import { Choices, Passage, Prompt, ResponseInput } from "@/components/question";
 import { ReportProblemDialog } from "@/components/report-ui";
 import { RequireUser } from "@/components/require-user";
+import { LockedInsights } from "@/components/locked-insights";
 import { Badge, Button, Card, Modal, Notice, PageHeader, Spinner, Toggle } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { formatClock, formatShortDuration, multiplierLabel } from "@/lib/format";
@@ -204,6 +205,7 @@ function Results({ attemptId }: { attemptId: string }) {
       )}
 
       <ScoreHero attempt={attempt} />
+      {mock && attempt.status === "done" && <LockedInsights />}
 
       {attempt.modules.length > 0 && (
         <div className="mt-4 grid gap-4 md:grid-cols-2">

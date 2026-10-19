@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FULL_TEST_BREAK_MINUTES, MOCK_MODULE_LABELS, SECTION_LABELS, type AttemptSummary, type FullTestSummary } from "@satsharks/types";
 import { RequireUser } from "@/components/require-user";
+import { LockedInsights } from "@/components/locked-insights";
 import { Badge, Button, Card, Notice, PageHeader, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatClock, multiplierLabel } from "@/lib/format";
@@ -184,6 +185,8 @@ function FullTestView({ id }: { id: string }) {
           ))}
         </div>
       </Card>
+
+      {fullTest.stage === "done" && <LockedInsights />}
 
       {pendingScores && (
         <div className="mt-4">

@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-16 (country board, target-score box, "Delete all permanently", Till Test Day plan removed, full names on the leaderboard; committed and pushed to both remotes).
+Last updated: 2026-10-19 (Week 4 built; then pricing shows only the student's own region, and "Next SAT in N days" for students without a test date; not committed).
 
 ---
 
@@ -19,8 +19,9 @@ Last updated: 2026-10-16 (country board, target-score box, "Delete all permanent
   counseling/essays) or the other site's "Phase4 Proposal.docx": wrong documents for this project.
 - **Proposal v4 weeks:** 1 foundation & question bank (1.1, 1.2) · 2 test engine (2.1, 2.2) ·
   **3 analytics, history & engagement (3.1 history/mistake bank/drills, 3.2 performance analytics,
-  3.3 goals/streaks/leaderboard; built 2026-10-14)** · 4 money, admin, SEO & launch (4.1 plans,
-  payments & conversion, 4.2 admin portal & paper control, 4.3 SEO & GEO, 4.4 testing & launch).
+  3.3 goals/streaks/leaderboard; built 2026-10-14)** · **4 money, admin, SEO & launch (4.1 plans,
+  payments & conversion, 4.2 admin portal & paper control, 4.3 SEO & GEO, 4.4 testing & launch;
+  built 2026-10-19 except what needs SAT Sharks: card gateway, domain, Search Console/GA IDs).**
 - **Reference site:** `bluecorn.org` (also branded "Bluebooky"; API host `ciao.bluebooky.org`).
   Umair wants SAT Sharks to work like it. Its screenshots are in `docs/references/screenshots/`.
   SAT Sharks keeps its own name and branding; layout, fonts and spacing follow the reference.
@@ -251,20 +252,82 @@ Last updated: 2026-10-16 (country board, target-score box, "Delete all permanent
     last 20 mistakes. **Free until an admin saves Admin → Access**, like the others; a setting saved
     before this feature existed keeps its choices and reads analytics as free.
 
+- **Week 4 (proposal 4.1–4.4, 2026-10-19).**
+  - **Payments** (`payment.service.ts`, `payment-rules.ts`, `payment-gateways.ts`, collection
+    `payments`, `PaymentModel`). Students buy on `/checkout?plan=` (student panel) in their
+    account's currency (PK → PKR, else USD; the pricing switch is display only). Amount = the price
+    typed in Admin → Settings → Pricing, parsed (`parsePrice`). Ways to pay: **bank transfer,
+    JazzCash, Easypaisa** (Admin → Settings → Payments: on/off, account details, currencies) — the
+    student sends a transaction ID, status `review`, an admin approves (plan given, receipt email) or
+    rejects (student emailed the note); one waiting at a time, a transaction ID once. **Card**: only
+    a **test gateway** (`PAYMENTS_TEST_GATEWAY=on`, refused in production; page `/checkout/test`)
+    because SAT Sharks has not chosen a gateway (adapter interface ready). The plan is given only in
+    `markPaid` (guarded update, once). Period = 1 or 3 calendar months from now, or from the end of a
+    running plan (renewing early loses nothing); paid-without-end-date stays so. Nothing is charged
+    automatically: "cancel" = `autoRenew:false` (no renewal reminder; the plan just ends).
+    Receipts `SS-YYYYMMDD-XXXXXX`, printable at `/receipts/<id>`. Billing page `/billing` ("Plan &
+    billing" in the student sidebar): plan, end date, cancel/renew, payments, receipts, friend invites,
+    one-time offer.
+  - **Admin**: sidebar **Payments** (`payments:read`/`payments:write`, admins only, new permissions)
+    with a red count of unseen payments (cleared on opening the page, polled every minute), approve /
+    reject, search by name/email/phone/transaction ID/receipt, revenue. **Alert email** to the
+    owner (Settings → Payments alert email, else env `PAYMENT_ALERT_EMAIL`) when a transfer arrives
+    or a card payment goes through. Dashboard adds paid vs free, sign-ups today/7 days, practice
+    started today, revenue this month / all time (PKR, USD), transfers to approve ("today" =
+    Pakistan). Users: phone search (digits, leading 0 ignored), delete/restore from the list,
+    **Export CSV** (`GET /api/admin/users/export`, same filters, formula-safe cells), deleted
+    accounts show "restore until" and are **removed by the scheduler 30 days after deletion**
+    (`deletedAt`; accounts deleted before 2026-10-19 have none and are never auto-removed). User
+    page: phone, payments, restore deadline.
+  - **Paper control**: Papers page select several → publish/hide selected; **schedule** a draft or
+    hidden paper (`publishAt`); Full tests: schedule activation of a published test (`activateAt`).
+    Admin → Access per exam/test: **Free / Paid only / Invite code** (code per item, unique;
+    students type it on Home → "Have an invite code?", stored in `user.inviteKeys`; paid plans do
+    NOT open invite-only content), **Pin to top**, **label** New / Hard / Most attempted; free daily
+    **drill limit** (`freeDrillQuestionsPerDay`, null = none; exam and bank drills count, mistake
+    retries do not; a longer drill is cut, then 403 `daily_limit`). Catalog/tests carry `lockReason`,
+    `pinned`, `label`, `free`; pinned first; cards show Featured/label/Free pills.
+  - **Conversion set-up**: locked results panel (`components/locked-insights.tsx`, analytics
+    `locked: {skills, points}` for the free view; real numbers, skills not sent); score gap + own
+    test countdown on Home (`components/goal-gap.tsx`) and a "Test in N days" chip in the nav for
+    students; price anchoring (pricing tagline); **exit offer** (Settings → Payments, 5–50%, shown
+    once per browser on leaving `/pricing`, desktop mouse-out or 40 s on phones; applied at checkout
+    with `offer=1`, once per account `exitOfferUsedAt`); **friend invites** (`/register?ref=<friend
+    code>` → `referredBy`, friends at once; a friend counts at 50 points; every 2 → 7 free days, at
+    most 5, recorded as a `referral` payment of 0); **renewal reminder** 2 days before a plan ends;
+    **come-back email** 7 days after the last practice; **proof** (`GET /api/public/proof`: students
+    practising in the last 15 min, shown from 5; real first→best full-test gains of students on the
+    leaderboard, "Ayesha R.") on landing and pricing. Sign-up asks optional phone and SAT date.
+  - **Scheduler** `jobs/scheduler.ts` in the API (env `SCHEDULER=off` to stop): every minute
+    publishes/activates scheduled content; every 15 min friend-invite rewards and (with Resend)
+    renewal and come-back emails; hourly the 30-day purge.
+  - **SEO & GEO**: root metadata (`metadataBase` from `NEXT_PUBLIC_SITE_URL`, else Vercel's
+    production URL), default share image `app/opengraph-image.tsx`, canonical + descriptions on
+    public pages, `sitemap.ts`, `robots.ts` (private paths closed, AI crawlers named and allowed),
+    `/llms.txt`, JSON-LD (Organization, WebSite, Course, FAQPage on `/` and `/faq`, Product offers on
+    pricing, Article + breadcrumbs on guides), **guides** `/guides` + 4 guides (`lib/guides.ts`),
+    `/pricing/pakistan` (PKR) and `/pricing/international` (USD) with hreflang; `/pricing` picks the
+    currency from Vercel's `x-vercel-ip-country` for visitors. Signed-in students see only their
+    account region's prices on every pricing page, with no switch (§6, 2026-10-19). GA4 when `NEXT_PUBLIC_GA_ID` is set; Search
+    Console tag from `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`. **Refund page** `/refund` (reads the
+    refund line from pricing); Terms "Plans and payments" rewritten for the real flow.
+  - **4.4**: `docs/admin-guide.md` (for SAT Sharks' admins), `docs/launch-checklist.md`, load test
+    `apps/api/test/load/load-test.mjs` (read-only).
+
 ### Not built yet
 
 - Conversion-table **values** from SAT Sharks (the built-in estimate is used until then; the admin editor is ready). Per-paper tables
   wait for "build a paper" (mocks mix exams, so tables are per section and route for now).
-- Google sign-in, payments (plans are set by an admin on the Users page). Free-plan *access* is
-  built (Admin → Access); free-plan *quotas* (e.g. "20 drill questions a day") and the analysis
-  differences on the pricing comparison are not.
-- Refund page; landing page content; a legal contact address on Terms/Privacy.
+- Google sign-in. A real **card payment gateway** (SAT Sharks to choose; only the test gateway
+  exists). Launch work in `docs/launch-checklist.md` (domain, env vars, Search Console, GA,
+  Lighthouse, cross-browser and load runs).
+- A legal contact address on Terms/Privacy/Refund.
 - AI extraction from free-form PDFs (proposal Checkpoint 1.2). Only the strict-format test upload
   exists. Building papers from approved bank questions.
 - Highlighter/notes, line reader (Checkpoint 2.1). Re-grading old attempts after an answer key is fixed.
 - Week 3 gaps: history starts on 2026-10-14 for questions (older attempts were never logged; their
   test scores do appear in test history and the prediction). Points/streak reminders are emails only
-  (no in-app notifications). Free "20 drill questions a day" quota (4.1) not built.
+  (no in-app notifications).
 
 ### Deployment (in progress, 2026-10-09)
 
@@ -432,6 +495,7 @@ npm workspaces monorepo, TypeScript everywhere, run with `tsx` (no build step fo
 | `packages/db` | Mongoose models: User, Paper, Question, Asset, Attempt, Setting; `connectMongo`, `trusted` |
 | `packages/config`, `packages/utils` | Env loading; logger and helpers |
 | Uploaded tests | `apps/api/src/services/test-upload.service.ts`, `test-upload-parser.ts`, `pdf-text.ts`; `packages/db/.../test-upload.model.ts`; web `app/(site)/admin/tests/**`, `components/question-form.tsx`, `math-input.tsx`, `practice-tests.tsx`, `test-upload-ui.tsx`; `public/full-test/` (format guide, builder, samples); `public/mathlive/fonts` |
+| Week 4 | API: `services/payment.service.ts` (+ `payment-rules.ts`, `payment-gateways.ts`), `public.service.ts`, `controllers/billing.controller.ts`, `routes/billing.routes.ts` (`/api/billing/*`), `jobs/scheduler.ts`; db `payment.model.ts`; web `(student)/{billing,checkout,checkout/test}`, `receipts/[id]`, `admin/payments`, `pricing/{pakistan,international}`, `guides/**`, `refund`, `robots.ts`, `sitemap.ts`, `llms.txt/route.ts`, `opengraph-image.tsx`, components `payment-settings`, `invite-friends`, `goal-gap`, `locked-insights`, `exit-offer`, `student-proof`, `pricing-page`, `json-ld`, `google-analytics`; `lib/{billing,site,guides}.ts` |
 | Week 3 | API: `services/activity.service.ts` (logging, points, mistakes, streak), `engagement-rules.ts` (pure rules), `history.service.ts`, `analytics.service.ts`, `engagement.service.ts`, `jobs/engagement-emails.ts`, `controllers/student.controller.ts`, `routes/student.routes.ts` (`/api/student/*`); db `question-log`, `mistake`, `daily-stat` models; web `app/(site)/(student)/{history,mistakes,analytics,goals,leaderboard}`, `components/{student-sidebar,charts,share-card,today-strip}.tsx`, `lib/engagement.ts` |
 | `docs/` | `full-test-upload.md`, `architecture.md`, `database.md`, `api.md`, `scraping.md`, `adaptive-testing.md`, `security.md`, `performance.md`, `phase-1-completion.md`, this file |
 
@@ -464,6 +528,8 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 | 2026-10-11 | Students must always see a score after a full test / mock: use a built-in estimated conversion table until SAT Sharks enters real ones (replaces "no scores are invented") |
 | 2026-10-12 | Stop account sharing (client request): a student account is used on one device at a time. Umair chose "new login kicks out the old device" (not a hard lock to the first device, not "logout frees it"), for all students, free and paid; staff/admins exempt |
 | 2026-10-12 | Two hidden developer accounts (one admin with the same access as `admin2.0@gmail.com`, one paid student), not in the Users list or any count |
+| 2026-10-19 | Pricing by region (Umair): a signed-in student sees only the plans of their account's country (PK → PKR, else USD), with no currency switch. Account country, not IP, for students (VPNs, students abroad; checkout charges the same currency). Visitors: Vercel IP country first, switch kept. Accounts without a country and staff keep the switch |
+| 2026-10-19 | A student who has not chosen a test date sees "The next SAT is in N days" / "Next SAT in N days" (the next date from Admin → SAT dates), never "Your test" |
 | 2026-10-08 | An upload asks where it goes: Practice tests or Exams. A real SAT (e.g. December) goes to Exams. Umair chose "exam card + full test": it behaves like the other exams (drill, random mocks) and can also be taken whole as a fixed adaptive test |
 
 ## 7. Facts about the source (verified)
@@ -582,6 +648,9 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   questions (keys are not all "A"): answer from each question's real key.
 - **Grid items keep their content's min width:** a wide table inside `grid gap-4` widened the page
   on phones. Use `grid grid-cols-1` (or `minmax(0,1fr)`).
+- **The Bash tool rewrites `\u…`, `\r` and `\n` escapes inside heredocs** (even quoted `<<'EOF'`)
+  into real characters (a literal BOM and line breaks ended up in TypeScript), and heredocs with
+  backticks fail to parse. Write edit scripts with the Write tool and run them; check escapes after.
 - **Users are read with `lean()`**, so fields added later (`engagement`, `streak`, `totalPoints`,
   `friends`) are missing on older accounts: read them through `engagementOf` / `streakOf`.
 - Testing in the app needs an account. Use temporary accounts `phase1-test-*@example.com`
@@ -621,6 +690,17 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
    by default when Resend is set up (students can turn them off). Week 3 sign-off "every number on
    screen must be true": the card and dashboard only show the student's own numbers.
 8. **Proposal PDF**: put `SAT_Sharks_Proposal_v4_4Weeks.pdf` back in `docs/purposal/`.
+9. **Week 4 decisions made by Claude (2026-10-19), open for Umair/client:** card gateway left to
+   SAT Sharks (manual transfers + test gateway meanwhile); currency fixed by account country at
+   checkout; no automatic charging, "cancel" = stop reminders; invite-only content not opened by a
+   paid plan; drill limit counts exam and bank drills, not retries, and stays off until Admin →
+   Access sets it; exit offer off until turned on, once per account; friend invites on (2 friends at
+   50 points each → 7 days, max 5); 30-day auto-removal only for accounts deleted from now on;
+   payments visible to admins only (new `payments:*` permissions); "practising now" shown from 5.
+   **FAQ (Umair's wording) still says "pay with a debit or credit card"** — true only once a gateway
+   is added; "cancel with one click" is now true. Ask before rewording.
+10. Set up live: Admin → Settings → Payments (accounts, alert email), Admin → Access (free papers,
+    drill limit 20), then the items in `docs/launch-checklist.md`.
 
 ## 10. Change log
 
@@ -887,3 +967,30 @@ Newest last. One entry per session or major step.
   check; 22 e2e checks (leaderboard name expectations updated). Not checked in a browser. Not committed.
 - **2026-10-16 — Committed and pushed** the five changes above (one commit) to `origin` and `client`
   at Umair's request.
+- **2026-10-19 — Week 4 of the proposal (Umair: "implement week 4, skip what exists").** Checked
+  first what existed (pricing PKR/USD, access by plan, users admin, publish/hide, reports, staff,
+  announcements) and built the rest as in §2 "Week 4". New collection `payments`; new user fields
+  `phone`, `deletedAt`, `autoRenew`, `exitOfferUsedAt`, `inviteKeys`, `referredBy`,
+  `referralQualifiedAt`, `referralRewards`, `lastRenewalReminderFor`, `lastWinbackFor`; paper
+  `publishAt`; test upload `activateAt`; question-log index on `answeredAt`; access rules gain
+  `inviteCode`, `pinned`, `label`, settings `freeDrillQuestionsPerDay`; setting `payments`; env
+  `PAYMENT_ALERT_EMAIL`, `PAYMENTS_TEST_GATEWAY`, `SCHEDULER`, `NEXT_PUBLIC_SITE_URL`,
+  `NEXT_PUBLIC_GA_ID`, `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`. Checked: type check (all
+  workspaces); **71 unit tests** (9 new: prices, periods, offers, receipts, referral weeks, CSV,
+  local midnight, invite/limit access, sign-up and payment-settings validation); **25 e2e checks**
+  (3 new: transfer → approve/reject, duplicate and one-at-a-time rules, badge and seen, revenue, card
+  via test gateway with renewal after the running plan, exit offer once, receipts own-only, cancel
+  renewal; invite code, pins/labels, daily drill limit 8 → cut then 403, paper scheduling; friend
+  invites → free week once, phone search, CSV, 30-day window and purge, public proof); `next build`
+  in a separate folder (50 routes; robots/sitemap/llms.txt checked); **54/55 browser checks**
+  (headless Chrome, e2e API on 4100 + `.next-test` web on 3100, 1440/390px, no sideways scroll, no
+  console errors) — the one miss was the check itself (no "Hard" exam in that database). Fixed
+  during testing: staff could read any receipt via the student endpoint. **Not tested:** real
+  emails (no Resend here), a real gateway, the live site. Not committed.
+- **2026-10-19 — Two fixes (Umair).** (1) A new account with no test date saw "Your test is in 19
+  days": Home now says "The next SAT is in N days" with a "Set your test date" link, and the nav chip
+  "Next SAT in N days"; "Your test" / "Test in N days" only for a date the student chose. (2) Pricing
+  for a signed-in student shows only their account's currency (country at sign-up), without the
+  PKR/USD switch; visitors keep the IP-based default and the switch. Asked: country or IP? Answer
+  given: account country for students, IP only for visitors (see §6). Checked: web type check only.
+  Not committed.

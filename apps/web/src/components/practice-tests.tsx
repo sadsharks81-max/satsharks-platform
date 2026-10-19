@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FULL_TEST_BREAK_MINUTES, MOCK_FORMAT, SECTION_LABELS, SECTIONS, TIME_MULTIPLIERS, type FullTestSummary, type PracticeTestListing, type TimeMultiplier } from "@satsharks/types";
 import { api } from "@/lib/api";
-import { PaidBadge, UnlockButton } from "./plan-lock";
+import { ContentPills, LockedAction, PaidBadge } from "./plan-lock";
 import { Modal, Notice } from "./ui";
 
 const heading = "text-[20px] font-bold tracking-tight text-black sm:text-[22px]";
@@ -104,7 +104,7 @@ export function StartPracticeTest({ test, onClose }: { test: PracticeTestListing
 export const usePracticeTests = () => useQuery({ queryKey: ["practice", "tests"], queryFn: () => api<{ tests: PracticeTestListing[] }>("/api/practice/tests") });
 
 // Fixed full-length tests published by SAT Sharks. Hidden when there are none.
-export function PracticeTests() {
+export function PracticeTests({ showFree = false }: { showFree?: boolean }) {
   const tests = usePracticeTests();
   const [starting, setStarting] = useState<PracticeTestListing | null>(null);
   const list = tests.data?.tests.filter((test) => test.kind === "practice") ?? [];
@@ -123,17 +123,18 @@ export function PracticeTests() {
                 <span className="whitespace-nowrap rounded-full border border-black bg-white px-2.5 py-0.5 text-[11px] font-bold">{test.year}</span>
               </div>
               <h3 className="flex min-h-[44px] items-center text-[18px] font-bold leading-snug tracking-tight">{test.title}</h3>
+              <ContentPills label={test.label} pinned={test.pinned} free={test.free} showFree={showFree} />
               <p className="text-xs text-slate-600">
                 RW: {total(test, "reading_writing")} · Math: {total(test, "math")} questions
               </p>
               {test.locked && (
                 <span>
-                  <PaidBadge />
+                  <PaidBadge reason={test.lockReason ?? "paid"} />
                 </span>
               )}
             </div>
             {test.locked ? (
-              <UnlockButton className="w-full" />
+              <LockedAction reason={test.lockReason ?? "paid"} className="w-full" />
             ) : (
               <button
                 type="button"

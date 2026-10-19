@@ -12,6 +12,7 @@ import {
   reportListQuerySchema,
   resolveReportSchema,
   satDatesContentSchema,
+  scheduleSchema,
   updateUserSchema,
   userListQuerySchema,
   type UpdateQuestionInput,
@@ -156,6 +157,20 @@ export async function getUser(req: Request, res: Response): Promise<void> {
 
 export async function purgeDeletedUsers(_req: Request, res: Response): Promise<void> {
   sendOk(res, await userAdminService.purgeDeleted());
+}
+
+// Users list as CSV with the page's filters (proposal 4.2 "export the list as CSV").
+export async function exportUsers(req: Request, res: Response): Promise<void> {
+  const csv = await userAdminService.exportCsv(userListQuerySchema.parse({ ...req.query, page: 1, pageSize: 100 }));
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="satsharks-users-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(csv);
+}
+
+export async function setPaperSchedule(req: Request, res: Response): Promise<void> {
+  const { at } = scheduleSchema.parse(req.body);
+  sendOk(res, await adminService.setPaperSchedule(objectIdSchema.parse(req.params.id), at ? new Date(at) : null));
 }
 
 export async function updateUser(req: Request, res: Response): Promise<void> {

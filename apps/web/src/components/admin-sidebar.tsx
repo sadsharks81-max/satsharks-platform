@@ -14,13 +14,14 @@ interface Section {
   label: string;
   permission: Permission;
   icon: ReactNode;
-  // The pending-reports count is shown next to Reports.
-  badge?: "pendingReports";
+  // A red count: pending reports next to Reports, new payments next to Payments.
+  badge?: "pendingReports" | "newPayments";
 }
 
 const SECTIONS: Section[] = [
   { href: "/admin", label: "Dashboard", permission: "admin:access", icon: <path d="M4 13h6V4H4v9zm0 7h6v-5H4v5zm10 0h6v-9h-6v9zm0-16v5h6V4h-6z" /> },
   { href: "/admin/users", label: "Users", permission: "users:read", icon: <path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM22 19v-1a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8" /> },
+  { href: "/admin/payments", label: "Payments", permission: "payments:read", icon: <path d="M3 7h18v12H3V7zm0 4h18M7 15h3M3 7l2-3h14l2 3" />, badge: "newPayments" },
   { href: "/admin/papers", label: "Papers", permission: "papers:read", icon: <path d="M7 3h7l5 5v13H7V3zm7 0v5h5M10 13h6M10 17h6" /> },
   { href: "/admin/tests", label: "Full tests", permission: "papers:read", icon: <path d="M9 4h6m-6 0a2 2 0 0 0-2 2v0h10v0a2 2 0 0 0-2-2M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1M7 6H5v15h14V6h-2M9 12l2 2 4-4M9 17h6" /> },
   { href: "/admin/questions", label: "Questions", permission: "questions:read", icon: <path d="M9.1 9a3 3 0 1 1 4.2 2.7c-.8.4-1.3 1.1-1.3 2v.3M12 17.5h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /> },
@@ -46,19 +47,23 @@ function Icon({ children }: { children: ReactNode }) {
 export function AdminSidebar({ user }: { user: PublicUser }) {
   const pathname = usePathname();
   // Shares the dashboard's query, so the count is fetched once and refreshed with it.
-  const stats = useQuery({ queryKey: ["admin", "stats"], queryFn: () => api<AdminStats>("/api/admin/stats"), staleTime: 30_000 });
-  const pending = stats.data?.reports.pending ?? 0;
+  // Polled, so a payment that arrives while the portal is open shows up within a minute.
+  const stats = useQuery({ queryKey: ["admin", "stats"], queryFn: () => api<AdminStats>("/api/admin/stats"), staleTime: 30_000, refetchInterval: 60_000 });
+  const counts = { pendingReports: stats.data?.reports.pending ?? 0, newPayments: stats.data?.payments.unseen ?? 0 };
   const sections = SECTIONS.filter((section) => user.permissions.includes(section.permission));
 
-  const badge = (section: Section, active: boolean) =>
-    section.badge === "pendingReports" && pending > 0 ? (
+  const countOf = (section: Section) => (section.badge ? counts[section.badge] : 0);
+  const badge = (section: Section, active: boolean) => {
+    const count = countOf(section);
+    return count > 0 ? (
       <span
-        aria-label={`${pending} pending`}
+        aria-label={`${count} ${section.badge === "newPayments" ? "new" : "pending"}`}
         className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${active ? "bg-white text-brand-600" : "bg-red-600 text-white"}`}
       >
-        {pending > 99 ? "99+" : pending}
+        {count > 99 ? "99+" : count}
       </span>
     ) : null;
+  };
 
   return (
     <>
@@ -102,9 +107,9 @@ export function AdminSidebar({ user }: { user: PublicUser }) {
                 >
                   <Icon>{section.icon}</Icon>
                   {section.label}
-                  {section.badge === "pendingReports" && pending > 0 && (
-                    <span aria-label={`${pending} pending`} className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                      {pending > 99 ? "99+" : pending}
+                  {countOf(section) > 0 && (
+                    <span aria-label={`${countOf(section)} ${section.badge === "newPayments" ? "new" : "pending"}`} className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      {countOf(section) > 99 ? "99+" : countOf(section)}
                     </span>
                   )}
                 </Link>

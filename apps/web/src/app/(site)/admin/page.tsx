@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import type { AdminStats } from "@satsharks/types";
+import { formatMoney, type AdminStats } from "@satsharks/types";
+import { useMe } from "@/lib/auth";
 import { Card, Notice, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 
@@ -23,10 +24,12 @@ function Stat({ label, value, detail, href }: { label: string; value: string | n
 export default function AdminDashboardPage() {
   const stats = useQuery({ queryKey: ["admin", "stats"], queryFn: () => api<AdminStats>("/api/admin/stats"), staleTime: 30_000 });
   const s = stats.data;
+  const { data: me } = useMe();
+  const money = me?.permissions.includes("payments:read") ?? false;
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="An overview of users, papers, questions and reports." />
+      <PageHeader title="Dashboard" subtitle="Users, sign-ups, revenue, practice today, papers and reports. “Today” is the day in Pakistan." />
       {stats.error && (
         <div className="mb-4">
           <Notice tone="error">{stats.error.message}</Notice>
@@ -44,7 +47,30 @@ export default function AdminDashboardPage() {
           }
           href="/admin/users"
         />
-        <Stat label="Papers published" value={s ? `${s.papers.published} of ${s.papers.draft + s.papers.published + s.papers.hidden}` : undefined} />
+        <Stat label="Paid vs free" value={s ? `${s.paidUsers} / ${Math.max(0, s.users - s.paidUsers)}` : undefined} detail={s && s.users > 0 ? `${Math.round((s.paidUsers / s.users) * 100)}% of accounts are paid` : undefined} href="/admin/users" />
+        <Stat label="New sign-ups today" value={s?.signups.today.toLocaleString()} detail={s ? `${s.signups.week.toLocaleString()} in the last 7 days` : undefined} />
+        <Stat
+          label="Practice started today"
+          value={s ? (s.practiceToday.drills + s.practiceToday.mocks + s.practiceToday.fullTests).toLocaleString() : undefined}
+          detail={s ? `${s.practiceToday.fullTests} full tests · ${s.practiceToday.mocks} section mocks · ${s.practiceToday.drills} drills` : undefined}
+        />
+        {money && (
+          <>
+            <Stat
+              label="Revenue this month"
+              value={s ? formatMoney(s.revenue.PKR.month, "PKR") : undefined}
+              detail={s ? `${formatMoney(s.revenue.USD.month, "USD")} international · all time ${formatMoney(s.revenue.PKR.total, "PKR")} + ${formatMoney(s.revenue.USD.total, "USD")}` : undefined}
+              href="/admin/payments"
+            />
+            <Stat
+              label="Transfers to approve"
+              value={s?.payments.toReview.toLocaleString()}
+              detail={s && s.payments.unseen > 0 ? `${s.payments.unseen} new payment${s.payments.unseen === 1 ? "" : "s"} since you last looked` : "Approve them in Payments"}
+              href="/admin/payments"
+            />
+          </>
+        )}
+        <Stat label="Papers published" value={s ? `${s.papers.published} of ${s.papers.draft + s.papers.published + s.papers.hidden}` : undefined} href="/admin/papers" />
         <Stat
           label="Questions"
           value={s ? (s.questions.draft + s.questions.published + s.questions.hidden).toLocaleString() : undefined}

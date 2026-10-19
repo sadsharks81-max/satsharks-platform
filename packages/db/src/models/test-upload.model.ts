@@ -32,6 +32,8 @@ export interface TestUploadDoc {
   examDate?: string | null;
   status: "draft" | "published";
   active: boolean;
+  // Published tests: activated by the scheduler at this moment (cleared when it runs).
+  activateAt: Date | null;
   readingWriting: TestUploadSectionDoc | null;
   math: TestUploadSectionDoc | null;
   paperIds: { reading_writing: mongoose.Types.ObjectId | null; math: mongoose.Types.ObjectId | null };
@@ -84,6 +86,7 @@ const testUploadSchema = new Schema<TestUploadDoc>(
     examDate: { type: String, default: null },
     status: { type: String, enum: ["draft", "published"], default: "draft" },
     active: { type: Boolean, default: false },
+    activateAt: { type: Date, default: null },
     readingWriting: { type: sectionSchema, default: null },
     math: { type: sectionSchema, default: null },
     paperIds: {

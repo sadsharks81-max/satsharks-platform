@@ -24,6 +24,10 @@ if (!/^mongodb:\/\/127\.0\.0\.1:\d+\//.test(uri)) throw new Error(`Refusing to r
 process.env.MONGODB_URI = uri;
 process.env.JWT_SECRET = "e2e-secret-that-is-long-enough-0123456789";
 process.env.NODE_ENV = "test";
+// The pretend card gateway (no money), the payment checks use it.
+process.env.PAYMENTS_TEST_GATEWAY = "on";
+// No emails from a test run (and no Resend key here anyway).
+process.env.RESEND_API_KEY = "";
 
 const { connectMongo, PaperModel, QuestionModel, TestUploadModel, UserModel, AttemptModel, QuestionLogModel, MistakeModel, DailyStatModel, trusted } = await import("@satsharks/db");
 const { createApp } = await import("../../src/app");
@@ -85,7 +89,12 @@ function client() {
     if (set) cookie = set.split(";")[0]!;
     return { status: response.status, json: (await response.json()) as Json };
   }
-  return { call };
+  // Non-JSON answers (CSV).
+  async function text(path: string): Promise<{ status: number; type: string | null; body: string }> {
+    const response = await fetch(base + path, { headers: cookie ? { cookie } : {} });
+    return { status: response.status, type: response.headers.get("content-type"), body: await response.text() };
+  }
+  return { call, text };
 }
 const pdf = (name: string) => new Blob([readFileSync(join(folder, name))], { type: "application/pdf" });
 
@@ -494,7 +503,7 @@ async function run() {
     const catalog = async () => (await student.call("GET", "/api/practice/catalog")).json.data;
     const before = await catalog();
     assert.ok(before.exams.every((exam: { locked: boolean }) => !exam.locked), "everything is open until an admin saves");
-    assert.deepEqual(before.access, { paid: false, features: { drills: true, mocks: true, full_tests: true, analytics: true } });
+    assert.deepEqual(before.access, { paid: false, features: { drills: true, mocks: true, full_tests: true, analytics: true }, dailyDrill: null });
 
     assert.equal((await student.call("GET", "/api/admin/settings/access")).status, 403);
     const { json } = await admin.call("GET", "/api/admin/settings/access");
@@ -991,6 +1000,228 @@ async function run() {
     assert.equal((await admin.call("PATCH", `/api/admin/users/${user!._id}`, { plan: "paid", paidPlan: "till_test_day" })).status, 400);
     assert.equal((await admin.call("PATCH", `/api/admin/users/${user!._id}`, { plan: "paid", paidPlan: "three_months" })).status, 200);
     await UserModel.deleteOne({ _id: user!._id });
+  });
+
+  await check("week 4: transfers approved by an admin, card checkout, renewal, offer, receipts, alerts badge", async () => {
+    const { SettingModel, PaymentModel } = await import("@satsharks/db");
+    await SettingModel.deleteMany({ key: trusted({ $in: ["access", "pricing", "payments"] }) });
+    const login = { email: "phase1-test-buyer@example.com", password: "password-123" };
+    const buyer = client();
+    await buyer.call("POST", "/api/auth/register", { name: "Buyer Student", ...login, country: "PK", phone: "0300 1234567" });
+    const me = async () => (await buyer.call("GET", "/api/auth/me")).json.data.user;
+    assert.equal((await me()).plan, "free");
+
+    // No way to pay until an admin turns one on; cards only with the (test) gateway.
+    const empty = await buyer.call("GET", "/api/billing/checkout?plan=monthly");
+    assert.equal(empty.status, 200, JSON.stringify(empty.json.error));
+    assert.deepEqual([empty.json.data.currency, empty.json.data.amount, empty.json.data.methods.map((m: { method: string }) => m.method)], ["PKR", 1500, ["card"]]);
+    // A Pakistani account pays in PKR; the pricing page's switch does not change that.
+    assert.equal((await buyer.call("GET", "/api/billing/checkout?plan=monthly&currency=USD")).status, 400);
+    assert.equal((await admin.call("GET", "/api/billing/checkout?plan=monthly")).status, 403);
+
+    const settings = {
+      manual: {
+        bank_transfer: { enabled: true, instructions: "Meezan Bank · SAT Sharks · PK00 MEZN 0000 1111 2222", currencies: ["PKR", "USD"] },
+        jazzcash: { enabled: true, instructions: "JazzCash 0300 0000000 (SAT Sharks)", currencies: ["PKR"] },
+        easypaisa: { enabled: false, instructions: "", currencies: ["PKR"] },
+      },
+      alertEmail: "owner@example.com",
+      exitOffer: { enabled: true, percentOff: 20, headline: "Take {percent}% off" },
+      referrals: { enabled: true },
+    };
+    assert.equal((await student.call("PUT", "/api/admin/settings/payments", settings)).status, 403);
+    assert.equal((await admin.call("PUT", "/api/admin/settings/payments", { ...settings, manual: { ...settings.manual, easypaisa: { enabled: true, instructions: "", currencies: ["PKR"] } } })).status, 400);
+    assert.equal((await admin.call("PUT", "/api/admin/settings/payments", settings)).status, 200);
+    const checkout = (await buyer.call("GET", "/api/billing/checkout?plan=three_months")).json.data;
+    assert.deepEqual([checkout.amount, checkout.methods.map((m: { method: string }) => m.method)], [3500, ["card", "bank_transfer", "jazzcash"]]);
+
+    // A transfer waits for approval; only one at a time; a transaction ID once.
+    const sent = await buyer.call("POST", "/api/billing/payments", { plan: "monthly", currency: "PKR", method: "jazzcash", reference: "TXN-1001" });
+    assert.equal(sent.status, 201, JSON.stringify(sent.json.error));
+    assert.deepEqual([sent.json.data.payment.status, sent.json.data.payment.amount], ["review", 1500]);
+    assert.equal((await buyer.call("POST", "/api/billing/payments", { plan: "monthly", currency: "PKR", method: "jazzcash", reference: "TXN-1002" })).status, 409);
+    assert.equal((await me()).plan, "free", "nothing is given before approval");
+    let stats = (await admin.call("GET", "/api/admin/stats")).json.data;
+    assert.deepEqual(stats.payments, { unseen: 1, toReview: 1 });
+    const listed = (await admin.call("GET", "/api/admin/payments?search=0300123")).json.data;
+    assert.equal(listed.payments[0].user.email, login.email, "found by phone");
+    assert.equal((await admin.call("POST", "/api/admin/payments/seen")).json.data.seen, 1);
+    assert.equal((await admin.call("GET", "/api/admin/stats")).json.data.payments.unseen, 0);
+
+    // Approve: paid for one month from now, receipt number, revenue.
+    const paymentId = sent.json.data.payment.id;
+    assert.equal((await student.call("POST", `/api/admin/payments/${paymentId}/review`, { decision: "approve" })).status, 403);
+    const approved = await admin.call("POST", `/api/admin/payments/${paymentId}/review`, { decision: "approve", note: "Seen in JazzCash" });
+    assert.equal(approved.status, 200, JSON.stringify(approved.json.error));
+    assert.match(approved.json.data.payment.receiptNumber, /^SS-\d{8}-[0-9A-F]{6}$/);
+    assert.equal((await admin.call("POST", `/api/admin/payments/${paymentId}/review`, { decision: "approve" })).status, 409, "approved once");
+    const afterApproval = await me();
+    assert.equal(afterApproval.plan, "paid");
+    const firstEnd = new Date(afterApproval.planExpiresAt).getTime();
+    assert.ok(Math.abs(firstEnd - new Date(approved.json.data.payment.periodEnd).getTime()) < 1000);
+    assert.ok(firstEnd > Date.now() + 27 * 86_400_000 && firstEnd < Date.now() + 32 * 86_400_000);
+    stats = (await admin.call("GET", "/api/admin/stats")).json.data;
+    assert.equal(stats.revenue.PKR.total, 1500);
+    assert.equal(stats.signups.today >= 1, true);
+    // The same transaction ID cannot be sent again.
+    assert.equal((await buyer.call("POST", "/api/billing/payments", { plan: "monthly", currency: "PKR", method: "jazzcash", reference: "txn-1001" })).status, 409);
+
+    // Renewing by card (test gateway) adds the new period after the current one.
+    const card = await buyer.call("POST", "/api/billing/card", { plan: "monthly", currency: "PKR" });
+    assert.equal(card.status, 200, JSON.stringify(card.json.error));
+    const cardId = new URL(card.json.data.redirectUrl, base).searchParams.get("payment")!;
+    const outsider = client();
+    await outsider.call("POST", "/api/auth/register", { name: "Other Student", email: "phase1-test-outsider@example.com", password: "password-123", country: "PK" });
+    assert.equal((await outsider.call("POST", `/api/billing/test-gateway/${cardId}`, { outcome: "paid" })).status, 404, "only the payer");
+    const cardPaid = await buyer.call("POST", `/api/billing/test-gateway/${cardId}`, { outcome: "paid" });
+    assert.equal(cardPaid.json.data.payment.status, "paid");
+    const renewedEnd = new Date((await me()).planExpiresAt).getTime();
+    assert.ok(renewedEnd > firstEnd + 27 * 86_400_000, "renewal starts at the end of the running plan");
+    assert.equal((await admin.call("GET", "/api/admin/stats")).json.data.payments.unseen, 1, "a card payment raises the badge");
+
+    // Reject: the student is told, nothing is given.
+    await UserModel.updateOne({ email: login.email }, { $set: { plan: "free", paidPlan: null, planExpiresAt: null } });
+    const second = await buyer.call("POST", "/api/billing/payments", { plan: "three_months", currency: "PKR", method: "bank_transfer", reference: "IBFT-777", offer: true });
+    assert.deepEqual([second.json.data.payment.amount, second.json.data.payment.discountPercent], [2800, 20], "the exit offer: 20% off 3,500");
+    const rejected = await admin.call("POST", `/api/admin/payments/${second.json.data.payment.id}/review`, { decision: "reject", note: "Not received" });
+    assert.equal(rejected.json.data.payment.status, "rejected");
+    assert.equal((await me()).plan, "free");
+
+    // The one-time offer is used up once a payment with it is paid.
+    const withOffer = await buyer.call("POST", "/api/billing/payments", { plan: "three_months", currency: "PKR", method: "bank_transfer", reference: "IBFT-778", offer: true });
+    await admin.call("POST", `/api/admin/payments/${withOffer.json.data.payment.id}/review`, { decision: "approve" });
+    assert.equal((await buyer.call("GET", "/api/billing/checkout?plan=three_months&offer=1")).json.data.amount, 3500);
+    const billing = (await buyer.call("GET", "/api/billing")).json.data;
+    assert.deepEqual([billing.plan, billing.paidPlan, billing.autoRenew, billing.offer], ["paid", "three_months", true, null]);
+    assert.deepEqual(billing.payments.map((p: { status: string }) => p.status), ["paid", "rejected", "paid", "paid"]);
+    const receipt = await buyer.call("GET", `/api/billing/receipts/${withOffer.json.data.payment.id}`);
+    assert.equal(receipt.json.data.payment.amount, 2800);
+    assert.equal((await outsider.call("GET", `/api/billing/receipts/${withOffer.json.data.payment.id}`)).status, 404);
+    assert.equal((await buyer.call("PUT", "/api/billing/auto-renew", { autoRenew: false })).status, 200);
+    assert.equal((await buyer.call("GET", "/api/billing")).json.data.autoRenew, false);
+    const buyerId = (await UserModel.findOne({ email: login.email }).lean())!._id;
+    assert.equal((await admin.call("GET", `/api/admin/users/${buyerId}/payments`)).json.data.payments.length, 4);
+
+    await PaymentModel.deleteMany({});
+    await UserModel.deleteMany({ email: trusted({ $in: [login.email, "phase1-test-outsider@example.com"] }) });
+    await SettingModel.deleteMany({ key: "payments" });
+  });
+
+  await check("week 4: invite-code exams, pins and labels, the free daily drill limit, scheduled papers", async () => {
+    const { SettingModel } = await import("@satsharks/db");
+    const { adminService } = await import("../../src/services/admin.service");
+    const bankMath = (await PaperModel.findOne({ sourcePaperId: "bank-math" }).lean())!;
+    const bankRw = (await PaperModel.findOne({ sourcePaperId: "bank-reading_writing" }).lean())!;
+    const [math, rw] = [String(bankMath._id), String(bankRw._id)];
+    const learner = client();
+    await learner.call("POST", "/api/auth/register", { name: "Invite Student", email: "phase1-test-invite@example.com", password: "password-123", country: "PK" });
+
+    const saved = await admin.call("PUT", "/api/admin/settings/access", {
+      features: { drills: "free", mocks: "free", full_tests: "free", analytics: "free" },
+      content: [
+        { key: math, level: "invite", inviteCode: "school-2026", pinned: false, label: null },
+        { key: rw, level: "free", pinned: true, label: "new" },
+      ],
+      newContent: "free",
+      freeDrillQuestionsPerDay: 8,
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.json.error));
+    let catalog = (await learner.call("GET", "/api/practice/catalog")).json.data;
+    const examOf = (key: string) => catalog.exams.find((exam: { examId: string }) => exam.examId === key);
+    assert.deepEqual([examOf(math).locked, examOf(math).lockReason, examOf(rw).pinned, examOf(rw).label, examOf(rw).free], [true, "invite", true, "new", true]);
+    assert.equal(catalog.exams[0].pinned, true, "pinned first");
+    assert.deepEqual(catalog.access.dailyDrill, { limit: 8, used: 0 });
+    const blocked = await learner.call("POST", "/api/practice/attempts", { paperId: math, limit: 3 });
+    assert.match(blocked.json.error!.message, /invite code only/);
+    assert.equal((await learner.call("POST", "/api/student/invite-code", { code: "WRONG-1" })).status, 404);
+    const redeemed = await learner.call("POST", "/api/student/invite-code", { code: "School-2026" });
+    assert.equal(redeemed.status, 200, JSON.stringify(redeemed.json.error));
+    catalog = (await learner.call("GET", "/api/practice/catalog")).json.data;
+    assert.equal(examOf(math).locked, false);
+
+    // Free daily limit: 8 drill questions; a 5 then a 5 gives 5 + 3; then refused.
+    const first = await learner.call("POST", "/api/practice/attempts", { paperId: math, limit: 5 });
+    assert.equal(first.status, 201, JSON.stringify(first.json.error));
+    assert.equal((await AttemptModel.findById(first.json.data.attempt.id).lean())!.items.length, 5);
+    const secondDrill = await learner.call("POST", "/api/practice/drills/bank", { section: "reading_writing", count: 5 });
+    assert.equal(secondDrill.status, 201, JSON.stringify(secondDrill.json.error));
+    assert.equal((await AttemptModel.findById(secondDrill.json.data.attempt.id).lean())!.items.length, 3);
+    const third = await learner.call("POST", "/api/practice/drills/bank", { section: "reading_writing", count: 5 });
+    assert.deepEqual([third.status, third.json.error!.code], [403, "daily_limit"]);
+    assert.deepEqual((await learner.call("GET", "/api/practice/catalog")).json.data.access.dailyDrill, { limit: 8, used: 8 });
+
+    // Scheduling: only in the future, only unpublished papers; the scheduler publishes on time.
+    await PaperModel.updateOne({ _id: bankMath._id }, { $set: { status: "hidden" } });
+    assert.equal((await admin.call("PUT", `/api/admin/papers/${math}/schedule`, { at: new Date(Date.now() - 60_000).toISOString() })).status, 400);
+    const scheduled = await admin.call("PUT", `/api/admin/papers/${math}/schedule`, { at: new Date(Date.now() + 3_600_000).toISOString() });
+    assert.equal(scheduled.status, 200, JSON.stringify(scheduled.json.error));
+    assert.equal(await adminService.publishDue(new Date()), 0);
+    assert.equal(await adminService.publishDue(new Date(Date.now() + 2 * 3_600_000)), 1);
+    const published = (await PaperModel.findById(bankMath._id).lean())!;
+    assert.deepEqual([published.status, published.publishAt], ["published", null]);
+    assert.equal(await QuestionModel.countDocuments({ paperId: bankMath._id, status: trusted({ $ne: "published" }) }), 0);
+    assert.equal((await admin.call("PUT", `/api/admin/papers/${math}/schedule`, { at: new Date(Date.now() + 3_600_000).toISOString() })).status, 400, "already published");
+
+    await SettingModel.deleteOne({ key: "access" });
+    await UserModel.deleteOne({ email: "phase1-test-invite@example.com" });
+  });
+
+  await check("week 4: friend invites give a free week; users by phone, CSV export, 30-day restore window; public numbers", async () => {
+    const { paymentService } = await import("../../src/services/payment.service");
+    const { userAdminService } = await import("../../src/services/user-admin.service");
+    // Every check signs up from one address: give this one a fresh sign-up and request allowance.
+    const { apiRateLimit, authRateLimit } = await import("../../src/middleware/rate-limit");
+    for (const address of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) await Promise.all([apiRateLimit.resetKey(address), authRateLimit.resetKey(address)]);
+    const inviter = client();
+    await inviter.call("POST", "/api/auth/register", { name: "Inviter Student", email: "phase1-test-inviter@example.com", password: "password-123", country: "AE" });
+    const code = (await inviter.call("GET", "/api/billing")).json.data.referrals.code;
+    const friends = [];
+    for (const n of [1, 2]) {
+      const friend = client();
+      const made = await friend.call("POST", "/api/auth/register", { name: `Invited ${n}`, email: `phase1-test-invited-${n}@example.com`, password: "password-123", country: "PK", ref: code, testDate: "2099-01-01" });
+      assert.equal(made.status, 201, JSON.stringify(made.json.error));
+      friends.push(friend);
+    }
+    const inviterDoc = (await UserModel.findOne({ email: "phase1-test-inviter@example.com" }).lean())!;
+    assert.equal(inviterDoc.friends.length, 2, "invited friends are friends at once");
+    assert.equal((await UserModel.findOne({ email: "phase1-test-invited-1@example.com" }).lean())!.engagement.testDate, null, "a test date far away is not kept");
+
+    // They count once they have practised; two give a week.
+    assert.deepEqual(await paymentService.processReferrals(), { qualified: 0, rewarded: 0 });
+    await UserModel.updateMany({ referredBy: inviterDoc._id }, { $set: { totalPoints: 60 } });
+    assert.deepEqual(await paymentService.processReferrals(), { qualified: 2, rewarded: 1 });
+    assert.deepEqual(await paymentService.processReferrals(), { qualified: 0, rewarded: 0 }, "given once");
+    const rewarded = (await inviter.call("GET", "/api/billing")).json.data;
+    assert.equal(rewarded.plan, "paid");
+    assert.deepEqual([rewarded.referrals.joined, rewarded.referrals.qualified, rewarded.referrals.rewards, rewarded.currency], [2, 2, 1, "USD"]);
+    const ends = new Date(rewarded.planExpiresAt).getTime();
+    assert.ok(ends > Date.now() + 6.9 * 86_400_000 && ends < Date.now() + 7.1 * 86_400_000);
+    assert.equal(rewarded.payments[0].method, "referral");
+
+    // Admin → Users: phone search, CSV, delete keeps a restore window, old deletions are removed.
+    await UserModel.updateOne({ email: "phase1-test-invited-2@example.com" }, { $set: { phone: "+923451112233" } });
+    const byPhone = (await admin.call("GET", "/api/admin/users?search=0345-111")).json.data.users;
+    assert.deepEqual(byPhone.map((user: { email: string }) => user.email), ["phase1-test-invited-2@example.com"]);
+    assert.equal((await student.text("/api/admin/users/export")).status, 403);
+    const csv = await admin.text("/api/admin/users/export?search=phase1-test-invited");
+    assert.match(csv.type ?? "", /text\/csv/);
+    const lines = csv.body.replace(/^\uFEFF/, "").trim().split("\r\n");
+    assert.equal(lines[0], "Name,Email,Phone,Country,Region,Role,Status,Plan,Paid plan,Plan ends,Joined");
+    assert.equal(lines.length, 3);
+    assert.ok(lines.some((line) => line.startsWith("Invited 2,phase1-test-invited-2@example.com,'+923451112233,PK,local,student,active,free")));
+    const victim = (await UserModel.findOne({ email: "phase1-test-invited-1@example.com" }).lean())!;
+    await admin.call("PATCH", `/api/admin/users/${victim._id}`, { status: "deleted" });
+    const deleted = (await admin.call("GET", `/api/admin/users/${victim._id}`)).json.data.user;
+    assert.ok(deleted.deletedAt && new Date(deleted.restorableUntil).getTime() - new Date(deleted.deletedAt).getTime() === 30 * 86_400_000);
+    assert.deepEqual(await userAdminService.purgeDeleted(new Date(Date.now() - 30 * 86_400_000)), { removed: 0 }, "still inside the window");
+    await UserModel.updateOne({ _id: victim._id }, { $set: { deletedAt: new Date(Date.now() - 31 * 86_400_000) } });
+    assert.deepEqual(await userAdminService.purgeDeleted(new Date(Date.now() - 30 * 86_400_000)), { removed: 1 });
+
+    const proof = (await student.call("GET", "/api/public/proof")).json.data;
+    assert.ok(typeof proof.practisingNow === "number" && Array.isArray(proof.improvements));
+    const { PaymentModel } = await import("@satsharks/db");
+    await PaymentModel.deleteMany({});
+    await UserModel.deleteMany({ email: trusted({ $in: ["phase1-test-inviter@example.com", "phase1-test-invited-2@example.com"] }) });
   });
 
   console.log(`\n${passed} end-to-end checks passed.`);
