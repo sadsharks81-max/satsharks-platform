@@ -265,10 +265,33 @@ function Triangle({ viz }: { viz: TriangleViz }) {
   );
 }
 
+// An image an admin uploaded for an answer choice (e.g. one of four graphs), stored as the choice's figure.
+export interface ImageViz {
+  type: "image";
+  url: string;
+}
+
+export const imageVizUrl = (viz: unknown): string | null => (isRecord(viz) && viz.type === "image" && typeof viz.url === "string" ? viz.url : null);
+
+// The source stored a few tables without `type` (e.g. the four frequency-table choices of #6120):
+// headers and rows alone are drawn as a table.
+const isTable = (viz: Record<string, unknown>) => (viz.type === "table" || viz.type === undefined) && Array.isArray(viz.headers) && Array.isArray(viz.rows);
+
+// Whether a stored figure is one of the kinds drawn here (anything else shows a notice instead).
+export function canDrawViz(viz: unknown): boolean {
+  if (!isRecord(viz)) return false;
+  if (isTable(viz)) return true;
+  if (viz.type === "bar" || viz.type === "line") return Array.isArray(viz.data);
+  return viz.type === "triangle" || imageVizUrl(viz) !== null;
+}
+
 export function Viz({ viz, math = false }: { viz: unknown; math?: boolean }) {
   if (!isRecord(viz)) return null;
-  if (viz.type === "table" && Array.isArray(viz.headers) && Array.isArray(viz.rows)) return <Table viz={viz as unknown as TableViz} math={math} />;
-  if ((viz.type === "bar" || viz.type === "line") && Array.isArray(viz.data)) return <Chart viz={viz as unknown as ChartViz} math={math} />;
+  if (!canDrawViz(viz)) return <p className="my-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">This question has a figure that cannot be displayed yet.</p>;
+  const image = imageVizUrl(viz);
+  // eslint-disable-next-line @next/next/no-img-element -- served by our own API
+  if (image) return <img src={image} alt="Figure for this answer choice" className="my-2 h-auto w-full max-w-[320px]" />;
+  if (isTable(viz)) return <Table viz={viz as unknown as TableViz} math={math} />;
   if (viz.type === "triangle") return <Triangle viz={viz as unknown as TriangleViz} />;
-  return <p className="my-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">This question has a figure that cannot be displayed yet.</p>;
+  return <Chart viz={viz as unknown as ChartViz} math={math} />;
 }

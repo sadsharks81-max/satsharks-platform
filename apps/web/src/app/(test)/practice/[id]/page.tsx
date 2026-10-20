@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AttemptNavItem, AttemptQuestion, AttemptSummary } from "@satsharks/types";
 import { Choices, Passage, Prompt, ResponseInput } from "@/components/question";
+import { CalculatorDock } from "@/components/calculator-dock";
 import { DraggablePanel } from "@/components/draggable-panel";
 import { ReferenceSheet } from "@/components/reference-sheet";
 import { RequireUser } from "@/components/require-user";
@@ -12,9 +13,6 @@ import { ReportProblemDialog } from "@/components/report-ui";
 import { Button, Modal, Notice, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatClock } from "@/lib/format";
-
-// Desmos's own graphing calculator page for the College Board tests, shown inside our window.
-const DESMOS_URL = "https://www.desmos.com/testing/collegeboard/graphing";
 
 type AttemptState = { attempt: AttemptSummary; navigation: AttemptNavItem[] };
 
@@ -112,6 +110,8 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
   // The reference sheet is a separate floating window, so it can stay open alongside other panels.
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  // Loaded on first use and then only hidden, so closing it keeps the student's work (Bluebook).
+  const [calculatorUsed, setCalculatorUsed] = useState(false);
   const [moduleNotice, setModuleNotice] = useState<string | null>(null);
   const [reporting, setReporting] = useState(false);
   const ending = useRef(false);
@@ -451,7 +451,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
           )}
         </div>
         <div className="flex items-center justify-end gap-0.5 sm:gap-1">
-          {math && <ToolButton label="Calculator" icon="calculator" onClick={() => setCalculatorOpen((open) => !open)} active={calculatorOpen} />}
+          {math && <ToolButton label="Calculator" icon="calculator" onClick={() => (setCalculatorUsed(true), setCalculatorOpen((open) => !open))} active={calculatorOpen} />}
           {math && <ToolButton label="Reference" icon="reference" onClick={() => setReferenceOpen((open) => !open)} active={referenceOpen} />}
           <ToolButton
             label="Exit"
@@ -465,7 +465,10 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
       </header>
       <div className="test-rule" />
 
-      <main className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
+      {/* With the calculator open the question moves over beside it (Bluebook), never under it. */}
+      <main className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {calculatorUsed && <CalculatorDock open={calculatorOpen} onClose={() => setCalculatorOpen(false)} />}
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto lg:h-full lg:overflow-hidden">
         {(error || moduleNotice) && (
           <div className="mx-auto max-w-3xl space-y-2 px-4 pt-3">
             {moduleNotice && <Notice tone="info">{moduleNotice}</Notice>}
@@ -484,6 +487,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
             <div className="mx-auto max-w-3xl">{questionPane}</div>
           </div>
         )}
+        </div>
       </main>
 
       <div className="test-rule" />
@@ -561,31 +565,7 @@ function TestScreen({ attemptId, userName }: { attemptId: string; userName: stri
         )}
       </footer>
 
-      {/* Floating and draggable, so the question stays visible and usable while they are open.
-          Closing the calculator clears its work; reopening starts a fresh one. */}
-      {calculatorOpen && (
-        <DraggablePanel
-          title="Calculator"
-          onClose={() => setCalculatorOpen(false)}
-          initialX={50}
-          initialY={100}
-          width={640}
-          height={520}
-          minWidth={400}
-          minHeight={350}
-          resizable
-          flush
-        >
-          <iframe
-            src={DESMOS_URL}
-            title="Desmos graphing calculator"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-forms"
-            className="h-full w-full border-0"
-          />
-        </DraggablePanel>
-      )}
+      {/* Floating and draggable, so the question stays visible and usable while it is open. */}
       {referenceOpen && (
         <DraggablePanel title="Reference" onClose={() => setReferenceOpen(false)}>
           <ReferenceSheet />

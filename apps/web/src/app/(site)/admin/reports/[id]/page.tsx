@@ -5,13 +5,73 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { REPORT_REASON_LABELS, SECTION_LABELS, type AdminQuestion, type AdminReport } from "@satsharks/types";
+import { Choices, Passage, Prompt } from "@/components/question";
 import { QuestionEditor } from "@/components/question-editor";
+import { canDrawViz } from "@/components/viz";
 import { STATUS_BADGE } from "@/components/report-ui";
 import { RequireUser } from "@/components/require-user";
 import { Badge, Button, Card, Modal, Notice, PageHeader, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 
 type ReportDetail = { report: AdminReport; question: AdminQuestion | null; related: AdminReport[] };
+
+// The question laid out as on the student's test screen (passage beside the question for Reading &
+// Writing and typed answers), with its figures (graphs, tables, images) at full size and the answer
+// key marked, so the admin sees what the student reported. It reads the editor's copy of the
+// question, so it follows each save.
+function StudentView({ id }: { id: string }) {
+  const { data } = useQuery({ queryKey: ["admin", "question", id], queryFn: () => api<{ question: AdminQuestion }>(`/api/admin/questions/${id}`) });
+  const question = data?.question;
+  if (!question) return null;
+  const math = question.section === "math";
+  const spr = question.questionType !== "mcq";
+  const split = !math || spr;
+  // A figure kind the site cannot draw yet: show what is stored, so the admin can still judge it.
+  const undrawn = [question.viz, ...question.choices.map((choice) => choice.viz ?? null)].filter((viz) => viz != null && !canDrawViz(viz));
+  // Choices with neither text nor a figure: the student saw blank options (e.g. graphs never imported).
+  const empty = spr ? [] : question.choices.filter((choice) => !choice.text.trim() && choice.viz == null).map((choice) => choice.key);
+  const pane = (
+    <>
+      <Prompt question={question} />
+      {spr ? (
+        <p className="mt-4 text-sm">
+          <b>Accepted answers:</b> {question.correctAnswer?.acceptedValues.join(" or ") || "none set"}
+        </p>
+      ) : (
+        <Choices question={question} selected={null} correctAnswer={question.correctAnswer} disabled />
+      )}
+    </>
+  );
+  return (
+    <Card className="mb-4 p-0">
+      <h2 className="border-b border-slate-900 px-5 py-3 font-bold">As the student saw it</h2>
+      {empty.length > 0 && (
+        <div className="px-5 pt-4">
+          <Notice tone="error">
+            Choice{empty.length === 1 ? "" : "s"} {empty.join(", ")} {empty.length === 1 ? "has" : "have"} no text and no picture, so the student saw blank options. The graphs (or
+            pictures) for these answers were never imported. Add an image for each choice in the editor below and save.
+          </Notice>
+        </div>
+      )}
+      {split ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2">
+          <div className="min-w-0 border-b-4 border-slate-300 px-5 py-5 lg:border-b-0 lg:border-r-4">
+            {math ? <p className="text-sm text-slate-500">Typed-answer question: the student sees the answer directions here.</p> : <Passage question={question} />}
+          </div>
+          <div className="min-w-0 px-5 py-5">{pane}</div>
+        </div>
+      ) : (
+        <div className="mx-auto max-w-3xl px-5 py-5">{pane}</div>
+      )}
+      {undrawn.length > 0 && (
+        <details className="border-t border-slate-200 px-5 py-3 text-sm">
+          <summary className="cursor-pointer font-bold text-amber-800">The figure&rsquo;s stored data ({undrawn.length})</summary>
+          <pre className="mt-2 max-h-80 overflow-auto rounded bg-slate-50 p-3 text-xs">{JSON.stringify(undrawn, null, 2)}</pre>
+        </details>
+      )}
+    </Card>
+  );
+}
 
 const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -64,6 +124,7 @@ function ReportView({ id, canResolve, canEditQuestion }: { id: string; canResolv
         ← Problem reports
       </Link>
       <PageHeader title={REPORT_REASON_LABELS[report.reason]} subtitle={`Reported ${formatDate(report.createdAt)}`} />
+      {question && <StudentView id={question.id} />}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="space-y-4">

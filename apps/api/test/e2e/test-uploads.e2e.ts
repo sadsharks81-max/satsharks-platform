@@ -1224,5 +1224,80 @@ async function run() {
     await UserModel.deleteMany({ email: trusted({ $in: ["phase1-test-inviter@example.com", "phase1-test-invited-2@example.com"] }) });
   });
 
+  await check("Admin → Users bulk: ticked or all matching; delete, restore, delete for good; admins and yourself never", async () => {
+    const { apiRateLimit, authRateLimit } = await import("../../src/middleware/rate-limit");
+    for (const address of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) await Promise.all([apiRateLimit.resetKey(address), authRateLimit.resetKey(address)]);
+    const emails = [1, 2, 3].map((n) => `phase1-test-bulk-${n}@example.com`);
+    for (const [index, email] of emails.entries()) {
+      assert.equal((await client().call("POST", "/api/auth/register", { name: `Bulk ${index + 1}`, email, password: "password-123", country: "PK" })).status, 201);
+    }
+    // The third one is another admin: bulk actions leave admins alone.
+    await UserModel.updateOne({ email: emails[2] }, { $set: { role: "admin" } });
+    const ids = (await UserModel.find({ email: trusted({ $in: emails }) }).sort({ email: 1 }).lean()).map((user) => String(user._id));
+    const me = String((await UserModel.findOne({ email: "phase1-test-admin@example.com" }).lean())!._id);
+    const status = async () => (await UserModel.find({ email: trusted({ $in: emails }) }).sort({ email: 1 }).lean()).map((user) => user.status);
+
+    assert.equal((await student.call("POST", "/api/admin/users/bulk", { action: "delete", ids })).status, 403);
+    assert.equal((await admin.call("POST", "/api/admin/users/bulk", { action: "delete", ids, filter: {} })).status, 400, "ids or filter, not both");
+    assert.equal((await admin.call("POST", "/api/admin/users/bulk", { action: "delete" })).status, 400);
+
+    // Ticked: two students, an admin and yourself → only the students.
+    const ticked = await admin.call("POST", "/api/admin/users/bulk", { action: "delete", ids: [...ids, me] });
+    assert.deepEqual(ticked.json.data, { changed: 2, skipped: 2 });
+    assert.deepEqual(await status(), ["deleted", "deleted", "active"]);
+    assert.equal((await UserModel.findById(me).lean())!.status, "active");
+    assert.ok((await UserModel.findById(ids[0]).lean())!.deletedAt, "the restore window starts");
+    // All matching (the Deleted tab, searched): restore.
+    const restored = await admin.call("POST", "/api/admin/users/bulk", { action: "restore", filter: { status: "deleted", search: "phase1-test-bulk" } });
+    assert.deepEqual(restored.json.data, { changed: 2, skipped: 0 });
+    assert.deepEqual(await status(), ["active", "active", "active"]);
+    assert.equal((await UserModel.findById(ids[0]).lean())!.deletedAt, null);
+    // All matching on the All tab: delete; the admin among them is skipped.
+    const all = await admin.call("POST", "/api/admin/users/bulk", { action: "delete", filter: { search: "phase1-test-bulk" } });
+    assert.deepEqual(all.json.data, { changed: 2, skipped: 1 });
+    // "Delete permanently" only touches deleted accounts.
+    const purged = await admin.call("POST", "/api/admin/users/bulk", { action: "purge", ids });
+    assert.deepEqual(purged.json.data, { changed: 2, skipped: 1 });
+    assert.equal(await UserModel.countDocuments({ email: trusted({ $in: emails }) }), 1);
+    await UserModel.deleteOne({ email: emails[2] });
+  });
+
+  await check("answer choices with no text or figure (graphs never imported) get an image per choice", async () => {
+    const paper = await PaperModel.findOne({ sourcePaperId: "bank-math" }).lean();
+    const blank = await QuestionModel.create({
+      paperId: paper!._id, source: "bluecorn", sourceQuestionId: "blank-graphs", section: "math", moduleType: "none", questionNumber: 999, questionType: "mcq",
+      prompt: "Which graph represents this relationship?", passage: null, status: "published",
+      choices: ["A", "B", "C", "D"].map((key) => ({ key, text: "", viz: key === "D" ? { type: "line", data: [] } : null })),
+      correctAnswer: { choiceKey: "B", acceptedValues: [] },
+    });
+    const path = `/api/admin/questions/${blank._id}`;
+    const texts = (image: (key: string) => string | null | undefined) => ["A", "B", "C", "D"].map((key) => ({ key, text: "", ...(image(key) === undefined ? {} : { image: image(key) }) }));
+    // Saving as it is names the empty choices (D has a drawn figure, so it is not empty).
+    const refused = await admin.call("PATCH", path, { difficulty: "easy", choices: texts(() => undefined) });
+    assert.equal(refused.status, 400);
+    assert.match(refused.json.error!.message, /Choice A, B, C are empty/);
+    assert.equal((await admin.call("PATCH", path, { choices: texts((key) => (key === "D" ? undefined : "https://example.com/x.png")) })).status, 400, "only our own images");
+
+    const urls: string[] = [];
+    for (const n of [1, 2, 3]) {
+      // Three different (tiny, valid) PNGs.
+      const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+      const form = new FormData();
+      form.append("image", new Blob([Buffer.concat([png, Buffer.from([n])])], { type: "image/png" }), `graph-${n}.png`);
+      urls.push((await admin.call("POST", "/api/admin/assets", undefined, form)).json.data.url);
+    }
+    const saved = await admin.call("PATCH", path, { choices: texts((key) => ({ A: urls[0], B: urls[1], C: urls[2], D: null })[key]) });
+    assert.equal(saved.status, 200, JSON.stringify(saved.json.error));
+    const choices = saved.json.data.question.choices;
+    assert.deepEqual(choices.slice(0, 3).map((choice: { viz: { type: string; url: string } }) => [choice.viz.type, choice.viz.url]), urls.map((url) => ["image", url]));
+    assert.equal(choices[3].viz.type, "line", "null keeps a drawn figure");
+    // Left out keeps the image; null removes it (and then the choice is empty again).
+    assert.equal((await admin.call("PATCH", path, { choices: texts(() => undefined) })).status, 200);
+    assert.equal(((await QuestionModel.findById(blank._id).lean())!.choices[0]!.viz as { type: string }).type, "image");
+    const removed = await admin.call("PATCH", path, { choices: texts((key) => (key === "A" ? null : undefined)) });
+    assert.match(removed.json.error!.message, /Choice A is empty/);
+    await QuestionModel.deleteOne({ _id: blank._id });
+  });
+
   console.log(`\n${passed} end-to-end checks passed.`);
 }

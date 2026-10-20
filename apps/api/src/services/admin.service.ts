@@ -26,6 +26,19 @@ const ADMIN_TIME_ZONE = "Asia/Karachi";
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const ASSET_URL = /^\/api\/assets\/([a-f0-9]{32}\.(?:svg|png|jpg|webp))$/;
 
+// New image URLs on a question must be images stored here (uploaded through /admin/assets).
+async function requireUploaded(urls: string[]): Promise<void> {
+  if (urls.length === 0) return;
+  const keys = urls.map((url) => ASSET_URL.exec(url)?.[1]);
+  const named = keys.filter((key): key is string => !!key);
+  const stored = new Set((await AssetModel.find({ key: trusted({ $in: named }) }).select("key").lean<{ key: string }[]>()).map((asset) => asset.key));
+  if (keys.some((key) => !key || !stored.has(key))) throw AppError.badRequest("Upload the image again; it was not found");
+}
+
+// The URL of an image set as an answer choice's figure, or null for any other figure.
+const choiceImage = (viz: unknown): string | null =>
+  typeof viz === "object" && viz !== null && (viz as { type?: unknown }).type === "image" && typeof (viz as { url?: unknown }).url === "string" ? (viz as { url: string }).url : null;
+
 // The image type from the file's first bytes; the browser's claimed type is not trusted.
 function imageType(data: Buffer): { ext: "png" | "jpg" | "webp"; contentType: string } | null {
   if (data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { ext: "png", contentType: "image/png" };
@@ -220,12 +233,21 @@ export const adminService = {
     if (questionType !== "mcq") {
       choices = [];
     } else if (choiceInput) {
-      // Texts come from the editor; a figure drawn inside a choice stays with its key.
+      // Texts come from the editor; a figure drawn inside a choice stays with its key, unless the
+      // editor sets or removes an image for that choice.
       const figures = new Map(question.choices.map((choice) => [choice.key, choice.viz ?? null]));
-      choices = choiceInput.map((choice) => ({ key: choice.key, text: choice.text, viz: figures.get(choice.key) ?? null }));
+      const imageUrls = choiceInput.map((choice) => choice.image).filter((url): url is string => !!url && !question.choices.some((old) => choiceImage(old.viz) === url));
+      await requireUploaded(imageUrls);
+      choices = choiceInput.map((choice) => {
+        const old = figures.get(choice.key) ?? null;
+        const viz = choice.image === undefined ? old : choice.image === null ? (choiceImage(old) ? null : old) : { type: "image", url: choice.image };
+        return { key: choice.key, text: choice.text, viz };
+      });
     }
-    if (questionType === "mcq" && (choices.length < 2 || choices.some((choice) => !choice.text.trim() && !choice.viz))) {
-      throw AppError.badRequest("A multiple-choice question needs every choice filled in");
+    if (questionType === "mcq" && choices.length < 2) throw AppError.badRequest("A multiple-choice question needs at least two choices");
+    const empty = choices.filter((choice) => !choice.text.trim() && !choice.viz).map((choice) => choice.key);
+    if (questionType === "mcq" && empty.length > 0) {
+      throw AppError.badRequest(`Choice ${empty.join(", ")} ${empty.length === 1 ? "is" : "are"} empty: type the answer or add an image for ${empty.length === 1 ? "it" : "each"}`);
     }
     if (choiceInput || input.questionType) set.choices = choices;
 
@@ -242,12 +264,7 @@ export const adminService = {
 
     if (assetInput) {
       const current = new Set(question.assets.map((asset) => asset.url));
-      const keys = assetInput.map((asset) => ASSET_URL.exec(asset.url)?.[1]).filter((value): value is string => !!value);
-      const stored = new Set((await AssetModel.find({ key: trusted({ $in: keys }) }).select("key").lean<{ key: string }[]>()).map((asset) => asset.key));
-      for (const asset of assetInput) {
-        const assetKey = ASSET_URL.exec(asset.url)?.[1];
-        if (!current.has(asset.url) && !(assetKey && stored.has(assetKey))) throw AppError.badRequest("Upload the image again; it was not found");
-      }
+      await requireUploaded(assetInput.map((asset) => asset.url).filter((url) => !current.has(url)));
       const sources = new Map(question.assets.map((asset) => [asset.url, asset.sourceUrl ?? null]));
       set.assets = assetInput.map((asset) => ({ kind: "image", url: asset.url, maxWidth: asset.maxWidth, sourceUrl: sources.get(asset.url) ?? null }));
     }

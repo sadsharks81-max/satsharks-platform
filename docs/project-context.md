@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-19 (Week 4 built; then pricing shows only the student's own region, and "Next SAT in N days" for students without a test date; not committed).
+Last updated: 2026-10-20 (bulk select/delete in Admin → Users, Premium/Free member badge, "As the student saw it" on reports, Desmos docked like Bluebook; not committed).
 
 ---
 
@@ -61,6 +61,19 @@ Last updated: 2026-10-19 (Week 4 built; then pricing shows only the student's ow
   Removes each still-deleted, non-hidden account with its attempts, full tests, question log,
   mistakes and day totals, and takes it off friend lists. Problem reports are kept (no reporter
   shown). Until cleared, a deleted account can still be restored.
+- **Bulk actions in Admin → Users (2026-10-20, client via Umair):** a checkbox per row, a header
+  checkbox for the page, **Select all (N)** (every account matching the tab, filters and search,
+  across pages) and "Select all N matching users" after ticking a page. The bar then offers Delete
+  selected (All/Paid/Free/Disabled tabs) or Restore selected / Delete permanently (Deleted tab);
+  "all matching" deletes ask for DELETE to be typed. `POST /api/admin/users/bulk` (`users:write`,
+  `bulkUsersSchema`: `action` delete/restore/purge + `ids` (≤500) **or** `filter`),
+  `userAdminService.bulk`. **Admin accounts and the acting admin are always skipped** (checkboxes
+  disabled; the server skips them too and reports `skipped`), so "delete all" cannot lock admins out.
+- **Member badge (2026-10-20):** under "Student portal" in the student sidebar (and first in the
+  phone tab strip): red "PREMIUM MEMBER" pill with a medal for an effective paid plan (end date in
+  the tooltip), grey "FREE MEMBER" linking to /pricing otherwise (`MemberBadge` in
+  `student-sidebar.tsx`). Follows `/api/auth/me`, so an admin upgrade or approved payment shows on
+  the next session check (tab focus or reload).
 - **Forgot / reset password** through Resend (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`). Token: 32
   random bytes, only its SHA-256 stored, 30 minutes, single use, same answer for unknown emails,
   a reset signs out every older session (`passwordChangedAt`). Without the key, development prints
@@ -122,10 +135,23 @@ Last updated: 2026-10-19 (Week 4 built; then pricing shows only the student's ow
   question, report a problem from the review.
 - **Report a problem** on every question (test screen and review); admin queue with the question
   editor beside the report, resolve/reopen with history and an "also resolve the others" option.
+  Since 2026-10-20 the report page opens with a full-width **"As the student saw it"** card (test
+  screen layout, figures full size, answer key marked; reads the editor's cached question so it
+  follows saves) and, for a figure kind the site cannot draw, its stored data.
+- **Answer-choice images (2026-10-20):** a choice's figure may be `{ type: "image", url }` (drawn by
+  `Viz`). The question editor has "+ Add image" / Replace / Remove under each choice
+  (`ChoiceImage`), a red notice when choices are empty (also on the report page), and sends
+  `choices[].image` (URL = set, null = remove an image but keep a drawn figure, left out = keep;
+  new URLs must be uploaded assets, `requireUploaded`). The server names the empty choices
+  ("Choice A, B, C are empty: …") instead of the old "needs every choice filled in".
 - **Test screen tools:** timer (hide/show), directions, mark for review, cross-out (ABC),
-  question navigator, **Desmos calculator** in a floating draggable/resizable window
-  (`desmos.com/testing/collegeboard/graphing` in an iframe), **reference sheet** in a floating
-  draggable window (from Umair's other project; see §6).
+  question navigator, **Desmos calculator** (`desmos.com/testing/collegeboard/graphing` in an
+  iframe) **docked on the left like Bluebook since 2026-10-20** (`components/calculator-dock.tsx`):
+  the question moves over beside it instead of being covered; 36% of the window when opened, an
+  expand button for 60%, a drag handle on its edge (min 320px, the question keeps ≥420px); above the
+  question (45% of the height) under 1024px; closing only hides it, so its work is kept while the
+  test screen is open. **Reference sheet** still a floating draggable window (from Umair's other
+  project; see §6).
 - **Admin** (sidebar: Dashboard, Papers, Questions, Reports, Settings; tab strip on phones):
   stats incl. users by region and pending reports, publish/hide per paper and in bulk, question
   bank with filters/search/paging, question editor (shared component `question-editor.tsx`) with
@@ -445,6 +471,8 @@ Last updated: 2026-10-19 (Week 4 built; then pricing shows only the student's ow
 - Next commit (2026-10-16, Claude, asked by Umair): "Leaderboard country and full names, target
   score box, clear deleted users, remove Till Test Day", pushed to both remotes (see `git log`).
   Needs the API and web live together (new routes); the live site was not checked.
+- `a61f316` "week 4 implemented" (Umair): the Week 4 work and the two 2026-10-19 fixes. The
+  2026-10-20 changes (bulk users, member badge, report view, Desmos dock) are not committed.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -994,3 +1022,52 @@ Newest last. One entry per session or major step.
   PKR/USD switch; visitors keep the IP-based default and the switch. Asked: country or IP? Answer
   given: account country for students, IP only for visitors (see §6). Checked: web type check only.
   Not committed.
+- **2026-10-20 — Four changes (client via Umair).** (1) Admin → Users: select (row, page, all
+  matching) and delete / restore / delete permanently in bulk; admins and yourself skipped (§2).
+  (2) "Premium member" / "Free member" badge under Student portal (§2). (3) Reports: the admin said a
+  reported graph did not show. The code paths match the student's (same `viz`/`assets`, same
+  components), and Atlas could not be reached from this session (DNS timeout), so the exact report
+  was not found; the report page now shows the question full width exactly as on the test screen,
+  plus the stored data of any figure kind the site cannot draw. **Ask Umair which report it was** if
+  the graph is still missing there. (4) Desmos docked on the left like Bluebook so it no longer covers
+  the question (§2 Test screen tools); web search could not confirm Bluebook's exact pixel sizes, so
+  the sizes are a close match, adjustable in `calculator-dock.tsx`. Checked: type check (all
+  workspaces); 71 unit tests; **26 e2e checks** (new: bulk 403/400, ticked delete skips an admin and
+  yourself, restore and delete by filter, purge only deleted accounts). **Not checked in a
+  browser** (users page, badge, report card, calculator dock). Not committed.
+- **2026-10-20 — The missing graph found (Umair's screenshots: report on #6676).** Atlas was reachable
+  this time (read-only). #6676 "Which graph represents this relationship?" has four choices with **no
+  text and no figure**: the source's choice graphs were never imported (the parser keeps only an
+  option's `text` and `viz_data`; the graphs are probably images in another field, not checked
+  without a source token). Students and the admin both saw blank A–D. **Five published questions**,
+  all "which graph" Math questions with A–D empty: #5068 and #6545 (SAT March 08, 2025), #5234
+  (October 05, 2024), #3275 (August 24, 2024), #6676 (May 04, 2024). Such a question could not even
+  be saved in the editor (every choice had to be filled). Built answer-choice images (§2) so an admin
+  can add the four graphs. **To do (Umair/admin):** add the graphs to these five, or hide them; with
+  a fresh source token the collector could be taught the option image field. Checked: type check;
+  71 unit tests; **27 e2e checks** (new: empty choices named, foreign URL refused, three choice images
+  saved, a drawn figure kept with null, left out keeps, null removes). Not checked in a browser. Not
+  committed.
+- **2026-10-20 — The five graph questions fixed, and the whole bank checked (Umair: "fix them
+  yourself, the client will not spend time on it").** Drew four SAT-style graphs per question (SVG,
+  300×300, grid, axes, ticks; correct graph on the **stored** answer key; wrong ones from typical
+  mistakes) and wrote them to Atlas: 20 assets (`sourceUrl: generated:<key>`, `image/svg+xml`) and
+  each choice's `viz = { type: "image", url }`, only for choices that were still empty. #5068 C =
+  line through (2, 8); #6545 D = lines meeting at (5, 5); #5234 A = $y=x^2+1.7$ with $y=1.7-x$;
+  #3275 A = zeros at −5 and 7; #6676 B = segment (0, 20)–(15, 0), axes "Oak trees" / "Pine trees".
+  Generator and a backup of the old data: scratchpad of that session (not in the repo). **Students
+  see the graphs only once this code is deployed** (the live site cannot draw `type: "image"` yet;
+  until then each choice says "cannot be displayed yet").
+  **Bank audit** (read-only script following the renderer's rules; collection names: `questions`,
+  `paper` (singular), `assets`): 10,221 questions (9,927 published). Clean: every formula renders
+  with KaTeX, no unclosed `$`, no LaTeX/HTML shown raw, every MCQ has 4 distinct filled choices and a
+  valid key, every grid-in has a typeable accepted answer (grading compares numbers, so `.0029` is
+  right for 0.0029), every image exists in `assets`, no `{viz}` without a figure, and **no question
+  refers to a figure it lacks** (control: 763 that do have theirs match the same wording). Found:
+  (1) **#6120** (published) — its four frequency-table choices were stored without `type`, so they
+  showed "cannot be displayed"; fixed in code (`viz.tsx` draws headers+rows without a type as a
+  table; the database write was refused by the session's safety check, as it was outside the five).
+  (2) 219 questions still carry the source's "[bluebooky.com]" text (client decision pending, §9).
+  (3) 572 published questions repeat another question's text (the source reuses questions across
+  administrations), so "All exams" drills can show one twice. (4) 132 without a skill = hidden
+  uploaded full-test questions (expected).

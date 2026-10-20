@@ -19,7 +19,7 @@ import {
   type UserDoc,
 } from "@satsharks/db";
 import { DELETED_RESTORE_DAYS, isPaidPlan, type AdminUser, type AdminUserActivity, type UserListCounts } from "@satsharks/types";
-import type { UpdateUserInput, UserListQuery } from "@satsharks/validation";
+import type { BulkUsersInput, UpdateUserInput, UserListQuery } from "@satsharks/validation";
 import mongoose from "mongoose";
 import { AppError } from "../utils/app-error";
 import { csvCell } from "./payment-rules";
@@ -67,7 +67,7 @@ function paidNow(now: Date) {
   return { plan: "paid", $or: trusted([{ planExpiresAt: null }, { planExpiresAt: trusted({ $gt: now }) }]) };
 }
 
-function buildFilter(query: UserListQuery, now: Date): Record<string, unknown> {
+function buildFilter(query: Omit<UserListQuery, "page" | "pageSize">, now: Date): Record<string, unknown> {
   const and: Record<string, unknown>[] = [visible()];
   // Deleted accounts only appear when asked for.
   and.push(query.status ? { status: query.status } : notDeleted());
@@ -180,27 +180,30 @@ export const userAdminService = {
 
   // Removes every deleted account for good, with its tests, history, mistakes and points, and takes it
   // off other students' friend lists. Problem reports are kept (they are about questions) and show no
-  // reporter. One account at a time, and only while it is still deleted, so one restored meanwhile is kept.
-  // `olderThan`: only accounts deleted before that moment (the scheduler's 30-day clean-up; accounts
+  // reporter. `olderThan`: only accounts deleted before that moment (the scheduler's 30-day clean-up; accounts
   // deleted before deletedAt existed are left for an admin to clear).
   async purgeDeleted(olderThan?: Date): Promise<{ removed: number }> {
     const filter = olderThan ? { status: "deleted", deletedAt: trusted({ $ne: null, $lte: olderThan }), ...visible() } : { status: "deleted", ...visible() };
-    const users = await UserModel.find(filter).select("_id").lean<UserDoc[]>();
-    let removed = 0;
-    for (const { _id: userId } of users) {
-      const gone = await UserModel.findOneAndDelete({ _id: userId, status: "deleted" }).select("_id").lean<UserDoc>();
-      if (!gone) continue;
-      await Promise.all([
-        AttemptModel.deleteMany({ userId }),
-        FullTestModel.deleteMany({ userId }),
-        QuestionLogModel.deleteMany({ userId }),
-        MistakeModel.deleteMany({ userId }),
-        DailyStatModel.deleteMany({ userId }),
-        UserModel.updateMany({ friends: userId }, { $pull: { friends: userId } }),
-      ]);
-      removed += 1;
+    return purgeMatching(filter);
+  },
+
+  // Delete, restore or permanently remove many accounts at once (Admin → Users, ticked or "select
+  // all"). The acting admin and every admin account are always left out, so a "delete all" can never
+  // lock the site's admins out; admins are changed one at a time on their own page.
+  async bulk(actorId: string, input: BulkUsersInput): Promise<{ changed: number; skipped: number }> {
+    const chosen = input.ids ? { _id: trusted({ $in: input.ids }), ...visible() } : buildFilter(input.filter!, new Date());
+    const allowed = { _id: trusted({ $ne: new mongoose.Types.ObjectId(actorId) }), role: trusted({ $ne: "admin" }) };
+    const wanted = { delete: { status: trusted({ $ne: "deleted" }) }, restore: { status: "deleted" }, purge: { status: "deleted" } }[input.action];
+    const filter = { $and: trusted([chosen, allowed, wanted]) };
+    const [matching, total] = await Promise.all([UserModel.countDocuments(filter), UserModel.countDocuments(chosen)]);
+    let changed: number;
+    if (input.action === "purge") {
+      changed = (await purgeMatching(filter)).removed;
+    } else {
+      const set = input.action === "delete" ? { status: "deleted", deletedAt: new Date() } : { status: "active", deletedAt: null };
+      changed = (await UserModel.updateMany(filter, { $set: set })).modifiedCount;
     }
-    return { removed };
+    return { changed, skipped: Math.max(0, total - matching) };
   },
 
   // The list as CSV (same filters as the page, every page), for a spreadsheet.
@@ -212,10 +215,31 @@ export const userAdminService = {
       return [view.name, view.email, view.phone, view.country, view.region, view.role, view.status, view.plan, view.paidPlan, view.planExpiresAt?.slice(0, 10), view.createdAt.slice(0, 10)];
     });
     // A byte-order mark so Excel reads names in Urdu or with accents correctly.
-    return "\uFEFF" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
+    return "﻿" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
   },
 
   async paidCount(): Promise<number> {
     return UserModel.countDocuments(paidAndNotDeleted(new Date()));
   },
 };
+
+// Removes the matching deleted accounts for good (see purgeDeleted).
+// One account at a time, and only while it is still deleted, so one restored meanwhile is kept.
+async function purgeMatching(filter: Record<string, unknown>): Promise<{ removed: number }> {
+  const users = await UserModel.find(filter).select("_id").lean<UserDoc[]>();
+  let removed = 0;
+  for (const { _id: userId } of users) {
+    const gone = await UserModel.findOneAndDelete({ _id: userId, status: "deleted" }).select("_id").lean<UserDoc>();
+    if (!gone) continue;
+    await Promise.all([
+      AttemptModel.deleteMany({ userId }),
+      FullTestModel.deleteMany({ userId }),
+      QuestionLogModel.deleteMany({ userId }),
+      MistakeModel.deleteMany({ userId }),
+      DailyStatModel.deleteMany({ userId }),
+      UserModel.updateMany({ friends: userId }, { $pull: { friends: userId } }),
+    ]);
+    removed += 1;
+  }
+  return { removed };
+}

@@ -45,6 +45,44 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
+// Premium (a paid plan that has not ended) or Free, under "Student portal". `user.plan` is the
+// effective plan and is re-read from the server, so an upgrade by an admin or a payment shows here.
+export function MemberBadge({ user, small = false }: { user: PublicUser; small?: boolean }) {
+  const premium = user.plan === "paid";
+  const size = small ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-[11px]";
+  const body = (
+    <>
+      <svg aria-hidden viewBox="0 0 24 24" className={`${small ? "h-3.5 w-3.5" : "h-4 w-4"} flex-none`} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        {premium ? (
+          <>
+            <circle cx="12" cy="9" r="6" />
+            <path d="m12 6.2.9 1.8 2 .3-1.45 1.4.35 2-1.8-.95-1.8.95.35-2L9.1 8.3l2-.3L12 6.2zM8.5 14l-1.5 7 5-2.5 5 2.5-1.5-7" />
+          </>
+        ) : (
+          <>
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21a8 8 0 0 1 16 0" />
+          </>
+        )}
+      </svg>
+      {premium ? "Premium member" : "Free member"}
+    </>
+  );
+  const className = `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border font-extrabold uppercase tracking-wide ${size}`;
+  if (premium) {
+    return (
+      <span className={`${className} border-red-300 bg-red-50 text-red-600`} title={user.planExpiresAt ? `Premium until ${new Date(user.planExpiresAt).toLocaleDateString()}` : "Premium plan"}>
+        {body}
+      </span>
+    );
+  }
+  return (
+    <Link href="/pricing" className={`${className} border-slate-300 bg-slate-50 text-slate-600 hover:border-brand-500 hover:text-brand-600`} title="Free plan: see the paid plans">
+      {body}
+    </Link>
+  );
+}
+
 export function StudentSidebar({ user }: { user: PublicUser }) {
   const pathname = usePathname();
   const engagement = useEngagement();
@@ -66,7 +104,10 @@ export function StudentSidebar({ user }: { user: PublicUser }) {
       {/* Desktop: a sticky column beside the content. */}
       <aside className="hidden w-60 flex-none lg:block">
         <nav aria-label="Student" className="sticky top-4 rounded-2xl border border-slate-900 bg-white p-3">
-          <p className="px-3 pb-2 pt-1 text-xs font-bold uppercase tracking-wide text-slate-500">Student portal</p>
+          <p className="px-3 pt-1 text-xs font-bold uppercase tracking-wide text-slate-500">Student portal</p>
+          <div className="px-3 pb-3 pt-2">
+            <MemberBadge user={user} />
+          </div>
           <ul className="space-y-1">
             {SECTIONS.map((section) => {
               const active = isActive(pathname, section.href);
@@ -117,6 +158,9 @@ export function StudentSidebar({ user }: { user: PublicUser }) {
       {/* Phones and tablets: a tab strip under the page header that scrolls sideways if needed. */}
       <nav aria-label="Student" className="-mx-4 mb-4 overflow-x-auto border-b border-slate-300 px-4 lg:hidden md:-mx-8 md:px-8">
         <ul className="flex min-w-max gap-1">
+          <li className="flex items-center pr-2">
+            <MemberBadge user={user} small />
+          </li>
           {SECTIONS.map((section) => {
             const active = isActive(pathname, section.href);
             return (

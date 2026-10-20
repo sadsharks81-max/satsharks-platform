@@ -11,6 +11,7 @@ import {
   type Section,
 } from "@satsharks/types";
 import katex from "katex";
+import type { ReactNode } from "react";
 import { RichText } from "@/lib/rich-text";
 import { MathTextField } from "./math-input";
 import { Choices, Passage, Prompt, type QuestionContent } from "./question";
@@ -24,7 +25,8 @@ export interface QuestionDraft {
   skill: string;
   passage: string;
   prompt: string;
-  choices: { key: string; text: string }[];
+  // `viz`: a figure in the choice (drawn from the bank, or an image set in the editor).
+  choices: { key: string; text: string; viz?: unknown }[];
   choiceKey: string;
   // As typed, e.g. "0.5 or 1/2".
   acceptedValues: string;
@@ -60,6 +62,7 @@ export function QuestionForm({
   onChange,
   topics,
   allowTypeChange,
+  choiceExtra,
 }: {
   section: Section;
   draft: QuestionDraft;
@@ -67,6 +70,8 @@ export function QuestionForm({
   topics: CatalogTopic[];
   // Switching between multiple choice and grid-in (Math only).
   allowTypeChange: boolean;
+  // Shown under each answer option (the question bank editor's choice image).
+  choiceExtra?: (index: number) => ReactNode;
 }) {
   const math = section === "math";
   const set = (patch: Partial<QuestionDraft>) => onChange({ ...draft, ...patch });
@@ -163,9 +168,10 @@ export function QuestionForm({
                       multiline={false}
                       value={choice.text}
                       aria-label={`Choice ${choice.key}`}
-                      invalid={choice.text.trim() === ""}
+                      invalid={choice.text.trim() === "" && choice.viz == null}
                       onChange={(text) => set({ choices: draft.choices.map((entry, position) => (position === index ? { ...entry, text } : entry)) })}
                     />
+                    {choiceExtra?.(index)}
                   </div>
                   <button
                     type="button"
@@ -207,7 +213,7 @@ export function QuestionPreview({ section, draft, assets = [], viz = null }: { s
     questionType: draft.questionType,
     prompt: draft.prompt,
     passage: draft.passage.trim() ? draft.passage : null,
-    choices: draft.questionType === "mcq" ? draft.choices.map((choice) => ({ ...choice, viz: (choice as { viz?: unknown }).viz ?? null })) : [],
+    choices: draft.questionType === "mcq" ? draft.choices.map((choice) => ({ ...choice, viz: choice.viz ?? null })) : [],
     assets,
     viz,
   };

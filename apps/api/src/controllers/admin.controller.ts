@@ -3,6 +3,7 @@ import {
   accessSettingsSchema,
   adaptiveSettingsSchema,
   bulkPaperStatusSchema,
+  bulkUsersSchema,
   conversionTablesSchema,
   objectIdSchema,
   pricingContentSchema,
@@ -157,6 +158,10 @@ export async function getUser(req: Request, res: Response): Promise<void> {
 
 export async function purgeDeletedUsers(_req: Request, res: Response): Promise<void> {
   sendOk(res, await userAdminService.purgeDeleted());
+}
+
+export async function bulkUsers(req: Request, res: Response): Promise<void> {
+  sendOk(res, await userAdminService.bulk(String(req.user!._id), bulkUsersSchema.parse(req.body)));
 }
 
 // Users list as CSV with the page's filters (proposal 4.2 "export the list as CSV").

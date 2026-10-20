@@ -16,6 +16,7 @@ import {
   listReports,
   listUsers,
   purgeDeletedUsers,
+  bulkUsers,
   exportUsers,
   setPaperSchedule,
   reopenReport,
@@ -84,6 +85,7 @@ adminRouter.delete("/announcements/:id", requirePermission("papers:write"), dele
 adminRouter.get("/users", requirePermission("users:read"), listUsers);
 adminRouter.get("/users/export", requirePermission("users:read"), exportUsers);
 adminRouter.delete("/users/deleted", requirePermission("users:write"), purgeDeletedUsers);
+adminRouter.post("/users/bulk", requirePermission("users:write"), bulkUsers);
 adminRouter.get("/users/:id", requirePermission("users:read"), getUser);
 adminRouter.get("/users/:id/payments", requirePermission("payments:read"), getUserPayments);
 

@@ -300,8 +300,11 @@ export const updateQuestionSchema = z
     correctAnswer: normalizedCorrectAnswerSchema.nullable(),
     // Multiple choice or student-produced response. Changing it needs matching choices and answer.
     questionType: z.enum(["mcq", "spr"]),
-    // Choice texts in order. A figure drawn inside a choice is kept by its key.
-    choices: z.array(z.object({ key: z.string().trim().min(1).max(2), text: z.string().max(4000) })).max(6),
+    // Choice texts in order. A figure drawn inside a choice is kept by its key. `image`: an image
+    // for the choice (e.g. one of four graphs), by URL like `assets`; null removes it; left out keeps it.
+    choices: z
+      .array(z.object({ key: z.string().trim().min(1).max(2), text: z.string().max(4000), image: z.string().max(300).nullable().optional() }))
+      .max(6),
     // Images, by URL: ones the question already has or ones uploaded through /admin/assets.
     assets: z.array(z.object({ url: z.string().max(300), maxWidth: z.number().int().min(40).max(1200).nullable() })).max(5),
   })
@@ -497,6 +500,19 @@ export const updateUserSchema = z
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Nothing to update");
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+
+// One action on many users from Admin → Users: the ticked accounts (`ids`), or every account that
+// matches the list's filters (`filter`, "select all N").
+export const BULK_USER_ACTIONS = ["delete", "restore", "purge"] as const;
+export type BulkUserAction = (typeof BULK_USER_ACTIONS)[number];
+export const bulkUsersSchema = z
+  .object({
+    action: z.enum(BULK_USER_ACTIONS),
+    ids: z.array(objectIdSchema).min(1).max(500).optional(),
+    filter: userListQuerySchema.omit({ page: true, pageSize: true }).optional(),
+  })
+  .refine((value) => (value.ids ? !value.filter : !!value.filter), "Send either the ticked accounts or the filters");
+export type BulkUsersInput = z.infer<typeof bulkUsersSchema>;
 
 // ---------- Week 3: history, mistakes, drills from the whole bank, goals, leaderboard ----------
 

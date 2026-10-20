@@ -7,6 +7,7 @@ import { SECTION_LABELS, splitAcceptedValues, type AdminQuestion, type CatalogTo
 import { api, apiUpload } from "@/lib/api";
 import { emptyChoices, QuestionForm, QuestionPreview, type QuestionDraft } from "./question-form";
 import { Badge, Button, Card, Notice, Spinner } from "./ui";
+import { imageVizUrl, type ImageViz } from "./viz";
 
 const toDraft = (question: AdminQuestion): QuestionDraft => ({
   questionType: question.questionType,
@@ -22,6 +23,15 @@ const toDraft = (question: AdminQuestion): QuestionDraft => ({
   explanation: question.explanation ?? "",
 });
 
+// Stores an image picked in the editor and returns its URL (attached to the question on save).
+async function uploadImage(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) throw new Error("Use a PNG, JPEG or WebP image.");
+  if (file.size > 2 * 1024 * 1024) throw new Error("The image must be 2 MB or smaller.");
+  const form = new FormData();
+  form.append("image", file);
+  return (await apiUpload<{ url: string }>("/api/admin/assets", form)).url;
+}
+
 // Question images: drag and drop or browse, shown with a size control and a remove button.
 function ImageField({ assets, onChange, disabled }: { assets: QuestionAssetView[]; onChange: (assets: QuestionAssetView[]) => void; disabled: boolean }) {
   const input = useRef<HTMLInputElement>(null);
@@ -32,13 +42,9 @@ function ImageField({ assets, onChange, disabled }: { assets: QuestionAssetView[
   async function upload(file: File | undefined) {
     if (!file) return;
     setError(null);
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) return setError("Use a PNG, JPEG or WebP image.");
-    if (file.size > 2 * 1024 * 1024) return setError("The image must be 2 MB or smaller.");
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("image", file);
-      const { url } = await apiUpload<{ url: string }>("/api/admin/assets", form);
+      const url = await uploadImage(file);
       onChange([...assets.filter((asset) => asset.url !== url), { kind: "image", url, maxWidth: null }]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not upload the image");
@@ -107,6 +113,58 @@ function ImageField({ assets, onChange, disabled }: { assets: QuestionAssetView[
   );
 }
 
+// An image for one answer choice (e.g. "Which graph represents…?" with four graphs). A figure the
+// bank draws itself (table, chart) is shown as "drawn figure" and kept.
+function ChoiceImage({ viz, onChange, disabled }: { viz: unknown; onChange: (viz: unknown) => void; disabled: boolean }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const url = imageVizUrl(viz);
+
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      onChange({ type: "image", url: await uploadImage(file) } satisfies ImageViz);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not upload the image");
+    } finally {
+      setUploading(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  if (viz != null && !url) return <p className="mt-1 text-xs text-slate-500">This choice has a drawn figure (see the preview).</p>;
+  return (
+    <div className="mt-1.5">
+      {url ? (
+        <div className="flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element -- served by our own API */}
+          <img src={url} alt="" className="h-14 w-20 rounded border border-slate-300 object-contain" />
+          <Button size="sm" variant="outline" disabled={disabled || uploading} onClick={() => input.current?.click()}>
+            Replace
+          </Button>
+          <Button size="sm" variant="outline" disabled={disabled} onClick={() => onChange(null)}>
+            Remove
+          </Button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled || uploading}
+          onClick={() => input.current?.click()}
+          className="cursor-pointer text-xs font-bold text-brand-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {uploading ? "Uploading…" : "+ Add image (e.g. a graph)"}
+        </button>
+      )}
+      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => void upload(event.target.files?.[0])} />
+      {error && <p className="mt-1 text-xs text-red-700">{error}</p>}
+    </div>
+  );
+}
+
 // The full question editor: preview beside the fields, save and delete. Used by the question bank
 // and by the problem-report screen, so a reported question is fixed without leaving the report.
 export function QuestionEditor({
@@ -147,6 +205,7 @@ export function QuestionEditor({
   const isMcq = draft.questionType === "mcq";
   const topics = facets.data?.topics[question.section] ?? [];
   const typeChanged = draft.questionType !== question.questionType;
+  const emptyChoices = isMcq ? draft.choices.filter((choice) => !choice.text.trim() && choice.viz == null).map((choice) => choice.key) : [];
 
   async function save() {
     if (!draft || !question) return;
@@ -164,7 +223,8 @@ export function QuestionEditor({
           passage: draft.passage.trim() ? draft.passage : null,
           explanation: draft.explanation.trim() ? draft.explanation : null,
           ...(question.questionType === "other" ? {} : { questionType: draft.questionType }),
-          ...(isMcq ? { choices: draft.choices.map(({ key, text }) => ({ key, text })) } : {}),
+          // `image` null keeps a drawn figure and removes only an image (see the server).
+          ...(isMcq ? { choices: draft.choices.map(({ key, text, viz }) => ({ key, text, image: imageVizUrl(viz) })) } : {}),
           assets: assets.map((asset) => ({ url: asset.url, maxWidth: asset.maxWidth })),
           correctAnswer: isMcq ? (draft.choiceKey ? { choiceKey: draft.choiceKey, acceptedValues: [] } : null) : accepted.length > 0 ? { choiceKey: null, acceptedValues: accepted } : null,
         },
@@ -219,7 +279,26 @@ export function QuestionEditor({
           <h2 className="mb-3 font-bold">Edit question</h2>
           <fieldset disabled={!canWrite || saving} className="space-y-5">
             <ImageField assets={assets} onChange={setAssets} disabled={!canWrite || saving} />
-            <QuestionForm section={question.section} draft={draft} onChange={setDraft} topics={topics} allowTypeChange={question.questionType !== "other"} />
+            {emptyChoices.length > 0 && (
+              <Notice tone="error">
+                Choice{emptyChoices.length === 1 ? "" : "s"} {emptyChoices.join(", ")} {emptyChoices.length === 1 ? "is" : "are"} empty, so students see a blank option. If the
+                question shows graphs or pictures as answers, they were not imported: add an image for each choice below, then save.
+              </Notice>
+            )}
+            <QuestionForm
+              section={question.section}
+              draft={draft}
+              onChange={setDraft}
+              topics={topics}
+              allowTypeChange={question.questionType !== "other"}
+              choiceExtra={(index) => (
+                <ChoiceImage
+                  viz={draft.choices[index]?.viz ?? null}
+                  disabled={!canWrite || saving}
+                  onChange={(viz) => setDraft({ ...draft, choices: draft.choices.map((entry, position) => (position === index ? { ...entry, viz } : entry)) })}
+                />
+              )}
+            />
             {typeChanged && <Notice tone="info">The question type changes when you save. Students who already answered keep their old result.</Notice>}
 
             {message && <Notice tone={message.tone}>{message.text}</Notice>}
