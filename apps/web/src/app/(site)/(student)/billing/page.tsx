@@ -13,6 +13,7 @@ import {
   type PaymentStatus,
 } from "@satsharks/types";
 import { InviteFriends } from "@/components/invite-friends";
+import { WHATSAPP_LINK } from "@/components/whatsapp-button";
 import { Badge, Button, Card, Modal, Notice, PageHeader, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { ME_QUERY_KEY } from "@/lib/auth";
@@ -111,6 +112,30 @@ function PlanCard({ billing }: { billing: Billing }) {
   );
 }
 
+// When the plan cannot be loaded (API down, or an older API without /api/billing), students can
+// still reach us to pay and upgrade, instead of seeing a raw error.
+function BillingUnavailable() {
+  return (
+    <>
+      <PageHeader title="Plan & billing" subtitle="Your plan, payments and receipts, and free weeks from inviting friends." />
+      <Card>
+        <h2 className="font-bold">Your plan details could not be loaded right now</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          To upgrade, renew or ask about a payment, message SAT Sharks on WhatsApp at <b>0306 6595745</b>. We will help you pay and upgrade your account straight away.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-[#25D366] px-5 py-2.5 text-sm font-bold text-white">
+            Message SAT Sharks
+          </a>
+          <Link href="/pricing" className="rounded-lg border border-slate-900 px-5 py-2.5 text-sm font-bold hover:bg-slate-100">
+            See plans
+          </Link>
+        </div>
+      </Card>
+    </>
+  );
+}
+
 function BillingPage() {
   const queryClient = useQueryClient();
   const search = useSearchParams();
@@ -123,7 +148,7 @@ function BillingPage() {
   }, [returned, queryClient]);
 
   if (billing.isLoading) return <Spinner label="Loading your plan" />;
-  if (billing.error || !billing.data) return <Notice tone="error">{billing.error?.message ?? "Could not load your plan"}</Notice>;
+  if (billing.error || !billing.data) return <BillingUnavailable />;
   const data = billing.data;
   const waiting = data.payments.find((payment) => payment.status === "review");
   const justPaid = returned ? data.payments.find((payment) => payment.id === returned) : undefined;

@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-20 (bulk select/delete in Admin → Users, Premium/Free member badge, "As the student saw it" on reports, Desmos docked like Bluebook; not committed).
+Last updated: 2026-10-21 (client repo push; Week 4 API waiting on a Railway outage (builds paused); WhatsApp fallback on `/billing`, not committed).
 
 ---
 
@@ -471,8 +471,10 @@ Last updated: 2026-10-20 (bulk select/delete in Admin → Users, Premium/Free me
 - Next commit (2026-10-16, Claude, asked by Umair): "Leaderboard country and full names, target
   score box, clear deleted users, remove Till Test Day", pushed to both remotes (see `git log`).
   Needs the API and web live together (new routes); the live site was not checked.
-- `a61f316` "week 4 implemented" (Umair): the Week 4 work and the two 2026-10-19 fixes. The
-  2026-10-20 changes (bulk users, member badge, report view, Desmos dock) are not committed.
+- `a61f316` "week 4 implemented" (Umair): the Week 4 work and the two 2026-10-19 fixes.
+  `9df5d33` "new changes and few improvements" (Umair): the 2026-10-20 changes (bulk users, member
+  badge, report view, Desmos dock, `viz.tsx` image/table fixes). Both pushed to `origin` by Umair,
+  to `client` by Claude on 2026-10-21 (fast-forward `b84f8b1..9df5d33`).
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -685,8 +687,23 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   (create with `create:admin` or `/api/auth/register`) and delete them afterwards. Never use or
   change Umair's own accounts.
 
+- **Vercel and Railway deploy separately; a push can update the web but not the API.** On
+  2026-10-21 the live web had Week 4 but the Railway API was still the 2026-10-15 build (uptime in
+  `/api/health`; Week 4 reached the client repo during a Railway outage with builds paused), so
+  `/billing` showed "No route for GET /api/billing". Check status.railway.com before pushing; after a push, compare
+  `uptimeSeconds` on `https://satsharksapi-production.up.railway.app/api/health` with the push time.
+
 ## 9. Open items and suggestions
 
+00. **Week 4 API not live yet (2026-10-21).** Live API = `b84f8b1` (started 2026-10-15 19:37 UTC,
+   2 min after that push). Week 4 (`a61f316`, `9df5d33`) reached `client` on 2026-10-21 ~17:10 UTC,
+   during a **Railway major outage** (status.railway.com/incident/QH8L8B3E: builds paused in all
+   regions since 07:24 UTC; the dashboard shows "Deploys have been paused temporarily"). The running
+   API is unaffected. When Railway recovers: Deployments → check `9df5d33` built; if not, Redeploy /
+   deploy latest commit; confirm with `/api/health` uptime. Meanwhile Vercel serves the Week 4 web
+   against the old API (billing, checkout, offers, admin payments fail); suggested: Vercel Instant
+   Rollback to the `b84f8b1` deployment, and undo it (promote the latest) once the API is live.
+   Also `/api/health` reports `environment: "development"`: set `NODE_ENV=production` in Railway.
 0. **Move the Railway API to Singapore** (near the Mumbai database; see §2 Deployment). Then
    click through an uploaded Exam in the browser: upload, activate, card under Exams with Take
    Full Test (the API side passed the e2e).
@@ -1071,3 +1088,16 @@ Newest last. One entry per session or major step.
   (3) 572 published questions repeat another question's text (the source reuses questions across
   administrations), so "All exams" drills can show one twice. (4) 132 without a skill = hidden
   uploaded full-test questions (expected).
+- **2026-10-21 — Pushed to the client repo (Umair asked).** `main` was 2 commits ahead of
+  `client/main` (`a61f316` "week 4 implemented", `9df5d33` "new changes and few improvements"),
+  none behind; `git push client main` fast-forwarded `b84f8b1..9df5d33`. `origin` already had both.
+  Vercel/Railway should redeploy from it; the live site was not checked.
+- **2026-10-21 — "No route for GET /api/billing" on Plan & billing (Umair's screenshot).** Cause:
+  the live Railway API is the 2026-10-15 build, i.e. `b84f8b1` (`/api/health` uptime ~5.9 days;
+  `/api/billing` and `/api/offers` 404) while Vercel serves the Week 4 web. Week 4 only reached the
+  client repo today, and Railway builds are paused by a Railway-wide outage (Umair's screenshots).
+  The code is fine (route in `billing.routes.ts`, API typecheck clean, the new env vars are all
+  optional). Needs the Railway build once the outage ends (§9 item 00). Also: live `NODE_ENV` reads `development`. Code change: when the plan cannot
+  load, `/billing` now shows a "message SAT Sharks on WhatsApp (0306 6595745)" card with
+  Message SAT Sharks and See plans buttons instead of the raw error. Web typecheck clean; not
+  checked in a browser; not committed.
