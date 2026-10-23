@@ -14,7 +14,7 @@ import {
 } from "../controllers/student.controller";
 import { redeemInvite } from "../controllers/billing.controller";
 import { requireAuth } from "../middleware/auth";
-import { authRateLimit } from "../middleware/rate-limit";
+import { authRateLimit, friendRateLimit } from "../middleware/rate-limit";
 import { requireDb } from "../middleware/require-db";
 
 // The signed-in student's own history, analytics, goals and leaderboards (Week 3).
@@ -30,7 +30,7 @@ studentRouter.get("/engagement", getEngagement);
 studentRouter.patch("/engagement", updateEngagement);
 studentRouter.get("/leaderboard", getLeaderboard);
 studentRouter.put("/country", setCountry);
-studentRouter.post("/friends", addFriend);
+studentRouter.post("/friends", friendRateLimit, addFriend);
 studentRouter.delete("/friends/:id", removeFriend);
 studentRouter.get("/share-card", getShareCard);
 // Guessing invite codes is limited like logins.

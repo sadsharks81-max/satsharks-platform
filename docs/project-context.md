@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-23 (`dfddff0` pushed to client; Week 4 API live on Railway via a manual deploy after the outage; watch-path skip noted in §8).
+Last updated: 2026-10-23 (security pass: real client IPs for rate limits via `PROXY_SECRET`, new limits, web security headers, Next 15.5.28; not committed. Earlier: Week 4 API live on Railway after the outage).
 
 ---
 
@@ -360,8 +360,9 @@ Last updated: 2026-10-23 (`dfddff0` pushed to client; Week 4 API live on Railway
 - **Railway** (client account, project "carefree-imagination"): one service `@satsharks/api`,
   repo root (no root directory), no build command, start `npm run start --workspace=@satsharks/api`,
   watch paths `/apps/api/**`, `/packages/**`, `/package.json`, `/package-lock.json`. Domain
-  `https://satsharksapi-production.up.railway.app`. Variables: `NODE_ENV=production`,
-  `MONGODB_URI`, `JWT_SECRET` (new, production only), `CLIENT_URL` (= the Vercel URL), Resend.
+  `https://satsharksapi-production.up.railway.app`. Variables: `NODE_ENV=production` (meant to be
+  set; live `/api/health` said `development` on 2026-10-23), `MONGODB_URI`, `JWT_SECRET` (new,
+  production only), `CLIENT_URL` (= the Vercel URL), Resend, `PROXY_SECRET` (same value as Vercel).
   The auto-created `web` and `worker` services were deleted (web is on Vercel; the worker needs
   Redis and is not used live). Atlas Network Access must allow `0.0.0.0/0`.
 - **Latency (2026-10-09):** Atlas cluster `cluster0.wprq5io` is in **Mumbai**; the Railway API was
@@ -371,6 +372,8 @@ Last updated: 2026-10-23 (`dfddff0` pushed to client; Week 4 API live on Railway
 - **Vercel** (client account): project `satsharks-platform`, root directory `apps/web`, preset
   Next.js, default commands, `API_URL=https://satsharksapi-production.up.railway.app` (with
   `https://`, no trailing slash; read at build time, so redeploy after changing it).
+  `PROXY_SECRET` (same value as Railway; `docs/security.md` "Rate limiting"): without it in both,
+  every visitor shares the API's rate limits, because the API sees Vercel's address.
 - First Vercel build failed (`Cannot find module 'typescript'`, §8); fixed in `9319fcc`.
 - **Vercel Hobby blocks private-repo commits not authored by the Vercel owner** ("Deployment
   Blocked", also for builds started by a Deploy Hook). Umair made the client repo **public**
@@ -618,8 +621,11 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 - **Testing against Umair's running dev servers:** the API's dev reset link prints in *his*
   console. Start a second API with `PORT=4100` (same database) and capture its output; PowerShell
   wraps long stderr lines, so join lines before searching the log.
-- **Auth rate limit** (20 per 15 min per IP, in memory) trips repeated test runs: restart the test
-  API instance between runs.
+- **Auth rate limits** (in memory; table in `docs/security.md`) trip repeated test runs: restart the
+  test API instance between runs. Failed logins count per address and per account; successful ones
+  do not.
+- **`next dev` with a different `NEXT_DIST_DIR` rewrites `apps/web/tsconfig.json`** (adds that folder
+  to `include` and reformats it): `git checkout -- apps/web/tsconfig.json` after such a test run.
 - **Headless screenshots** of a tab that is not in front hang: call `page.bringToFront()` first.
   Type into forms only after `networkidle0` (+ a moment), or the form submits before hydration.
 - **Anything built from `Intl` locale data** (country names) differs between Node and Chrome and
@@ -699,9 +705,12 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
 
 ## 9. Open items and suggestions
 
-00. **Set `NODE_ENV=production` in Railway** (Variables): `/api/health` still reports
-   `environment: "development"` (2026-10-23). Week 4 API is live since 2026-10-23 06:03 UTC (see
-   change log); Umair confirmed the live website works.
+00. **Before deploying the 2026-10-23 security pass: set `PROXY_SECRET`** (one random value, 32+
+   characters) **in both Vercel and Railway**, and **`NODE_ENV=production` in Railway** (live
+   `/api/health` still reports `development`). After the deploy, check that requests through the
+   site and straight to Railway from the same computer share one `RateLimit` counter (proof the
+   visitor's address arrives). Vercel now runs middleware on every `/api` call (counts toward
+   Hobby's function/middleware invocations).
 0. **Move the Railway API to Singapore** (near the Mumbai database; see §2 Deployment). Then
    click through an uploaded Exam in the browser: upload, activate, card under Exams with Take
    Full Test (the API side passed the e2e).
@@ -1106,3 +1115,29 @@ Newest last. One entry per session or major step.
   uptime reset). Checked: `/api/billing` now 401 (route exists, needs login; was 404),
   `/api/public/offers` 200. `NODE_ENV` still `development`. Umair then confirmed the live website
   works.
+- **2026-10-23 — Security pass (Umair: "make the website fully secure, add rate limiting").**
+  Found: (1) **rate limits counted Vercel's servers, not visitors**: browsers reach the API through
+  the Vercel `/api` rewrite, so `req.ip` is a Vercel address shared by everyone (one person's failed
+  logins could block logins for all; busy hours could hit the shared 300/min). Faking
+  `X-Forwarded-For`/`X-Real-IP` straight to Railway did not change the counter (checked live).
+  (2) **`npm audit`: Next 15.5.27 critical** (image-optimizer RCE, Server Actions DoS).
+  (3) Live `NODE_ENV=development` → auth cookie without `Secure`. (4) Logout did not end the session
+  server-side. (5) The 2 MB JSON parser for test uploads ran before the sign-in check.
+  Changes: `apps/web/src/middleware.ts` (new; `/api/*`: adds the visitor IP + `PROXY_SECRET`
+  headers, nothing without the secret) and `apps/api/src/utils/client-ip.ts` (new; trusts the IP
+  only with a matching secret, timing-safe); every limiter keys on it (`rate-limit.ts` rewritten
+  around one `limiter()` helper). New limits: failed logins per address (successes not counted) and
+  per account (10/15 min), starting tests/mocks/drills/full tests 60/10 min per account, adding
+  friends 30/h per account. `app.ts`: general limit before body parsing, large parser moved behind
+  admin sign-in (`admin.routes.ts`), production log line shows the visitor IP. Cookie `Secure` also
+  on any HTTPS request (`authCookieOptions(req)`). Logout replaces a student's `sessionId`
+  (`authService.endSession`). Web pages: security headers in `next.config.ts` (frame-ancestors,
+  XFO, nosniff, Referrer-Policy, HSTS, Permissions-Policy; no script-src) and no `X-Powered-By`.
+  `next` → `^15.5.28` (`apps/web/package.json`, lockfile). `PROXY_SECRET` added to
+  `packages/config` (optional, 32+ chars) and `.env.example`; `docs/security.md` updated (limits
+  table, headers, dependencies). Checked: typecheck clean; API tests 57/57; local API (no database)
+  + `next dev` on 4100/3100: wrong secret ignored, right secret used, IP passes through the rewrite,
+  a browser-sent IP header is replaced, 20 failed logins → 429 for that visitor only, headers on
+  pages; clean-clone build in `apps/web` (Vercel-style) passes on Next 15.5.28 with middleware.
+  Not checked on Vercel itself. Needs `PROXY_SECRET` in Vercel + Railway (§9 item 00). Remaining
+  audit: PostCSS inside Next 15 (build-time, own CSS only; fix is Next 16). Not committed.

@@ -14,6 +14,9 @@ const envSchema = z.object({
   PORT: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(4000)),
   CLIENT_URL: z.preprocess(emptyToUndefined, z.string().url().default("http://localhost:3000")),
   JWT_SECRET: optionalString,
+  // Shared by the web app (Vercel) and the API: the web app's middleware sends it with each proxied
+  // /api call together with the visitor's IP, so rate limits count visitors, not Vercel's servers.
+  PROXY_SECRET: z.preprocess(emptyToUndefined, z.string().min(32, "PROXY_SECRET must be at least 32 characters").optional()),
   MONGODB_URI: optionalString,
   REDIS_URL: optionalString,
   STORAGE_ENDPOINT: optionalString,

@@ -86,6 +86,13 @@ export const authService = {
     return sessionId;
   },
 
+  // Logging out replaces the student's session ID, so a copy of the old cookie stops working at once
+  // instead of when it expires. Only if that login is still the current one (another device may have
+  // logged in since). Staff tokens carry no session ID and stay valid until they expire.
+  async endSession(userId: string, sessionId: string): Promise<void> {
+    await UserModel.updateOne({ _id: userId, sessionId }, { $set: { sessionId: randomBytes(16).toString("base64url") } });
+  },
+
   // Answers the same way whether or not the address has an account, and does not wait for the
   // email, so neither the response nor its timing tells an outsider which emails are registered.
   // A new request replaces any earlier link.

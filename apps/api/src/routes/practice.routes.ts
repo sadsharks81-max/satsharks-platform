@@ -23,7 +23,7 @@ import {
   submitModule,
 } from "../controllers/practice.controller";
 import { requireAuth } from "../middleware/auth";
-import { reportRateLimit } from "../middleware/rate-limit";
+import { practiceStartRateLimit, reportRateLimit } from "../middleware/rate-limit";
 import { requireDb } from "../middleware/require-db";
 import { validateBody } from "../middleware/validate";
 
@@ -33,15 +33,15 @@ practiceRouter.use(requireDb, requireAuth);
 
 practiceRouter.get("/catalog", getCatalog);
 practiceRouter.get("/attempts", listAttempts);
-practiceRouter.post("/attempts", validateBody(createAttemptSchema), createAttempt);
-practiceRouter.post("/mocks", validateBody(createMockSchema), createMock);
-practiceRouter.post("/drills/bank", validateBody(bankDrillSchema), createBankDrill);
-practiceRouter.post("/drills/retry", validateBody(retryDrillSchema), createRetryDrill);
+practiceRouter.post("/attempts", practiceStartRateLimit, validateBody(createAttemptSchema), createAttempt);
+practiceRouter.post("/mocks", practiceStartRateLimit, validateBody(createMockSchema), createMock);
+practiceRouter.post("/drills/bank", practiceStartRateLimit, validateBody(bankDrillSchema), createBankDrill);
+practiceRouter.post("/drills/retry", practiceStartRateLimit, validateBody(retryDrillSchema), createRetryDrill);
 practiceRouter.get("/tests", listPracticeTests);
 practiceRouter.get("/full-tests", listFullTests);
-practiceRouter.post("/full-tests", validateBody(createFullTestSchema), createFullTest);
+practiceRouter.post("/full-tests", practiceStartRateLimit, validateBody(createFullTestSchema), createFullTest);
 practiceRouter.get("/full-tests/:id", getFullTest);
-practiceRouter.post("/full-tests/:id/continue", continueFullTest);
+practiceRouter.post("/full-tests/:id/continue", practiceStartRateLimit, continueFullTest);
 practiceRouter.delete("/full-tests/:id", deleteFullTest);
 practiceRouter.get("/attempts/:id", getAttempt);
 practiceRouter.delete("/attempts/:id", deleteAttempt);

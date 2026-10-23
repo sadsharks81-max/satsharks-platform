@@ -1,4 +1,4 @@
-import type { CookieOptions } from "express";
+import type { CookieOptions, Request } from "express";
 import jwt from "jsonwebtoken";
 import { getJwtSecret } from "@satsharks/config";
 import { AUTH_TOKEN_TTL_SECONDS, isProduction } from "../config/env";
@@ -30,10 +30,11 @@ export function verifyAuthToken(token: string): AuthTokenPayload | null {
 }
 
 // The web app proxies /api/* through its own origin, so the cookie is first-party and "lax" is enough.
-export function authCookieOptions(): CookieOptions {
+// Secure whenever the request came over HTTPS (Railway's proxy says so), even if NODE_ENV is unset.
+export function authCookieOptions(req: Request): CookieOptions {
   return {
     httpOnly: true,
-    secure: isProduction,
+    secure: isProduction || req.secure,
     sameSite: "lax",
     path: "/",
     maxAge: AUTH_TOKEN_TTL_SECONDS * 1000,

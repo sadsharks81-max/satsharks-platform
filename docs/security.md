@@ -11,15 +11,18 @@
 
 ## Authentication
 
-- A JWT (HS256, 7 days) in a cookie: `httpOnly`, `sameSite=lax`, `secure` in production.
-  JavaScript cannot read it.
+- A JWT (HS256, 7 days) in a cookie: `httpOnly`, `sameSite=lax`, `secure` in production and on
+  every HTTPS request (so also when `NODE_ENV` is not set). JavaScript cannot read it.
 - The token carries only the user ID. Role and status are read from the database on every
   request, so blocking a user or changing a role takes effect immediately.
 - `JWT_SECRET` must be at least 32 characters; the API refuses to start otherwise.
 - The algorithm is pinned on both sign and verify.
 
-Not yet implemented: password reset, email verification, Google sign-in, session revocation
-(a stolen token stays valid until it expires or the user is blocked).
+- Logging out ends a student's session on the server (its session ID is replaced), so a copied
+  cookie stops working at once. A password reset signs out every session.
+
+Not yet implemented: email verification, Google sign-in, server-side logout for staff and admin
+tokens (they stay valid until they expire, the password is reset or the user is blocked).
 
 ## Authorization
 
@@ -58,11 +61,28 @@ ever added, add a CSRF token.
 
 ## Rate limiting
 
-- 20 requests per 15 minutes per IP on register and login.
-- 300 requests per minute per IP on the rest of `/api/*`.
-- The counter is in memory, which is correct for one API instance. Use a Redis store when
+Browsers reach the API through the web app's `/api` proxy on Vercel, so the API sees a Vercel
+server's address, shared by every visitor. The web app's middleware (`apps/web/src/middleware.ts`)
+adds the visitor's address with `PROXY_SECRET`, and the API (`utils/client-ip.ts`) uses it only
+when the secret matches; otherwise it uses the connecting address. Set the same `PROXY_SECRET` in
+Vercel and Railway, or every visitor shares one set of limits.
+
+| What | Limit | Counted per |
+| --- | --- | --- |
+| Failed logins | 20 / 15 min | address |
+| Failed logins to one account | 10 / 15 min | account (email) |
+| Register, reset-password check and reset, invite codes | 20 / 15 min | address |
+| Forgot password (sends an email) | 5 / 15 min | address |
+| Starting tests, mocks, drills, full tests | 60 / 10 min | account |
+| Adding friends | 30 / hour | account |
+| Question reports | 30 / hour | address |
+| Payments (transfers, card checkouts) | 20 / hour | address |
+| Everything under `/api` | 300 / min | address |
+
+- The general limit runs before the body is read, and the 2 MB body of uploaded-test sections is
+  only read after the admin sign-in check.
+- The counters are in memory, which is correct for one API instance. Use a Redis store when
   running more than one.
-- Later: per-account lockout after repeated failures, and stricter limits on import endpoints.
 
 ## Environment secrets
 
@@ -86,7 +106,19 @@ ever added, add a CSRF token.
 
 ## HTTP headers
 
-`helmet` defaults are applied and `X-Powered-By` is removed.
+- API: `helmet` defaults are applied and `X-Powered-By` is removed.
+- Web pages (`next.config.ts`): `frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN`
+  (no clickjacking), `base-uri 'self'`, `object-src 'none'`, `nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin` (reset links carry a token), HSTS, and a
+  Permissions-Policy without camera, microphone or location. There is no `script-src` rule yet:
+  Next.js, KaTeX and the calculator need inline code, and a wrong rule breaks pages.
+
+## Dependencies
+
+Run `npm audit --omit=dev` before a release. 2026-10-23: Next.js raised to 15.5.28 (fixes a
+critical image-optimizer RCE and a Server Actions DoS). Left: PostCSS advisories in the copy
+bundled inside Next 15, which only processes this project's own CSS at build time; the fix is
+Next 16.
 
 ## Answer keys
 

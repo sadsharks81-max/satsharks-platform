@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { updateQuestionSchema } from "@satsharks/validation";
 import { getPaper, listPapers } from "../controllers/admin-paper.controller";
 import {
@@ -63,6 +63,9 @@ import { validateBody } from "../middleware/validate";
 export const adminRouter = Router();
 
 adminRouter.use(requireDb, requireAuth, requirePermission("admin:access"));
+// A reviewed section of an uploaded test (up to ~80 questions with passages) is one request. Read only
+// after the sign-in check above; app.ts skips its 100 kB parser for this path (LARGE_BODY_PATH).
+adminRouter.use("/test-uploads", express.json({ limit: "2mb" }));
 
 adminRouter.get("/stats", getStats);
 
