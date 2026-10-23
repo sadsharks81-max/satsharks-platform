@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-21 (client repo push; Week 4 API waiting on a Railway outage (builds paused); WhatsApp fallback on `/billing`, not committed).
+Last updated: 2026-10-23 (`dfddff0` pushed to client; Week 4 API live on Railway via a manual deploy after the outage; watch-path skip noted in §8).
 
 ---
 
@@ -692,18 +692,16 @@ Web calls go to its own origin; `next.config.ts` rewrites `/api/*` to `API_URL`
   `/api/health`; Week 4 reached the client repo during a Railway outage with builds paused), so
   `/billing` showed "No route for GET /api/billing". Check status.railway.com before pushing; after a push, compare
   `uptimeSeconds` on `https://satsharksapi-production.up.railway.app/api/health` with the push time.
+- **Railway watch paths: a push that changes no API files is "Skipped"** ("No changes to watched
+  files"), even if an earlier API commit was never built (e.g. it arrived during an outage). Fix:
+  Ctrl+K → "Deploy Latest Commit" (or ⋯ → Redeploy on the skipped deployment); manual deploys
+  ignore watch paths. "Redeploy" on the ACTIVE card rebuilds that old commit instead.
 
 ## 9. Open items and suggestions
 
-00. **Week 4 API not live yet (2026-10-21).** Live API = `b84f8b1` (started 2026-10-15 19:37 UTC,
-   2 min after that push). Week 4 (`a61f316`, `9df5d33`) reached `client` on 2026-10-21 ~17:10 UTC,
-   during a **Railway major outage** (status.railway.com/incident/QH8L8B3E: builds paused in all
-   regions since 07:24 UTC; the dashboard shows "Deploys have been paused temporarily"). The running
-   API is unaffected. When Railway recovers: Deployments → check `9df5d33` built; if not, Redeploy /
-   deploy latest commit; confirm with `/api/health` uptime. Meanwhile Vercel serves the Week 4 web
-   against the old API (billing, checkout, offers, admin payments fail); suggested: Vercel Instant
-   Rollback to the `b84f8b1` deployment, and undo it (promote the latest) once the API is live.
-   Also `/api/health` reports `environment: "development"`: set `NODE_ENV=production` in Railway.
+00. **Set `NODE_ENV=production` in Railway** (Variables): `/api/health` still reports
+   `environment: "development"` (2026-10-23). Week 4 API is live since 2026-10-23 06:03 UTC (see
+   change log); Umair confirmed the live website works.
 0. **Move the Railway API to Singapore** (near the Mumbai database; see §2 Deployment). Then
    click through an uploaded Exam in the browser: upload, activate, card under Exams with Take
    Full Test (the API side passed the e2e).
@@ -1101,3 +1099,10 @@ Newest last. One entry per session or major step.
   load, `/billing` now shows a "message SAT Sharks on WhatsApp (0306 6595745)" card with
   Message SAT Sharks and See plans buttons instead of the raw error. Web typecheck clean; not
   checked in a browser; not committed.
+- **2026-10-23 — Railway back after the outage; Week 4 API deployed.** `git push client main`
+  (`9df5d33..dfddff0`, Umair asked; `origin` already had it). Railway marked it **Skipped** ("No
+  changes to watched files": `dfddff0` only touches `apps/web` and docs), so `9df5d33` was still
+  unbuilt. Umair started a manual deploy in Railway; the new API came up ~06:03 UTC (`/api/health`
+  uptime reset). Checked: `/api/billing` now 401 (route exists, needs login; was 404),
+  `/api/public/offers` 200. `NODE_ENV` still `development`. Umair then confirmed the live website
+  works.
