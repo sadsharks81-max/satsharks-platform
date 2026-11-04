@@ -56,7 +56,7 @@ async function renewalReminders(now: Date): Promise<number> {
     if (claimed.modifiedCount !== 1) continue;
     const plan = isPaidPlan(user.paidPlan) ? user.paidPlan : null;
     const ok = await emailService.sendNotice(user.email, {
-      subject: "Your SAT Sharks plan ends in 2 days",
+      subject: "Your LUE SAT plan ends in 2 days",
       greeting: `Hi ${firstName(user.name)},`,
       lines: [
         `Your ${plan ? PAID_PLAN_LABELS[plan] : "paid"} plan ends on ${formatDay(user.planExpiresAt!)}. After that your account moves to the free plan; your history, streak and scores are kept.`,
@@ -90,7 +90,7 @@ async function comeBackEmails(now: Date): Promise<number> {
     const analytics = await analyticsService.analytics(String(user._id), false);
     const points = analytics.locked?.points ?? 0;
     const ok = await emailService.sendProgress(user.email, {
-      subject: points > 0 ? `Your ${points} points are still waiting` : "We miss you on SAT Sharks",
+      subject: points > 0 ? `Your ${points} points are still waiting` : "We miss you on LUE SAT",
       greeting: `Hi ${firstName(user.name)},`,
       lines: [
         points > 0

@@ -1,4 +1,4 @@
-# SAT Sharks — notes for Claude
+# LUE SAT — notes for Claude
 
 Start every session by reading `docs/project-context.md`: current state, decisions already made,
 facts about the reference site, traps already hit, and the change log.

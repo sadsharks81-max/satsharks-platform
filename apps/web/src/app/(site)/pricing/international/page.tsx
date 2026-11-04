@@ -3,9 +3,9 @@ import { PRICING_ALTERNATES, PricingPage } from "@/components/pricing-page";
 
 export const metadata: Metadata = {
   title: "SAT prep prices for international students (USD)",
-  description: "SAT Sharks plans for students outside Pakistan, in US dollars: start free, then Monthly or 3 Months with every past Digital SAT paper and full analytics.",
+  description: "LUE SAT plans for students outside Pakistan, in US dollars: start free, then Monthly or 3 Months with every past Digital SAT paper and full analytics.",
   alternates: { canonical: "/pricing/international", languages: PRICING_ALTERNATES },
-  openGraph: { title: "SAT Sharks prices for international students (USD)", url: "/pricing/international" },
+  openGraph: { title: "LUE SAT prices for international students (USD)", url: "/pricing/international" },
 };
 
 export default function PricingInternational() {

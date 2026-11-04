@@ -148,7 +148,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           </>
         ) : (
           <>
-            New to SAT Sharks?{" "}
+            New to LUE SAT?{" "}
             <Link href="/register" className={authLink}>
               Create a free account
             </Link>
@@ -252,7 +252,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             onChange={(event) => change("phone")(event.target.value)}
             onBlur={blur("phone")}
             error={shown("phone")}
-            hint="So SAT Sharks can reach you about your account or payments."
+            hint="So LUE SAT can reach you about your account or payments."
           />
         )}
         {isRegister && (

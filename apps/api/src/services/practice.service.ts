@@ -480,7 +480,7 @@ async function checkedMockPool(
 // One module of an uploaded practice test, in the test's own order.
 async function fixedModule(paperId: mongoose.Types.ObjectId, module: MockModule): Promise<mongoose.Types.ObjectId[]> {
   const rows = await QuestionModel.find({ paperId, moduleType: module }).select("_id").sort({ questionNumber: 1 }).lean<{ _id: mongoose.Types.ObjectId }[]>();
-  if (rows.length === 0) throw AppError.conflict(`This practice test has no questions in ${MOCK_MODULE_LABELS[module]}. Please tell SAT Sharks.`);
+  if (rows.length === 0) throw AppError.conflict(`This practice test has no questions in ${MOCK_MODULE_LABELS[module]}. Please tell LUE SAT.`);
   return rows.map((row) => row._id);
 }
 

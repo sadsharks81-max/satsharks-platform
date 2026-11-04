@@ -1,4 +1,4 @@
-# SAT Sharks 2.0
+# LUE SAT
 
 Digital SAT practice platform: Bluebook-style adaptive tests on real past papers, with scoring,
 analytics and engagement features. The full scope is in

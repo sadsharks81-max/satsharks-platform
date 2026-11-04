@@ -841,9 +841,9 @@ export const DEFAULT_PRICING: PricingContent = {
     { feature: "Daily goals, streaks and leaderboard", free: "Yes", paid: "Yes" },
     { feature: "Streak freezes", free: "1 per month", paid: "3 per month" },
   ],
-  tagline: "One hour with a tutor costs more than three months of SAT Sharks.",
+  tagline: "One hour with a tutor costs more than three months of LUE SAT.",
   schoolsNote: "",
-  refundPolicy: "All payments are final: SAT Sharks does not offer refunds.",
+  refundPolicy: "All payments are final: LUE SAT does not offer refunds.",
 };
 
 // ---------- SAT test dates (edited in Admin → SAT dates, shown on /sat-dates and the dashboard) ----------
@@ -1352,7 +1352,7 @@ export interface Leaderboard {
   // The viewer's own country (null on accounts made before sign-up asked for it).
   country: string | null;
   rows: LeaderboardRow[];
-  // The student's own row when outside the list (null when hidden or without points).
+  // The student's own row when outside the top 20 (null when hidden or without points).
   me: LeaderboardRow | null;
   friends: { id: string; name: string }[];
 }

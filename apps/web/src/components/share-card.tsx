@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ShareCard as ShareCardData } from "@satsharks/types";
 import { api } from "@/lib/api";
-import { LOGO_PATH, LOGO_SIZE } from "./logo";
+import { LOGO_SIZE, LOGO_SRC } from "./logo";
 import { Button, Card, Notice } from "./ui";
 
 // A score-improvement card for Instagram stories / posts and WhatsApp (1080×1350). Only the
@@ -13,6 +13,19 @@ const W = 1080;
 const H = 1350;
 const BRAND = "#324dc7";
 const FONT = "Roboto, Arial, sans-serif";
+let logoPromise: Promise<HTMLImageElement> | null = null;
+
+function loadLogo() {
+  if (!logoPromise) {
+    logoPromise = new Promise((resolve, reject) => {
+      const logo = new Image();
+      logo.onload = () => resolve(logo);
+      logo.onerror = () => reject(new Error("Could not load the LUE SAT logo"));
+      logo.src = LOGO_SRC;
+    });
+  }
+  return logoPromise;
+}
 
 function headline(card: ShareCardData): { big: string; line: string } {
   if (card.first !== null && card.best !== null && card.tests >= 2 && card.best > card.first) {
@@ -22,7 +35,8 @@ function headline(card: ShareCardData): { big: string; line: string } {
   return { big: `${card.streak}`, line: `day${card.streak === 1 ? "" : "s"} of SAT practice in a row` };
 }
 
-function draw(canvas: HTMLCanvasElement, card: ShareCardData, site: string) {
+async function draw(canvas: HTMLCanvasElement, card: ShareCardData, site: string) {
+  const logo = await loadLogo();
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.fillStyle = BRAND;
@@ -37,15 +51,10 @@ function draw(canvas: HTMLCanvasElement, card: ShareCardData, site: string) {
   ctx.closePath();
   ctx.fill();
 
-  // Logo, white.
-  const logoW = 420;
-  const scale = logoW / LOGO_SIZE.width;
-  ctx.save();
-  ctx.translate((W - logoW) / 2, 110);
-  ctx.scale(scale, scale);
-  ctx.fillStyle = "#fff";
-  ctx.fill(new Path2D(LOGO_PATH));
-  ctx.restore();
+  // Use the same client-supplied artwork as the website header.
+  const logoW = 500;
+  const logoH = (logoW / LOGO_SIZE.width) * LOGO_SIZE.height;
+  ctx.drawImage(logo, (W - logoW) / 2, 110, logoW, logoH);
 
   const { big, line } = headline(card);
   ctx.fillStyle = "#fff";
@@ -94,10 +103,12 @@ export function ShareCard() {
   const data = card.data?.card;
   const hasSomething = !!data && (data.best !== null || data.streak > 0);
   useEffect(() => {
-    if (data && hasSomething && canvas.current) void document.fonts?.ready.then(() => draw(canvas.current!, data, site));
+    if (data && hasSomething && canvas.current) {
+      void (document.fonts?.ready ?? Promise.resolve()).then(() => draw(canvas.current!, data, site)).catch(() => undefined);
+    }
   }, [data, hasSomething, site]);
 
-  const text = data ? `${headline(data).big} ${headline(data).line}. Practising for the SAT on SAT Sharks: ${origin}` : "";
+  const text = data ? `${headline(data).big} ${headline(data).line}. Practising for the SAT on LUE SAT: ${origin}` : "";
 
   function blob(): Promise<Blob | null> {
     return new Promise((resolve) => canvas.current?.toBlob(resolve, "image/png") ?? resolve(null));
@@ -107,7 +118,7 @@ export function ShareCard() {
     setMessage(null);
     const image = await blob();
     if (!image) return;
-    const file = new File([image], "sat-sharks-progress.png", { type: "image/png" });
+    const file = new File([image], "lue-sat-progress.png", { type: "image/png" });
     // Phones: the share sheet (Instagram, WhatsApp, …) with the image attached.
     if (navigator.canShare?.({ files: [file] })) {
       try {
@@ -125,7 +136,7 @@ export function ShareCard() {
     const url = URL.createObjectURL(image);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "sat-sharks-progress.png";
+    link.download = "lue-sat-progress.png";
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

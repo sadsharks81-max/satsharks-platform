@@ -30,6 +30,11 @@ const TABLES_TTL_MS = 30_000;
 let tablesCache: { value: ConversionTables; expires: number } | null = null;
 let accessCache: { value: AccessSettings; expires: number } | null = null;
 
+// Preserve live pricing edits while replacing the former brand in already-saved public copy.
+// This is a read-time presentation change only: the stored settings document is not modified.
+const currentBrand = (pricing: PricingContent): PricingContent =>
+  JSON.parse(JSON.stringify(pricing).replaceAll("SAT Sharks", "LUE SAT")) as PricingContent;
+
 export const settingsService = {
   async getAdaptive(): Promise<AdaptiveSettings> {
     const stored = await SettingModel.findOne({ key: ADAPTIVE_KEY }).lean();
@@ -86,7 +91,7 @@ export const settingsService = {
       ? { ...stored.value, plans: stored.value.plans.filter((plan: { id?: unknown }) => !(LEGACY_PAID_PLANS as readonly unknown[]).includes(plan?.id)) }
       : stored?.value;
     const parsed = pricingContentSchema.safeParse(value);
-    return parsed.success ? (parsed.data as PricingContent) : DEFAULT_PRICING;
+    return currentBrand(parsed.success ? (parsed.data as PricingContent) : DEFAULT_PRICING);
   },
 
   async setPricing(pricing: PricingContent, userId: string): Promise<PricingContent> {

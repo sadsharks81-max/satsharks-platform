@@ -13,7 +13,7 @@ export function InviteFriends({ billing }: { billing: Billing }) {
   const { qualified, joined, rewards } = billing.referrals;
   const towardsNext = qualified % REFERRALS_PER_REWARD;
   const done = rewards >= REFERRAL_MAX_REWARDS;
-  const message = `I'm practising for the SAT on SAT Sharks: real past papers, a predicted score and a leaderboard. Join me: ${link}`;
+  const message = `I'm practising for the SAT on LUE SAT: real past papers, a predicted score and a leaderboard. Join me: ${link}`;
 
   async function copy() {
     try {

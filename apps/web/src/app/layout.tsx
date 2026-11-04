@@ -29,7 +29,7 @@ const notoSerif = Noto_Serif({
 // NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION is set. Pages override title, description and canonical.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "SAT Sharks", template: "%s | SAT Sharks" },
+  title: { default: SITE_NAME, template: `%s | ${SITE_NAME}` },
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
   openGraph: { type: "website", siteName: SITE_NAME, locale: "en_US", description: SITE_DESCRIPTION },

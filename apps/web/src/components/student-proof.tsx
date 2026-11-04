@@ -28,7 +28,7 @@ export function StudentProof({ tone = "light" }: { tone?: "light" | "brand" }) {
       {data.improvements.length > 0 && (
         <>
           <h2 className={`mt-6 text-center text-2xl font-bold tracking-tight ${tone === "brand" ? "text-white" : ""}`}>Real students, real improvements</h2>
-          <p className={`mt-1 text-center text-sm ${muted}`}>First and best full-test scores on SAT Sharks.</p>
+          <p className={`mt-1 text-center text-sm ${muted}`}>First and best full-test scores on LUE SAT.</p>
           <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.improvements.map((entry) => (
               <li key={`${entry.name}-${entry.from}-${entry.to}`} className="rounded-2xl border border-slate-900 bg-white p-4 text-slate-900">

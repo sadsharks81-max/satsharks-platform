@@ -9,10 +9,10 @@ import { LandingTestDemo } from "@/components/landing-test-demo";
 import { Nav } from "@/components/nav";
 
 export const metadata: Metadata = {
-  title: { absolute: "SAT Sharks | Digital SAT practice on real past papers" },
+  title: { absolute: "LUE SAT | Digital SAT practice on real past papers" },
   description: "Full-length adaptive Digital SAT practice tests and focused drills from 26 past SAT exams, in a Bluebook-style test screen, scored 400–1600.",
   alternates: { canonical: "/" },
-  openGraph: { title: "SAT Sharks | Digital SAT practice on real past papers", url: "/" },
+  openGraph: { title: "LUE SAT | Digital SAT practice on real past papers", url: "/" },
 };
 
 // Every figure on this page must be true (proposal: "every number on screen must be true").

@@ -11,7 +11,7 @@ const input = "h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 tex
 const label = "block text-xs font-bold text-slate-600";
 
 const PLACEHOLDERS: Record<ManualPaymentMethod, string> = {
-  bank_transfer: "Account title: SAT Sharks\nBank: …\nIBAN: PK00 …\nAccount number: …",
+  bank_transfer: "Account title: LUE SAT\nBank: …\nIBAN: PK00 …\nAccount number: …",
   jazzcash: "JazzCash account: 03xx xxxxxxx\nAccount name: …",
   easypaisa: "Easypaisa account: 03xx xxxxxxx\nAccount name: …",
 };

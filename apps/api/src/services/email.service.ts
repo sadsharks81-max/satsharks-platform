@@ -52,20 +52,20 @@ export const emailService = {
     try {
       await send({
         to,
-        subject: "Reset your SAT Sharks password",
+        subject: "Reset your LUE SAT password",
         text: [
           `Hi ${name},`,
           "",
-          "We received a request to reset the password for your SAT Sharks account.",
+          "We received a request to reset the password for your LUE SAT account.",
           `Open this link to choose a new password (it works once and expires in ${expiresInMinutes} minutes):`,
           link,
           "",
           "If you did not ask for this, ignore this email. Your password will not change.",
         ].join("\n"),
         html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0f172a;max-width:520px">
-  <p style="font-size:22px;font-weight:700;color:#324dc7;margin:0 0 16px">SAT Sharks</p>
+  <p style="font-size:22px;font-weight:700;color:#324dc7;margin:0 0 16px">LUE SAT</p>
   <p>Hi ${escapeHtml(name)},</p>
-  <p>We received a request to reset the password for your SAT Sharks account.</p>
+  <p>We received a request to reset the password for your LUE SAT account.</p>
   <p style="margin:24px 0"><a href="${escapeHtml(link)}" style="background:#324dc7;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px;display:inline-block">Choose a new password</a></p>
   <p style="font-size:13px;color:#475569">The link works once and expires in ${expiresInMinutes} minutes. If the button does not work, copy this address into your browser:<br><span style="word-break:break-all">${escapeHtml(link)}</span></p>
   <p style="font-size:13px;color:#475569">If you did not ask for this, ignore this email. Your password will not change.</p>
@@ -104,7 +104,7 @@ export const emailService = {
           `To stop these emails, change your email choices on ${message.settingsLink}`,
         ].join("\n"),
         html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0f172a;max-width:520px">
-  <p style="font-size:22px;font-weight:700;color:#324dc7;margin:0 0 16px">SAT Sharks</p>
+  <p style="font-size:22px;font-weight:700;color:#324dc7;margin:0 0 16px">LUE SAT</p>
   <p>${escapeHtml(message.greeting)}</p>
   ${message.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("\n  ")}
   ${
@@ -118,7 +118,7 @@ export const emailService = {
       : ""
   }
   <p style="margin:24px 0"><a href="${escapeHtml(message.button.link)}" style="background:#324dc7;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px;display:inline-block">${escapeHtml(message.button.label)}</a></p>
-  <p style="font-size:12px;color:#64748b">You get this because email reminders are on in your SAT Sharks account. <a href="${escapeHtml(message.settingsLink)}" style="color:#324dc7">Change your email choices</a>.</p>
+  <p style="font-size:12px;color:#64748b">You get this because email reminders are on in your LUE SAT account. <a href="${escapeHtml(message.settingsLink)}" style="color:#324dc7">Change your email choices</a>.</p>
 </div>`,
       });
       logger.info("Progress email sent", { to: maskEmail(to), subject: message.subject });
@@ -153,7 +153,7 @@ export const emailService = {
           ...(message.footer ? ["", message.footer] : []),
         ].join("\n"),
         html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0f172a;max-width:520px">
-  <p style="font-size:22px;font-weight:700;color:#324dc7;margin:0 0 16px">SAT Sharks</p>
+  <p style="font-size:22px;font-weight:700;color:#324dc7;margin:0 0 16px">LUE SAT</p>
   <p>${escapeHtml(message.greeting)}</p>
   ${message.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("\n  ")}
   ${

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ContactLine, LegalPage } from "@/components/legal-page";
 
-export const metadata: Metadata = { title: "Terms of Service", description: "The terms for using SAT Sharks.", alternates: { canonical: "/terms" } };
+export const metadata: Metadata = { title: "Terms of Service", description: "The terms for using LUE SAT.", alternates: { canonical: "/terms" } };
 
 // Written from what the site does today. Not reviewed by a lawyer: SAT Sharks should have it
 // checked before launch.
@@ -10,7 +10,7 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      intro={<p>These terms apply when you use the SAT Sharks website to practise for the Digital SAT. By creating an account, you agree to them.</p>}
+      intro={<p>These terms apply when you use the LUE SAT website to practise for the Digital SAT. By creating an account, you agree to them.</p>}
       sections={[
         {
           heading: "Your account",
@@ -26,7 +26,7 @@ export default function TermsPage() {
           heading: "Using the practice material",
           body: (
             <>
-              <p>Questions, explanations and tests on SAT Sharks are for your own study. Do not copy, publish, sell or share them, and do not use automated tools to download or collect them.</p>
+              <p>Questions, explanations and tests on LUE SAT are for your own study. Do not copy, publish, sell or share them, and do not use automated tools to download or collect them.</p>
               <p>Do not try to get around limits, read answers before submitting, or disrupt the site for other students.</p>
             </>
           ),
@@ -36,10 +36,10 @@ export default function TermsPage() {
           body: (
             <>
               <p>
-                Section scores (200–800) and total scores (400–1600) shown here are calculated from conversion tables set by SAT Sharks. They are estimates to guide your practice, not official
+                Section scores (200–800) and total scores (400–1600) shown here are calculated from conversion tables set by LUE SAT. They are estimates to guide your practice, not official
                 scores, and they do not predict or guarantee any result on the real test.
               </p>
-              <p>SAT is a trademark registered by the College Board, which is not affiliated with, and does not endorse, SAT Sharks.</p>
+              <p>SAT is a trademark registered by the College Board, which is not affiliated with, and does not endorse, LUE SAT.</p>
             </>
           ),
         },

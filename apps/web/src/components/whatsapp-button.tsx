@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 
 // SAT Sharks' WhatsApp: 0306 6595745 (Pakistan), in international form for wa.me. The chat opens
 // with this message typed in, ready for the student to finish and send.
-const WHATSAPP_MESSAGE = "Hi SAT Sharks! I need some help. Here is my question or issue: ";
+const WHATSAPP_MESSAGE = "Hi LUE SAT! I need some help. Here is my question or issue: ";
 const WHATSAPP_URL = `https://wa.me/923066595745?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`;
 // For other "message us" links (checkout without an online way to pay).
 export const WHATSAPP_LINK = WHATSAPP_URL;
@@ -21,7 +21,7 @@ export function WhatsAppButton() {
       href={WHATSAPP_URL}
       target="_blank"
       rel="noreferrer"
-      aria-label="Chat with SAT Sharks on WhatsApp"
+      aria-label="Chat with LUE SAT on WhatsApp"
       title="Chat with us on WhatsApp"
       className="fixed bottom-[max(20px,env(safe-area-inset-bottom))] right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-[0_10px_22px_-8px_rgba(18,140,70,0.6)] transition hover:-translate-y-0.5 hover:bg-[#1FBE5B] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#128C7E] sm:right-6 sm:h-14 sm:w-14"
     >

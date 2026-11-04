@@ -84,7 +84,7 @@ async function weeklyEmails(now: Date): Promise<number> {
     const minutes = Math.round(stats.reduce((sum, stat) => sum + stat.seconds, 0) / 60);
     const streak = streakOn(streakOf(user), today, freezesPerMonth(user));
     const ok = await emailService.sendProgress(user.email, {
-      subject: predicted ? `Your week on SAT Sharks: predicted score ${predicted}` : "Your week on SAT Sharks",
+      subject: predicted ? `Your week on LUE SAT: predicted score ${predicted}` : "Your week on LUE SAT",
       greeting: `Hi ${firstName(user.name)},`,
       lines: [
         questions > 0 ? "Here is what you did last week." : "You did not practise last week. A few questions today gets you going again.",
@@ -98,7 +98,7 @@ async function weeklyEmails(now: Date): Promise<number> {
         ["Practice points", String(stats.reduce((sum, stat) => sum + stat.points, 0))],
         ["Current streak", `${streak.current} day${streak.current === 1 ? "" : "s"}`],
       ],
-      button: { label: focus ? `Practise ${focus.skill}` : "Open SAT Sharks", link: `${site()}/analytics` },
+      button: { label: focus ? `Practise ${focus.skill}` : "Open LUE SAT", link: `${site()}/analytics` },
       settingsLink: `${site()}/goals`,
     });
     if (ok) sent += 1;

@@ -99,7 +99,7 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
           ))}
         </ul>
       </aside>
-      <p className="mt-8 text-xs text-slate-500">SAT is a trademark of the College Board, which is not linked to SAT Sharks and does not endorse it.</p>
+      <p className="mt-8 text-xs text-slate-500">SAT is a trademark of the College Board, which is not linked to LUE SAT and does not endorse it.</p>
     </article>
   );
 }

@@ -1,16 +1,16 @@
-# SAT Sharks — project context and work log
+# LUE SAT — project context and work log
 
 **Read this first when starting a new session.** It records what exists, why, what was decided,
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-10-31 (Analytics "Skills breakdown" with a Reading & Writing / Math selector; not committed. Earlier: no repeats incl. top-up of exams without Math, official module pattern, Highlights & Notes, counts for premium only, committed as `edfaeb0`; security pass `1c8f2d3`, live).
+Last updated: 2026-11-05 (uncommitted: client-requested rebrand from SAT Sharks to LUE SAT with supplied logo across public/student/admin/email surfaces; leaderboard capped at top 20 with the signed-in student's rank shown separately. No live data writes.)
 
 ---
 
 ## 1. The project
 
-- **Client:** SAT Sharks. **Developer contact:** Umair (works in this repository).
+- **Client:** LUE SAT (renamed from SAT Sharks on 2026-11-05). **Developer contact:** Umair (works in this repository).
 - **What it is:** a Digital SAT practice platform. Full scope and 4-week plan: the client proposal,
   kept locally at `docs/purposal/SAT_Sharks_Proposal_v4_4Weeks.pdf` (git-ignored: it is marked
   Confidential and the repository is public). **On 2026-10-14 that file was no longer on disk**;
@@ -24,7 +24,7 @@ Last updated: 2026-10-31 (Analytics "Skills breakdown" with a Reading & Writing 
   built 2026-10-19 except what needs SAT Sharks: card gateway, domain, Search Console/GA IDs).**
 - **Reference site:** `bluecorn.org` (also branded "Bluebooky"; API host `ciao.bluebooky.org`).
   Umair wants SAT Sharks to work like it. Its screenshots are in `docs/references/screenshots/`.
-  SAT Sharks keeps its own name and branding; layout, fonts and spacing follow the reference.
+  LUE SAT keeps its own branding; layout, fonts and spacing follow the reference.
 - **Repository:** `https://github.com/satsharks20/bluesharks` (public, remote `origin`), branch
   `main`. **Client copy (deploys from here):** `https://github.com/sadsharks81-max/satsharks-platform`
   (remote `client`, public since 2026-10-09). Push to both. The client account's other repo `satsharks` is the older site.
@@ -307,7 +307,8 @@ Last updated: 2026-10-31 (Analytics "Skills breakdown" with a Reading & Writing 
     goal was met, in the student's time zone; freezes used by themselves (free 1, paid 3 a month);
     badges at 7/30/100. Points: 10 right (+5 hard), 2 for a real wrong try, nothing under 10 s (R&W) /
     8 s (Math), nothing for a set that is mostly that fast, 300 a day at most. Leaderboards global /
-    country / friends (friend codes, both ways), week (ISO, Monday) / all time; **full names**
+    country / friends (friend codes, both ways), week (ISO, Monday) / all time; only the **top 20**
+    are listed, while the signed-in student's own ordinal rank is shown separately; **full names**
     on boards and the friends list since 2026-10-16 (client; the share card keeps first name +
     initial); opt-out. Share card (canvas, 1080×1350, real first/best full-test totals and streak; share sheet,
     download, WhatsApp). **Emails** `jobs/engagement-emails.ts` in the API every 15 min: streak at risk
@@ -425,6 +426,15 @@ Last updated: 2026-10-31 (Analytics "Skills breakdown" with a Reading & Writing 
 
 ### Last verified
 
+- **LUE SAT rebrand + top-20 leaderboard (2026-11-05):** no live database writes. Typecheck clean
+  across every workspace; **82 unit tests** (68 API, 14 worker); **29 e2e checks** against a
+  throwaway in-memory MongoDB, including 25 temporary ranked students (only ranks 1–20 returned,
+  viewer returned separately as 25th) and saved SAT Sharks pricing copy presented as LUE SAT without
+  changing its stored document; production `next build` passed (50 routes). The logo PNG, favicon,
+  SVG icon and 512px Apple icon were inspected directly. Local headless Chrome returned HTTP 200
+  and the hydrated DOM contained the LUE SAT logo, metadata and structured data; its screenshot
+  command captured the loading shell, so a full-page visual screenshot was not obtained.
+
 - **Uploaded practice tests (2026-10-07):** typecheck clean; 46 unit tests (32 API incl. 11 new
   parser/rule tests, 14 worker); **13 end-to-end checks** against a throwaway in-memory MongoDB
   (`mongodb-memory-server`; Atlas never touched): input validation, both PDFs read with exact
@@ -518,6 +528,10 @@ Last updated: 2026-10-31 (Analytics "Skills breakdown" with a Reading & Writing 
   `9df5d33` "new changes and few improvements" (Umair): the 2026-10-20 changes (bulk users, member
   badge, report view, Desmos dock, `viz.tsx` image/table fixes). Both pushed to `origin` by Umair,
   to `client` by Claude on 2026-10-21 (fast-forward `b84f8b1..9df5d33`).
+- `edfaeb0` "changes told by client" (Umair): the 2026-10-30 changes. `7608960` "one more change
+  done" (Umair): the 2026-10-31 Skills breakdown selector. Both pushed to `origin` by Umair, to
+  `client` by Claude on 2026-11-01 (fast-forward `1c8f2d3..7608960`).
+- Uncommitted (2026-11-05): LUE SAT rebrand and top-20 leaderboard. Ask before committing or pushing.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -1237,3 +1251,18 @@ Newest last. One entry per session or major step.
   follow the tab, Math-only student opens on Math, empty tab explains itself, free view 3 per tab,
   390px without sideways scroll, no console errors. Afterwards Umair asked to keep the old name:
   the card and the default pricing row say "Skills breakdown" again (type check only). Not committed.
+- **2026-11-01 — Pushed to the client repo (Umair).** `edfaeb0` and `7608960` (the 2026-10-30 and
+  2026-10-31 work) pushed to `client` (fast-forward `1c8f2d3..7608960`, no force). Both deploys
+  reported success on the commit (Vercel, Railway); the live API restarted (`/api/health` uptime 30 s
+  at 15:00 UTC, was about 9 days). Not checked: the live pages themselves. `/api/health` still says
+  `environment: development` after the restart, so Railway's `NODE_ENV` is still not `production`
+  (§2 Deployment).
+- **2026-11-05 — LUE SAT rebrand and top-20 leaderboard (client via Umair).** Replaced public,
+  student, admin-helper, receipt, share-card and outgoing-email branding with LUE SAT; installed the
+  supplied split-panel acorn logo and matching favicon/Apple icon. Internal package names, session
+  keys, proxy headers and repository URLs stay `satsharks` to avoid migrations. Existing saved
+  pricing text is rebranded on read without a database write. Each leaderboard now returns only the
+  top 20; the page shows the signed-in student's ordinal rank separately when inside or outside the
+  top 20. No papers, questions, attempts, users or live settings were changed. Checked: workspace
+  typecheck; 82 unit tests; 29 in-memory e2e checks; 50-route production build. Not committed or
+  pushed.

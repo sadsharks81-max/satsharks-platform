@@ -38,6 +38,12 @@ function Row({ row }: { row: LeaderboardRow }) {
   );
 }
 
+function ordinal(rank: number) {
+  const lastTwo = rank % 100;
+  if (lastTwo >= 11 && lastTwo <= 13) return `${rank}th`;
+  return `${rank}${rank % 10 === 1 ? "st" : rank % 10 === 2 ? "nd" : rank % 10 === 3 ? "rd" : "th"}`;
+}
+
 // Accounts made before sign-up asked for a country have none: they choose it once to get a country board.
 function ChooseCountry() {
   const queryClient = useQueryClient();
@@ -187,6 +193,7 @@ export default function LeaderboardPage() {
     queryFn: () => api<Leaderboard>(`/api/student/leaderboard?scope=${scope}&period=${period}`),
   });
   const data = board.data;
+  const myRank = data?.rows.find((row) => row.me) ?? data?.me ?? null;
 
   return (
     <>
@@ -220,6 +227,11 @@ export default function LeaderboardPage() {
             </div>
           )}
           {data && scope === "country" && data.country === null && <ChooseCountry />}
+          {myRank && (
+            <p className="border-b border-slate-200 bg-brand-50 px-4 py-3 text-sm font-bold text-brand-800">
+              Your ranking is {ordinal(myRank.rank)}.
+            </p>
+          )}
           {data && data.rows.length === 0 && !(scope === "country" && data.country === null) && (
             <p className="px-4 py-6 text-sm text-slate-600">
               {scope === "friends" && data.friends.length === 0 ? "Add a friend with their code to start a Friends board." : "No points here yet. Answer some questions to get on the board."}
@@ -240,22 +252,12 @@ export default function LeaderboardPage() {
                   {data.rows.map((row) => (
                     <Row key={`${row.rank}-${row.name}`} row={row} />
                   ))}
-                  {data.me && (
-                    <>
-                      <tr aria-hidden>
-                        <td colSpan={4} className="px-4 py-1 text-center text-slate-400">
-                          ⋯
-                        </td>
-                      </tr>
-                      <Row row={data.me} />
-                    </>
-                  )}
                 </tbody>
               </table>
             </div>
           )}
           <p className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
-            Weeks run Monday to Sunday. Names are shown as given at sign-up; to stay off the leaderboard, turn it off on Goals &amp; streaks.
+            Only the top 20 students are shown. Weeks run Monday to Sunday. Names are shown as given at sign-up; to stay off the leaderboard, turn it off on Goals &amp; streaks.
           </p>
         </Card>
         {data && <Friends board={data} />}

@@ -4,7 +4,7 @@ import { JsonLd, faqLd } from "@/components/json-ld";
 
 export const metadata: Metadata = {
   title: "FAQ",
-  description: "Answers to common questions about SAT Sharks: real past papers, the free plan, the Bluebook-style test screen and more.",
+  description: "Answers to common questions about LUE SAT: real past papers, the free plan, the Bluebook-style test screen and more.",
   alternates: { canonical: "/faq" },
 };
 

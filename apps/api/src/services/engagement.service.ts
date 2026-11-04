@@ -227,9 +227,9 @@ export const engagementService = {
       streak: streakOn(streakOf(entry.user), dayIn(now, timeZoneOf(entry.user)), freezesPerMonth(entry.user)).current,
       me: String(entry.user._id) === String(user._id),
     });
-    const rows = ranked.slice(0, 50).map(toRow);
+    const rows = ranked.slice(0, 20).map(toRow);
     const myIndex = ranked.findIndex((entry) => String(entry.user._id) === String(user._id));
-    return { scope, period, country: user.country ?? null, rows, me: myIndex >= 50 ? toRow(ranked[myIndex]!, myIndex) : null, friends: friendList };
+    return { scope, period, country: user.country ?? null, rows, me: myIndex >= 20 ? toRow(ranked[myIndex]!, myIndex) : null, friends: friendList };
   },
 
   // Accounts made before sign-up asked for a country have none, so their "My country" board was

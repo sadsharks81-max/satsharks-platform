@@ -31,7 +31,7 @@ const envSchema = z.object({
   // Email (password reset) through Resend. Without the key, development prints the link to the
   // API console instead of sending it; production logs an error.
   RESEND_API_KEY: optionalString,
-  // A sender on a domain verified in Resend, e.g. "SAT Sharks <no-reply@satsharks.com>".
+  // A sender on a domain verified in Resend, e.g. "LUE SAT <no-reply@yourdomain.com>".
   RESEND_FROM_EMAIL: optionalString,
   // Streak reminders and the weekly progress email, sent by the API every 15 minutes when email is
   // configured. "off" stops them (e.g. on a second API instance or a test copy of the database).

@@ -24,7 +24,7 @@ function Receipt({ id, me }: { id: string; me: PublicUser }) {
     ["Receipt number", payment.receiptNumber ?? "—"],
     ["Date paid", payment.paidAt ? formatDate(payment.paidAt) : "—"],
     ["Billed to", payment.user ? `${payment.user.name} (${payment.user.email})` : "—"],
-    ["Plan", payment.method === "referral" ? "Free week (friend invites)" : `SAT Sharks ${PAID_PLAN_LABELS[payment.plan]}`],
+    ["Plan", payment.method === "referral" ? "Free week (friend invites)" : `LUE SAT ${PAID_PLAN_LABELS[payment.plan]}`],
     ["Access", payment.periodStart && payment.periodEnd ? `${formatDate(payment.periodStart)} to ${formatDate(payment.periodEnd)}` : "No end date"],
     ["Paid with", PAYMENT_METHOD_LABELS[payment.method] + (payment.reference && payment.method !== "card" && payment.method !== "referral" ? ` · ${payment.reference}` : "")],
   ];
@@ -64,7 +64,7 @@ function Receipt({ id, me }: { id: string; me: PublicUser }) {
             List price {formatMoney(payment.listAmount, payment.currency)}, {payment.discountPercent}% one-time offer applied
           </p>
         )}
-        <p className="mt-8 text-xs text-slate-500">SAT Sharks · Digital SAT practice · All payments are final.</p>
+        <p className="mt-8 text-xs text-slate-500">LUE SAT · Digital SAT practice · All payments are final.</p>
       </article>
     </div>
   );

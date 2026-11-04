@@ -3,9 +3,9 @@ import { PRICING_ALTERNATES, PricingPage } from "@/components/pricing-page";
 
 export const metadata: Metadata = {
   title: "SAT prep prices in Pakistan (PKR)",
-  description: "SAT Sharks plans for students in Pakistan, in Pakistani rupees: start free, then Monthly or 3 Months with every past Digital SAT paper and full analytics.",
+  description: "LUE SAT plans for students in Pakistan, in Pakistani rupees: start free, then Monthly or 3 Months with every past Digital SAT paper and full analytics.",
   alternates: { canonical: "/pricing/pakistan", languages: PRICING_ALTERNATES },
-  openGraph: { title: "SAT Sharks prices in Pakistan (PKR)", url: "/pricing/pakistan", locale: "en_PK" },
+  openGraph: { title: "LUE SAT prices in Pakistan (PKR)", url: "/pricing/pakistan", locale: "en_PK" },
 };
 
 export default function PricingPakistan() {

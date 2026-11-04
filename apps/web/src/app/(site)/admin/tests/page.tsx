@@ -29,7 +29,7 @@ function FormatHelp() {
             questions join random mocks).
           </p>
           <p className="mt-2">
-            <b>CATEGORY</b> is a domain or skill from the question bank (e.g. <i>Algebra</i>, <i>Linear equations in one variable</i>); the other SAT Sharks
+            <b>CATEGORY</b> is a domain or skill from the question bank (e.g. <i>Algebra</i>, <i>Linear equations in one variable</i>); the other LUE SAT
             site&apos;s names (<i>SAT Algebra</i>, <i>SAT Vocabulary</i>, …) also work. Math can be plain text as on the other site (<code className="rounded bg-slate-100 px-1">x^2</code>,{" "}
             <code className="rounded bg-slate-100 px-1">$90</code>) or LaTeX like the rest of the bank (<code className="rounded bg-slate-100 px-1">$x^2 + 3x$</code>,{" "}
             <code className="rounded bg-slate-100 px-1">$\$78$</code>).
@@ -113,7 +113,7 @@ function UploadDialog({ onClose }: { onClose: () => void }) {
             maxLength={120}
             required
             onChange={(event) => setTitle(event.target.value)}
-            placeholder={kind === "exam" ? "e.g. SAT December 05, 2026 Administration" : "e.g. SAT Sharks Practice Test 1"}
+            placeholder={kind === "exam" ? "e.g. SAT December 05, 2026 Administration" : "e.g. LUE SAT Practice Test 1"}
           />
         </label>
         {kind === "exam" ? (

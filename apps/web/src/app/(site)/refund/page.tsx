@@ -5,7 +5,7 @@ import { ContactLine, LegalPage } from "@/components/legal-page";
 
 export const metadata: Metadata = {
   title: "Refund Policy",
-  description: "SAT Sharks refund policy: what happens when you cancel, and what to do if a payment goes wrong.",
+  description: "LUE SAT refund policy: what happens when you cancel, and what to do if a payment goes wrong.",
   alternates: { canonical: "/refund" },
 };
 
@@ -32,7 +32,7 @@ export default async function RefundPage() {
           heading: "Try before you pay",
           body: (
             <p>
-              The free plan lets you sit full past papers, practise drills and see your score before you spend anything, so you can decide whether SAT Sharks suits you. See the{" "}
+              The free plan lets you sit full past papers, practise drills and see your score before you spend anything, so you can decide whether LUE SAT suits you. See the{" "}
               <Link href="/pricing" className="font-bold text-brand-500 hover:underline">
                 pricing page
               </Link>{" "}

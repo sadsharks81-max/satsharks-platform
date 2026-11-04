@@ -55,7 +55,7 @@ export const GUIDES: Guide[] = [
         heading: "Tools in the test app",
         paragraphs: [
           "Bluebook has a built-in Desmos graphing calculator for the whole Math section (you may also bring an approved calculator), a reference sheet of common formulas, a countdown timer you can hide, mark for review, an answer eliminator and an annotation tool for Reading and Writing.",
-          "SAT Sharks uses the same layout and tools on its test screen, so test day feels familiar.",
+          "LUE SAT uses the same layout and tools on its test screen, so test day feels familiar.",
         ],
       },
     ],
@@ -86,13 +86,13 @@ export const GUIDES: Guide[] = [
         heading: "Why the same number right can give different scores",
         paragraphs: [
           "College Board uses item response theory: each question has its own difficulty, and your score reflects which questions you answered correctly, not only how many. Getting the harder Module 2 opens up the highest scores, which is why Module 1 accuracy matters so much.",
-          "Practice scores on SAT Sharks come from conversion tables for each section and Module 2 route. They are estimates to guide your practice, not official scores.",
+          "Practice scores on LUE SAT come from conversion tables for each section and Module 2 route. They are estimates to guide your practice, not official scores.",
         ],
       },
       {
         heading: "What is a good SAT score?",
         paragraphs: [
-          "It depends on the universities you are aiming for. Look up the middle 50% score range of admitted students for each university on your list and set your target near the top of that range. SAT Sharks shows the distance between your predicted score and your target, and which skills will close it fastest.",
+          "It depends on the universities you are aiming for. Look up the middle 50% score range of admitted students for each university on your list and set your target near the top of that range. LUE SAT shows the distance between your predicted score and your target, and which skills will close it fastest.",
         ],
       },
     ],
@@ -100,9 +100,9 @@ export const GUIDES: Guide[] = [
   {
     slug: "free-sat-practice",
     title: "Free Digital SAT practice: where to find real practice",
-    description: "The best free ways to practise for the Digital SAT: College Board's Bluebook practice tests, official question banks, and full past papers on SAT Sharks' free plan.",
+    description: "The best free ways to practise for the Digital SAT: College Board's Bluebook practice tests, official question banks, and full past papers on LUE SAT's free plan.",
     summary:
-      "Start with the free full-length practice tests in College Board's Bluebook app: they are the closest thing to the real test. Then add more real practice: SAT Sharks' free plan lets you sit full past papers in a Bluebook-style test screen, with a score out of 1600 and a daily drill allowance, without a card.",
+      "Start with the free full-length practice tests in College Board's Bluebook app: they are the closest thing to the real test. Then add more real practice: LUE SAT's free plan lets you sit full past papers in a Bluebook-style test screen, with a score out of 1600 and a daily drill allowance, without a card.",
     updated: "2026-10-19",
     cta: { label: "Start practising free", href: "/register" },
     sections: [
@@ -115,7 +115,7 @@ export const GUIDES: Guide[] = [
       {
         heading: "2. Practise past papers in the real format",
         paragraphs: [
-          "Most students finish the official practice tests quickly. SAT Sharks has full past Digital SAT papers in the same adaptive format, with the same tools (Desmos, reference sheet, timer, mark for review), and scores every test from 400 to 1600. The free plan includes full papers and drills every day.",
+          "Most students finish the official practice tests quickly. LUE SAT has full past Digital SAT papers in the same adaptive format, with the same tools (Desmos, reference sheet, timer, mark for review), and scores every test from 400 to 1600. The free plan includes full papers and drills every day.",
         ],
       },
       {
@@ -144,7 +144,7 @@ export const GUIDES: Guide[] = [
       {
         heading: "Test dates",
         paragraphs: [
-          "The SAT is offered several times a year at international centres, on the same weekends as in other countries. Each date has a registration deadline about two weeks before. SAT Sharks keeps the upcoming dates and deadlines on its SAT dates page.",
+          "The SAT is offered several times a year at international centres, on the same weekends as in other countries. Each date has a registration deadline about two weeks before. LUE SAT keeps the upcoming dates and deadlines on its SAT dates page.",
         ],
       },
       {
@@ -157,7 +157,7 @@ export const GUIDES: Guide[] = [
       {
         heading: "Preparing",
         paragraphs: [
-          "Take a full timed practice test first to find your starting score, set a target based on the universities you want, and practise every day on your weakest skills. SAT Sharks shows prices in PKR for students in Pakistan, and its free plan is enough to get started.",
+          "Take a full timed practice test first to find your starting score, set a target based on the universities you want, and practise every day on your weakest skills. LUE SAT shows prices in PKR for students in Pakistan, and its free plan is enough to get started.",
         ],
       },
     ],

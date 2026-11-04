@@ -104,7 +104,7 @@ function CheckoutView() {
             <h2 className="font-bold">Online payment is not open yet</h2>
             <p className="mt-1 text-sm text-slate-600">Message us on WhatsApp and we will help you pay and upgrade your account straight away.</p>
             <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer" className="mt-4 inline-block rounded-lg bg-[#25D366] px-5 py-2.5 text-sm font-bold text-white">
-              Message SAT Sharks
+              Message LUE SAT
             </a>
           </Card>
         ) : (

@@ -168,7 +168,7 @@ export async function bulkUsers(req: Request, res: Response): Promise<void> {
 export async function exportUsers(req: Request, res: Response): Promise<void> {
   const csv = await userAdminService.exportCsv(userListQuerySchema.parse({ ...req.query, page: 1, pageSize: 100 }));
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="satsharks-users-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="lue-sat-users-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.setHeader("Cache-Control", "no-store");
   res.send(csv);
 }

@@ -101,7 +101,7 @@ async function quote(user: BuyerUser, plan: PaidPlan, wantedCurrency: Currency |
   const [pricing, settings] = await Promise.all([settingsService.getPricing(), settingsService.getPayments()]);
   const pricePlan = pricing.plans.find((entry) => entry.id === plan);
   const listAmount = pricePlan ? parsePrice(pricePlan.price[currency]) : null;
-  if (!pricePlan || listAmount === null) throw AppError.badRequest("This plan cannot be bought online yet. Contact SAT Sharks on WhatsApp.");
+  if (!pricePlan || listAmount === null) throw AppError.badRequest("This plan cannot be bought online yet. Contact LUE SAT on WhatsApp.");
   const offer = useOffer ? offerFor(user, settings) : null;
   const discountPercent = offer?.percentOff ?? 0;
   const period = periodFor({ plan: user.plan, planExpiresAt: user.planExpiresAt }, PLAN_MONTHS[plan], now);
@@ -135,7 +135,7 @@ async function sendAlert(payment: PaymentDoc, user: Pick<UserDoc, "name" | "emai
   const review = payment.status === "review";
   await emailService.sendNotice(to, {
     subject: review ? `Transfer to approve: ${user.name}, ${formatMoney(payment.amount, payment.currency)}` : `New payment received: ${user.name}, ${formatMoney(payment.amount, payment.currency)}`,
-    greeting: review ? "A student says they have paid by transfer. Check your account, then approve or reject it." : "A new payment was received on SAT Sharks.",
+    greeting: review ? "A student says they have paid by transfer. Check your account, then approve or reject it." : "A new payment was received on LUE SAT.",
     lines: [],
     rows: [
       ["Name", user.name],
@@ -152,7 +152,7 @@ async function sendAlert(payment: PaymentDoc, user: Pick<UserDoc, "name" | "emai
 
 async function sendReceipt(payment: PaymentDoc, user: Pick<UserDoc, "name" | "email">): Promise<void> {
   await emailService.sendNotice(user.email, {
-    subject: `Your SAT Sharks receipt ${payment.receiptNumber ?? ""}`.trim(),
+    subject: `Your LUE SAT receipt ${payment.receiptNumber ?? ""}`.trim(),
     greeting: `Hi ${firstName(user.name)},`,
     lines: [
       payment.method === "referral"
@@ -208,7 +208,7 @@ export const paymentService = {
       throw AppError.conflict("A payment of yours is already waiting for approval. We will email you when it is checked.");
     }
     const duplicate = await PaymentModel.exists({ method: input.method, reference: new RegExp(`^${escapeRegex(input.reference)}$`, "i"), status: trusted({ $in: ["review", "paid"] }) });
-    if (duplicate) throw AppError.conflict("This transaction ID has already been sent. Check it, or contact SAT Sharks on WhatsApp.");
+    if (duplicate) throw AppError.conflict("This transaction ID has already been sent. Check it, or contact LUE SAT on WhatsApp.");
     const payment = await PaymentModel.create({
       userId: user._id,
       plan: input.plan,
@@ -230,7 +230,7 @@ export const paymentService = {
   // Opens the card gateway's checkout. The plan is given when the gateway confirms the payment.
   async startCard(user: BuyerUser, input: CardCheckoutInput): Promise<{ redirectUrl: string }> {
     const gateway = cardGateway();
-    if (!gateway) throw AppError.badRequest("Card payments are not available yet. Pay by transfer, or contact SAT Sharks on WhatsApp.");
+    if (!gateway) throw AppError.badRequest("Card payments are not available yet. Pay by transfer, or contact LUE SAT on WhatsApp.");
     const q = await quote(user, input.plan, input.currency, input.offer, new Date());
     if (!gateway.currencies.includes(q.currency)) throw AppError.badRequest(`Card payments in ${q.currency} are not available yet.`);
     const payment = await PaymentModel.create({
@@ -251,7 +251,7 @@ export const paymentService = {
       paymentId: String(payment._id),
       amount: q.amount,
       currency: q.currency,
-      description: `SAT Sharks ${q.planName}`,
+      description: `LUE SAT ${q.planName}`,
       customer: { name: user.name, email: user.email },
       returnUrl: `${site()}/billing?payment=${payment._id}`,
     });
@@ -338,11 +338,11 @@ export const paymentService = {
     if (user) {
       void emailService
         .sendNotice(user.email, {
-          subject: "Your SAT Sharks payment could not be confirmed",
+          subject: "Your LUE SAT payment could not be confirmed",
           greeting: `Hi ${firstName(user.name)},`,
           lines: [
             `We could not find your ${PAYMENT_METHOD_LABELS[rejected.method]} payment of ${formatMoney(rejected.amount, rejected.currency)} (transaction ID ${rejected.reference ?? "—"}).`,
-            ...(note ? [`Note from SAT Sharks: ${note}`] : []),
+            ...(note ? [`Note from LUE SAT: ${note}`] : []),
             "If you did pay, send the transaction ID again from your billing page or message us on WhatsApp, and we will sort it out.",
           ],
           button: { label: "Open your billing page", link: `${site()}/billing` },

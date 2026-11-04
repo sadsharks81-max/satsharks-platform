@@ -4,9 +4,9 @@ import { PRICING_ALTERNATES, PricingPage } from "@/components/pricing-page";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "SAT Sharks plans in PKR for Pakistan and USD for international students. Start free with two full past papers; upgrade for every paper and full analytics.",
+  description: "LUE SAT plans in PKR for Pakistan and USD for international students. Start free with two full past papers; upgrade for every paper and full analytics.",
   alternates: { canonical: "/pricing", languages: PRICING_ALTERNATES },
-  openGraph: { title: "SAT Sharks pricing", description: "Plans in PKR for Pakistan and USD worldwide. Start free.", url: "/pricing" },
+  openGraph: { title: "LUE SAT pricing", description: "Plans in PKR for Pakistan and USD worldwide. Start free.", url: "/pricing" },
 };
 
 // The currency of the country the visitor browses from (Vercel's IP country header); students who

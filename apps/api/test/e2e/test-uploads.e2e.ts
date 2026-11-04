@@ -972,6 +972,31 @@ async function run() {
     }
   });
 
+  await check("leaderboards return only the top 20 and the viewer's rank below the cutoff", async () => {
+    const viewer = client();
+    const viewerEmail = "phase1-test-rank-viewer@example.com";
+    assert.equal((await viewer.call("POST", "/api/auth/register", { name: "Rank Viewer", email: viewerEmail, password: "password-123", country: "AQ" })).status, 201);
+    await UserModel.updateOne({ email: viewerEmail }, { $set: { totalPoints: 1 } });
+    await UserModel.insertMany(
+      Array.from({ length: 24 }, (_, index) => ({
+        name: `Ranked Student ${index + 1}`,
+        email: `phase1-test-ranked-${index + 1}@example.com`,
+        passwordHash: "not-used-in-this-test",
+        country: "AQ",
+        region: "international",
+        totalPoints: 25 - index,
+      })),
+    );
+
+    const board = (await viewer.call("GET", "/api/student/leaderboard?scope=country&period=all")).json.data;
+    assert.equal(board.rows.length, 20);
+    assert.deepEqual(board.rows.map((row: { rank: number }) => row.rank), Array.from({ length: 20 }, (_, index) => index + 1));
+    assert.ok(!board.rows.some((row: { me: boolean }) => row.me));
+    assert.deepEqual([board.me.rank, board.me.name, board.me.me], [25, "Rank Viewer", true]);
+
+    await UserModel.deleteMany({ email: /^phase1-test-rank(?:ed-|-)viewer|^phase1-test-ranked-/ });
+  });
+
   await check("Till Test Day is gone: three plans, older saved pricing kept, an account on it stays paid", async () => {
     const { SettingModel } = await import("@satsharks/db");
     const ids = (pricing: { plans: { id: string }[] }) => pricing.plans.map((plan) => plan.id);
@@ -986,7 +1011,7 @@ async function run() {
         { id: "till_test_day", name: "Till Test Day", price: { PKR: "PKR 5,999", USD: "$49.99" }, period: "per 6 months", saving: null, highlights: ["Everything"], popular: false },
       ],
       comparison: [],
-      tagline: "",
+      tagline: "Three months of SAT Sharks",
       schoolsNote: "",
       refundPolicy: "",
     };
@@ -994,6 +1019,8 @@ async function run() {
     const pricing = (await student.call("GET", "/api/pricing")).json.data;
     assert.deepEqual(ids(pricing), ["free", "monthly", "three_months"]);
     assert.equal(pricing.plans[1].price.PKR, "PKR 1,234");
+    assert.equal(pricing.tagline, "Three months of LUE SAT");
+    assert.equal((await SettingModel.findOne({ key: "pricing" }).lean<{ value: { tagline: string } }>())!.value.tagline, "Three months of SAT Sharks");
     assert.equal((await admin.call("PUT", "/api/admin/settings/pricing", old)).status, 400);
     assert.equal((await admin.call("PUT", "/api/admin/settings/pricing", { ...old, plans: old.plans.slice(0, 3) })).status, 200);
     await SettingModel.deleteOne({ key: "pricing" });
