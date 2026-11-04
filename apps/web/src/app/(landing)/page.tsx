@@ -6,6 +6,7 @@ import { JsonLd, courseLd, faqLd, organizationLd, websiteLd } from "@/components
 import { StudentProof } from "@/components/student-proof";
 import { HomeActions } from "@/components/home-actions";
 import { LandingTestDemo } from "@/components/landing-test-demo";
+import { Logo } from "@/components/logo";
 import { Nav } from "@/components/nav";
 
 export const metadata: Metadata = {
@@ -645,7 +646,9 @@ function ClosingCall() {
         <div aria-hidden className="absolute -bottom-60 -left-[200px] h-[520px] w-[520px] rounded-full border border-white/15" />
         <div aria-hidden className="absolute -right-[90px] -top-[110px] h-[300px] w-[300px] rounded-full bg-white/[0.08]" />
         <div aria-hidden className="absolute -right-[170px] -top-[190px] h-[460px] w-[460px] rounded-full border border-white/15" />
-        <Fin className="relative h-14 w-14" />
+        <div className="relative overflow-hidden rounded-lg bg-white p-1.5 shadow-[0_14px_32px_-14px_rgba(8,16,77,0.9)]">
+          <Logo className="h-11 w-auto sm:h-12" />
+        </div>
         <h2 className="relative m-0 max-w-[900px] text-balance text-[clamp(34px,5.4vw,72px)] font-extrabold leading-[1.02] tracking-[-0.05em]">
           Your next practice test is one click away
         </h2>

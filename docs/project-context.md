@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-11-05 (uncommitted: client-requested rebrand from SAT Sharks to LUE SAT with supplied logo across public/student/admin/email surfaces; leaderboard capped at top 20 with the signed-in student's rank shown separately. No live data writes.)
+Last updated: 2026-11-05 (client-requested rebrand from SAT Sharks to LUE SAT with supplied logo across public/student/admin/email surfaces, including the closing homepage CTA; leaderboard capped at top 20 with the signed-in student's rank shown separately. No live data writes.)
 
 ---
 
@@ -531,7 +531,7 @@ Last updated: 2026-11-05 (uncommitted: client-requested rebrand from SAT Sharks 
 - `edfaeb0` "changes told by client" (Umair): the 2026-10-30 changes. `7608960` "one more change
   done" (Umair): the 2026-10-31 Skills breakdown selector. Both pushed to `origin` by Umair, to
   `client` by Claude on 2026-11-01 (fast-forward `1c8f2d3..7608960`).
-- Uncommitted (2026-11-05): LUE SAT rebrand and top-20 leaderboard. Ask before committing or pushing.
+- 2026-11-05: LUE SAT rebrand and top-20 leaderboard, including the homepage closing CTA logo. Umair authorized committing and pushing to both `origin` and `client`.
 - `docs/prompts/` (untracked) holds the phase briefs and the port kit from the other site
   (`full-test-port-kit/`, with its code and demo PDFs). Not committed so far; ask Umair.
 - `docs/references/reference sheet/ReferenceSheet.tsx` is Umair's source file (untracked).
@@ -1264,5 +1264,6 @@ Newest last. One entry per session or major step.
   pricing text is rebranded on read without a database write. Each leaderboard now returns only the
   top 20; the page shows the signed-in student's ordinal rank separately when inside or outside the
   top 20. No papers, questions, attempts, users or live settings were changed. Checked: workspace
-  typecheck; 82 unit tests; 29 in-memory e2e checks; 50-route production build. Not committed or
-  pushed.
+  typecheck; 82 unit tests; 29 in-memory e2e checks; 50-route production build. The closing homepage
+  CTA was subsequently updated to use the same supplied LUE SAT logo. Umair authorized committing and
+  pushing the completed change to both configured remotes.
