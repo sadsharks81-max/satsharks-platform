@@ -4,7 +4,7 @@
 what is half-done, and the traps already found. Keep it up to date: every session that changes the
 project adds to the change log at the bottom and corrects anything above that is no longer true.
 
-Last updated: 2026-11-05 (client-requested rebrand from SAT Sharks to LUE SAT with supplied logo across public/student/admin/email surfaces, including the closing homepage CTA; leaderboard capped at top 20 with the signed-in student's rank shown separately. No live data writes.)
+Last updated: 2026-11-05 (LUE SAT rebrand and top-20 leaderboard completed; Next.js development output isolated from production builds after a local Webpack chunk-map failure. No live data writes.)
 
 ---
 
@@ -1267,3 +1267,11 @@ Newest last. One entry per session or major step.
   typecheck; 82 unit tests; 29 in-memory e2e checks; 50-route production build. The closing homepage
   CTA was subsequently updated to use the same supplied LUE SAT logo. Umair authorized committing and
   pushing the completed change to both configured remotes.
+- **2026-11-05 â€” Fixed local Next.js Webpack runtime failure.** A production `next build` had run
+  while the local dev server was active; both used `apps/web/.next`, so the build replaced the dev
+  chunk map. The HTML still returned 200 but 8 of its 9 JavaScript chunks returned 404, producing
+  `__webpack_modules__[moduleId] is not a function` in the browser. `next.config.ts` now defaults
+  development to `.next-dev` while production keeps `.next`; `.next-dev` is ignored and its generated
+  route types are included by TypeScript. Restarted only the local web server. Checked: web typecheck;
+  50-route production build while dev stayed running; homepage and all 9 dev chunks still returned 200
+  after that build. No API, database, question-bank or user data was changed.

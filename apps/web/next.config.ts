@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
 const apiUrl = process.env.API_URL ?? "http://localhost:4000";
 
@@ -14,10 +15,11 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
-const nextConfig: NextConfig = {
+const createNextConfig = (phase: string): NextConfig => ({
   // A second dev server (e.g. a test run on another port) must use its own build folder: two
-  // servers writing to the same .next corrupt each other's chunks (ChunkLoadError).
-  distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  // servers writing to one folder corrupt each other's chunks. Development also stays separate
+  // from production builds, so `next build` cannot invalidate a running dev server's module map.
+  distDir: process.env.NEXT_DIST_DIR ?? (phase === PHASE_DEVELOPMENT_SERVER ? ".next-dev" : ".next"),
   transpilePackages: ["@satsharks/types"],
   poweredByHeader: false,
   async headers() {
@@ -28,6 +30,6 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${apiUrl}/api/:path*` }];
   },
-};
+});
 
-export default nextConfig;
+export default createNextConfig;
